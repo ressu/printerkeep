@@ -354,8 +354,7 @@ is a problem in practice.
    already have commented-out lines there).
 3. Default ignore rules: find what Moonraker, KlipperScreen, Crowsnest, timelapse, Spoolman and others write
    into the config folder.
-4. Git on the printer: use the system `git` (versions are different on MainsailOS and Raspberry Pi OS
-   releases; `merge-tree --write-tree` needs 2.38 or later) or include a git library. This is an input to the
-   language decision.
+4. Decided in [language.md](language.md): the system `git` command. Merges per file need only
+   `git merge-file`, which all git versions in use have.
 5. Where is the state (C3) in the repository for option A: on the printer's branch (for example a dotfile at
    the top, which Klipper does not load) or on `shared` next to the overview?

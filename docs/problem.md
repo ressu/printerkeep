@@ -153,7 +153,7 @@ macros.
 | Timer and file watching | Back up changes soon | A timer and a manual start. No file watching (inotify) in version 1. |
 | Settings for apply and restart | Do not surprise a printer that prints | Fixed in version 1 (see above). |
 | One printer → more printers | Grow from one printer to more | A one-time guided migration is acceptable. |
-| Update with update_manager | Easy installation and updates | Required (S4). update_manager supports git repositories and Python packages directly. A compiled program needs more work for distribution. This is an input to the language decision. |
+| Update with update_manager | Easy installation and updates | Required (S4). update_manager's `executable` type installs compiled programs from GitHub releases. See [language.md](language.md). |
 
 More decisions:
 
@@ -193,5 +193,5 @@ Not in version 1 and not designed for. But the design must not make them impossi
 
 1. Done: [solution-options.md](solution-options.md) (option A).
 2. Done: vocabulary and project name in [naming.md](naming.md).
-3. Decide the language (Rust is the preference) and plan the implementation.
-4. Then: names of commands, files, systemd units and the update_manager entry.
+3. Done: language and platforms in [language.md](language.md) (Rust, system git, Linux with systemd).
+4. Next: names of commands, files, systemd units and the update_manager entry. Then plan the implementation.
