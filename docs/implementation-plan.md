@@ -1,0 +1,192 @@
+# Implementation plan
+
+Status: draft (2026-10-11). Based on [problem.md](problem.md), [solution-options.md](solution-options.md),
+[naming.md](naming.md) and [language.md](language.md).
+
+## Releases
+
+| Release | Content | Goal |
+|---|---|---|
+| **0.1** | One printer: local history, repository, restore, installer, update_manager, migration guide. | A replacement for klipper-backup. The authors move their own printers to printerkeep. |
+| **0.2** | More printers: follow, changes from shared, needs decision, override, copy to shared, overview. Changes in the repository get to the printer (M6). | The full design. |
+
+0.1 already uses the 0.2 repository format (one branch per printer, files at the top). Thus, 0.2 needs no
+migration.
+
+## Project setup
+
+- **License:** MIT (the same as layerlock).
+- **Rust:** edition 2024. `rust-toolchain.toml` pins the toolchain for every contributor. An optional
+  `flake.nix` gives a Nix devShell with the toolchain, `git`, `cargo-zigbuild`/zig, Python 3 (for the Klipper
+  parser tests) and `jj`.
+- **One crate** with a library and a binary (`src/lib.rs`, `src/main.rs`). Split into a workspace
+  (`printerkeep-*`) only if a real need appears.
+- **CLAUDE.md**: short. It points to the docs, the vocabulary and the writing rule in
+  [naming.md](naming.md).
+- **GitHub repository** `printerkeep`: create it when the user decides (it is public).
+
+### Dependencies (keep few)
+
+| Need | Crate |
+|---|---|
+| Command line | `clap` (derive) |
+| State file | `serde`, `serde_json` |
+| Errors | `thiserror` (library), `anyhow` (binary) |
+| Ignore patterns | `globset` |
+| Tests | `tempfile`, `proptest`, `assert_cmd` |
+
+No async, no HTTP client, no git library, no crypto. printerkeep runs `git` for repository work and
+`ssh-keygen` for keys.
+
+## Architecture
+
+```
+src/
+  main.rs        command line (clap): backup, status, restore, add-repository, follow, stop-following,
+                 copy-to-shared, decide
+  settings.rs    printerkeep.conf: strict Moonraker-style subset (C3)
+  paths.rs       config folder, printer_data, git data, log file
+  git.rs         thin wrapper around the git command (GIT_DIR, GIT_INDEX_FILE, GIT_SSH_COMMAND)
+  snapshot.rs    read the config folder into a git tree: ignore rules, no symlinks, line endings (C2)
+  backup.rs      commit only on change, commit messages, push (C2)
+  repository.rs  add-repository, keys, existing branches, restore (C8)
+  log.rs         printer_data/logs/printerkeep.log and the status text (C7)
+  -- 0.2 --
+  state.rs       .printerkeep-state.json: base per followed file (C3)
+  merge.rs       three-way merge per file, needs-decision block, override rule (C4–C6)
+  shared.rs      follow, stop-following, copy-to-shared, changes from shared
+  overview.rs    README.md on the shared branch
+```
+
+### Git commands that printerkeep uses
+
+All are old, stable commands: `hash-object -w`, `update-index` (with a separate `GIT_INDEX_FILE`),
+`write-tree`, `commit-tree`, `update-ref`, `rev-parse`, `cat-file`, `ls-tree`, `fetch`, `push`,
+`merge-file`. printerkeep never runs `git merge`, `git pull` or `git checkout` in the config folder (C1).
+
+### Merge engine (0.2)
+
+1. Apply the override rule: for each override line in the printer's file, find the line with the same
+   `[section]` and option name in the base and the shared version, and replace it with the printer's line.
+   Thus, the merge cannot change an override line. Overrides apply to `option: value` lines only (decided
+   2026-10-11). Lines in `gcode:` blocks have no stable key.
+2. Run `git merge-file --diff3 -p --marker-size=<large>` on printer / base / shared.
+3. Read git's output as a list of parts: merged lines and conflict parts (printer, base, shared).
+4. Write each conflict part as a `#### printerkeep: needs decision` block (C5).
+
+`merge.rs` hides git behind one interface, so a merge in Rust can replace it later.
+
+## Milestones
+
+Each milestone ends with working, tested software.
+
+### M0. Skeleton and release pipeline
+
+- Cargo project, license, `rust-toolchain.toml`, `flake.nix`, CLAUDE.md, README stub.
+- CI: `cargo fmt --check`, `clippy -D warnings`, tests.
+- Release workflow on a tag: build the four musl targets with `cargo-zigbuild`, publish
+  `printerkeep-linux-{aarch64,armv7,armv6,x86_64}` and a SHA-256 checksum file. Pre-releases for tests.
+- **Done when:** a tag makes a release with five files, and each binary runs `printerkeep --version` (CI runs
+  the ARM binaries with qemu-user).
+
+### M1. Local backup (S1, S6)
+
+- Settings parser (strict subset, clear error messages with line numbers).
+- Default ignore rules. First, list what Moonraker, KlipperScreen, Crowsnest, timelapse, Spoolman and
+  Mobileraker write into the config folder (open question 3).
+- Snapshot: ignore rules, skip symlinks, compare without line-ending differences, store files as they are.
+- Commit only on change. Message lists the changed files. Detect "only the `SAVE_CONFIG` block changed".
+- Log file with the status.
+- Commands: `backup`, `status`.
+- **Done when:** integration tests with real git in temporary folders show: no commit without a change, no
+  commit for a line-ending-only change, ignored files and symlinks are not in the tree, `SAVE_CONFIG`
+  message is correct.
+
+### M2. Repository and restore (S2, S3)
+
+- `add-repository <url>`: make an ed25519 key with `ssh-keygen` in `printer_data/printerkeep/`, use it with
+  `GIT_SSH_COMMAND`, show the public key and the deploy-key steps (terminal and log), write
+  `printerkeep.conf`.
+- **Existing printer branch:** if the branch exists in the repository, printerkeep continues its history.
+  The next backup is a child of the branch's last commit. This is needed for the migration guide.
+- Push after each backup. If the repository has commits that the printer does not have, printerkeep does
+  **not** force-push. It keeps its backups locally and writes a clear status ("the repository has changes
+  that this printer does not have"). 0.2 merges them (M6).
+- `restore <url> [<printer name>]`: fetch the branch and write its files into the config folder. If the
+  folder has files that are different from the branch, printerkeep stops and lists them, unless the user
+  adds `--overwrite`. After a restore, printerkeep tells the user to restart Moonraker and Klipper.
+- Printer name: `printer_name:` in the settings file, default the host name. Not `shared`.
+- **Done when:** integration tests with a local bare repository cover: first push, continued history on an
+  existing branch, no force-push when the repository is ahead, restore to an empty folder, refusal and
+  `--overwrite` on a non-empty folder.
+
+### M3. Installer and updates (S4, S5)
+
+- Spike first: confirm the `executable` type details (`is_system_service`, managed services,
+  `moonraker.asvc`) on a real Moonraker.
+- `install.sh`, based on layerlock's installer: map `uname -m` to the asset (with a separate armv6 asset),
+  check the SHA-256 checksum, `VERSION` and `PRERELEASE` variables. Install to `~/printerkeep/`, write
+  `release_info.json`, install `printerkeep.service` and `printerkeep.timer` (default every 5 minutes), add
+  `ExecCondition=` when layerlock is installed, add `[update_manager printerkeep]` to `moonraker.conf` if it
+  is not there. Check that `git` and `ssh-keygen` are installed.
+- `uninstall` (in the script): remove units, program folder and update_manager entry. Keep the git data and
+  the repository.
+- **Done when:** on a real printer, one command installs printerkeep, the timer makes backups, and Fluidd's
+  update panel updates printerkeep from one pre-release to the next.
+
+### M4. Migration guide and release 0.1
+
+- `docs/migrate-from-klipper-backup.md` (user guide, writing rule): for a single-printer klipper-backup
+  repository, keep the history with plain git:
+  1. `git subtree split --prefix=printer_data/config -b <printer name>` (the history of the config folder,
+     with the files at the top),
+  2. push the branch to the new (or the same) repository,
+  3. stop klipper-backup's timer, install printerkeep, `add-repository <url>` with the same printer name.
+  printerkeep continues the history (M2).
+- Multi-printer klipper-backup repositories are not in scope. There is no standard layout. The same steps
+  work by hand for each branch.
+- User README: install, first backup, add a repository, restore.
+- **Done when:** the guide works on a real klipper-backup repository, and the authors' printers run 0.1.
+
+### M5. More printers (0.2)
+
+- Spike first: a CI job that loads test configurations with Klipper's own parser (`klippy/configfile.py`, a
+  pinned Klipper checkout, Python 3). It proves that `#### printerkeep` blocks, commented-out lines and
+  override comments have no effect, also in multi-line `gcode:` values (open question 2).
+- State file, `follow`, `stop-following`, the `shared` branch.
+- Merge engine (above), changes from shared (C4), needs decision and its detection (C5), `decide`.
+- Override rule in merges and in `copy-to-shared` (C6). `copy-to-shared` shows the changes it sends and the
+  override lines it keeps back.
+- Changes in the repository on the printer's own branch (M6): the same per-file merge, with the printer's
+  branch in the repository as the other side.
+- Overview: `README.md` on `shared`, one section per printer. Pushes at the same time: fetch, rebase, retry.
+- Status per followed file in the log and in `status`.
+- **Done when:** property tests show the merge rules (an override line never changes; when changes touch
+  different lines, the result has both; a needs-decision file is always valid configuration), and
+  integration tests with three printers cover M1–M9.
+
+### M6. Real-data tests (0.2)
+
+- Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).
+  The fixtures test the cases in "Real differences, checked" in solution-options.md.
+- **Done when:** all real cases behave as the docs say.
+
+## Tests
+
+| Kind | What |
+|---|---|
+| Unit | settings parser, ignore rules, commit messages, needs-decision rendering, override matching |
+| Property (`proptest`) | merge rules (see M5) |
+| Integration | real `git` in temporary folders, local bare repositories as the "repository" |
+| Klipper compatibility | Klipper's parser loads files with markers (M5 spike) |
+| Cross targets | the release binaries run under qemu-user in CI |
+| Manual | install, timer, update and restore on a real printer before each release |
+
+## Open questions and where they are solved
+
+| Question | Milestone |
+|---|---|
+| Notifications in Fluidd/Mainsail through Moonraker | after 0.2; the log file is enough until then |
+| Klipper parser and markers | M5 spike |
+| Default ignore rules | M1 |
+| `executable` type details | M3 spike |

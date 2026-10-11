@@ -195,4 +195,4 @@ Not in version 1 and not designed for. But the design must not make them impossi
 2. Done: vocabulary and project name in [naming.md](naming.md).
 3. Done: language and platforms in [language.md](language.md) (Rust, system git, Linux with systemd).
 4. Done: names of commands, files, systemd units and the update_manager entry in [naming.md](naming.md).
-5. Next: plan the implementation.
+5. Done: [implementation-plan.md](implementation-plan.md).
