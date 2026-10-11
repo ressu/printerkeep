@@ -28,8 +28,11 @@ separate index. It writes a file into the config folder only when it has a final
 3. If not: make a commit. The message lists the changed files, for example
    `printer.cfg, macros/macros.cfg changed`. If only the `SAVE_CONFIG` block changed, the message says so.
 
-The default ignore rules include at least `printer-*.cfg` (`SAVE_CONFIG` backups), `.moonraker.conf.bkp`,
-Moonraker's secrets file, and logs or caches that tools write into the config folder.
+The default ignore rules (in `src/ignore.rs`) are: Klipper's `SAVE_CONFIG` copies
+(`<name>-YYYYMMDD_HHMMSS.cfg`) and its temporary `*_autosave` file, Moonraker's `.<name>.bkp` copy of its
+config file, `*.secrets`, `.git/` folders, and editor and system files (`*.swp`, `*~`, `.DS_Store`,
+`__pycache__/`). The names of the Klipper and Moonraker files were checked in their source code. State files
+of extensions (`variables.cfg`, `mmu_vars.cfg`) are backed up (see "Future possibilities" in problem.md).
 
 ### C3. Follow a shared file: settings file + state
 

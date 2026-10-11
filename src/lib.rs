@@ -2,5 +2,14 @@
 //!
 //! The design is in `docs/`. Start with `docs/problem.md`.
 
+pub mod app;
+pub mod backup;
+pub mod git;
+pub mod ignore;
+pub mod log;
+pub mod paths;
+pub mod settings;
+pub mod snapshot;
+
 /// The printerkeep version, from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
