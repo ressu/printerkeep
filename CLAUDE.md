@@ -21,6 +21,12 @@ cargo zigbuild --release --target aarch64-unknown-linux-musl
 qemu-aarch64 target/aarch64-unknown-linux-musl/release/printerkeep --version
 ```
 
+Try a build on a real printer, on a copy of its config folder (all files go to `~/printerkeep-test`):
+
+```sh
+scripts/try-on-printer.sh <ssh host> [printerkeep command...]
+```
+
 Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
 `arm-unknown-linux-musleabihf` (armv6, test with `qemu-arm -cpu arm1176`), `x86_64-unknown-linux-musl`.
 
