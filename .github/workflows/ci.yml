@@ -22,3 +22,7 @@ jobs:
 
       - name: Tests
         run: cargo test
+
+      # shellcheck is installed on the GitHub runners.
+      - name: Shell scripts
+        run: shellcheck install.sh scripts/*.sh

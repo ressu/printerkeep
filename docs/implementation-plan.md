@@ -145,16 +145,59 @@ Each milestone ends with working, tested software.
 ### M3. Installer and updates (S4, S5)
 
 - Spike first: confirm the `executable` type details (`is_system_service`, managed services,
-  `moonraker.asvc`) on a real Moonraker.
+  `moonraker.asvc`) in the Moonraker source.
+- **No root access.** Everything goes in the home folder of the printer's user. No step uses `sudo`.
+- `printerkeep install` (in Rust, with tests): copy the program to `~/printerkeep/`, write
+  `release_info.json`, link `~/.local/bin/printerkeep`, install `printerkeep.service` and `printerkeep.timer`
+  as systemd **user** units (default every 5 minutes), add `ExecCondition=` when layerlock is installed,
+  turn on lingering, add `[update_manager printerkeep]` to `moonraker.conf` if it is not there.
+- `printerkeep uninstall`: remove units, link, program folder and update_manager entry. Keep the git data,
+  the login and `printerkeep.conf`.
 - `install.sh`, based on layerlock's installer: map `uname -m` to the asset (with a separate armv6 asset),
-  check the SHA-256 checksum, `VERSION` and `PRERELEASE` variables. Install to `~/printerkeep/`, write
-  `release_info.json`, install `printerkeep.service` and `printerkeep.timer` (default every 5 minutes), add
-  `ExecCondition=` when layerlock is installed, add `[update_manager printerkeep]` to `moonraker.conf` if it
-  is not there. Check that `git` and `ssh-keygen` are installed.
-- `uninstall` (in the script): remove units, program folder and update_manager entry. Keep the git data and
-  the repository.
+  check the SHA-256 checksum (`BINARY_SHA256` or the checksum file), `VERSION` and `PRERELEASE` variables,
+  then run `printerkeep install`. The README shows three ways to install: the script in one command, the
+  script read and checked against the release page, and no script.
 - **Done when:** on a real printer, one command installs printerkeep, the timer makes backups, and Fluidd's
   update panel updates printerkeep from one pre-release to the next.
+
+**Spike results (2026-10-11, from the Moonraker source, update_manager `net_deploy.py` and `app_deploy.py`):**
+
+- update_manager saves the downloaded asset with its asset name: `~/printerkeep/printerkeep-linux-<cpu>`.
+  The program in the program folder has that name. `printerkeep install` links `~/.local/bin/printerkeep` to it, so
+  the command is `printerkeep`. The systemd service runs the file in the program folder.
+- update_manager compares the **title** of the GitHub release with `version` in `release_info.json`. An
+  update happens when they are different. The release workflow sets the title to the tag.
+- `channel: beta` takes the newest release, also a pre-release. `channel: stable` takes the latest release.
+- `is_system_service` is true by default. Then Moonraker restarts the service after an update, and it must be
+  in `moonraker.asvc`, or Moonraker shows a warning. printerkeep runs from a timer, so the entry has
+  `is_system_service: False`.
+- The program folder must not be in a git repository (the home folder is permitted).
+
+**Decisions made in M3 (2026-10-11):**
+
+- **No sudo.** The user is careful with root access, and printerkeep does not need it. The program, the link
+  and the units are in the home folder. This has costs, which we accept:
+  - systemd user units stop when the user logs out, unless lingering is on. `printerkeep install` runs
+    `loginctl enable-linger` (a user can do this for themselves on most systems). If the system refuses,
+    printerkeep shows the command for an administrator. `uninstall` does not turn lingering off, because other
+    user units can need it. It tells the user if printerkeep turned it on.
+  - Moonraker manages system services only. Thus, printerkeep is not in the services menu of Fluidd and
+    Mainsail, and the installer does not change `moonraker.asvc`. The manual start is `printerkeep backup`.
+    The `PRINTERKEEP_BACKUP` macro is not in 0.1 (Klipper has no standard way to run a command).
+  - printerkeep does not restart Moonraker. It tells the user to restart Moonraker, so that the update panel
+    shows printerkeep.
+- **The install steps are in the program**, not in the script: they have tests, and the way without a script
+  is short (download, compare the checksum with the release page, run `install`). `install.sh` only
+  downloads and checks. It is a release asset, so each release has a matching script.
+- A checksum file from the same place as the program finds only a damaged download. The README says so. For a
+  real check, `BINARY_SHA256` (or the way without a script) uses the checksum on the GitHub release page.
+- The release tag must be `v<version in Cargo.toml>`, because `install` writes that version to
+  `release_info.json`. The release workflow checks it.
+- The timer runs at every fifth minute (`OnCalendar=*:0/5`), with a random delay of up to 30 seconds. A
+  calendar timer runs also after a skipped run (layerlock).
+- The service runs with `Nice=10` and `IOSchedulingClass=idle`, so a backup does not slow Klipper.
+- The update channel follows the installed version: a pre-release (`0.1.0-rc.1`) gets `channel: beta`.
+- `install` makes the first backup, after it changed `moonraker.conf`.
 
 ### M4. Migration guide and release 0.1
 
@@ -211,4 +254,4 @@ Each milestone ends with working, tested software.
 | Notifications in Fluidd/Mainsail through Moonraker | after 0.2; the log file is enough until then |
 | Klipper parser and markers | M5 spike |
 | Default ignore rules | M1 |
-| `executable` type details | M3 spike |
+| `executable` type details | M3 spike (done, see M3) |

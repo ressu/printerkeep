@@ -23,6 +23,8 @@ pub enum Error {
     Git(#[from] GitError),
     #[error(transparent)]
     Repository(#[from] RepositoryError),
+    #[error(transparent)]
+    Install(#[from] crate::install::InstallError),
     #[error(
         "The config folder {0} does not exist. Use --printer-data to select the printer_data folder."
     )]

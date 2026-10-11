@@ -16,6 +16,7 @@ nix develop                     # optional devShell with everything below (diren
 cargo test
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
+shellcheck install.sh scripts/*.sh
 # Release build for one target, and run it (ARM needs qemu)
 cargo zigbuild --release --target aarch64-unknown-linux-musl
 qemu-aarch64 target/aarch64-unknown-linux-musl/release/printerkeep --version
@@ -28,6 +29,15 @@ scripts/try-on-printer.sh [--reset] [--copy] <ssh host> [printerkeep command and
 scripts/try-on-printer.sh --disconnect <ssh host>   # the SSH connection otherwise stays open for 10 minutes
 ```
 
+Try `printerkeep install` on a printer with a local build (before a release exists). It changes the real
+printer: units, `moonraker.conf`, backups of the real config folder. No sudo.
+
+```sh
+cargo zigbuild --release --target aarch64-unknown-linux-musl
+scp target/aarch64-unknown-linux-musl/release/printerkeep <ssh host>:
+ssh <ssh host> './printerkeep install && rm printerkeep'     # remove with: printerkeep uninstall
+```
+
 Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
 `arm-unknown-linux-musleabihf` (armv6, test with `qemu-arm -cpu arm1176`), `x86_64-unknown-linux-musl`.
 
@@ -38,6 +48,7 @@ Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
   say "copy to shared".
 - **Git:** run the system `git` command (`src/git.rs`). No git library. Never run `git merge`, `git pull` or
   `git checkout` in the config folder; printerkeep writes a file there only when it has a final, valid result.
+- **No root access.** Nothing in printerkeep or its installer uses sudo. Install into the user's home folder.
 - **Keep dependencies few.** No async, no HTTP client, no crypto crates.
 - **No personal names in the repository.** In examples and test fixtures, call printers "printer 1–4".
 - **Version control is jj** (colocated with git). Start a new change with `jj new` before you edit files.

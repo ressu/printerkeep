@@ -6,6 +6,7 @@ pub mod app;
 pub mod backup;
 pub mod git;
 pub mod ignore;
+pub mod install;
 pub mod log;
 pub mod paths;
 pub mod repository;

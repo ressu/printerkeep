@@ -40,6 +40,7 @@
               pkgs.jujutsu
               pkgs.python3 # Klipper parser tests (M5)
               pkgs.qemu # run ARM release binaries locally
+              pkgs.shellcheck # install.sh and scripts/
             ];
           };
         });

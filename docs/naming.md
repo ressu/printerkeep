@@ -105,10 +105,11 @@ platforms). The data paths are per `printer_data` folder, so more instances per 
 |---|---|
 | GitHub repository, crate, binary | `printerkeep`. Later crates in a workspace use `printerkeep-*`. |
 | Release assets | `printerkeep-linux-aarch64`, `printerkeep-linux-armv7`, `printerkeep-linux-armv6`, `printerkeep-linux-x86_64`. The installer selects one from `uname -m`. |
-| Program folder | `~/printerkeep/`, with the binary and `release_info.json` (update_manager `path`). |
+| Program folder | `~/printerkeep/`, with the binary (named as its release asset, for example `printerkeep-linux-aarch64`) and `release_info.json` (update_manager `path`). `~/.local/bin/printerkeep` is a link to the binary. |
+| Installer | `install.sh`, a release asset. It downloads and checks the program, then runs `printerkeep install`. |
 | update_manager entry | `[update_manager printerkeep]` with `type: executable` |
-| systemd units | `printerkeep.service` (`Type=oneshot`, runs `printerkeep backup`) and `printerkeep.timer`. layerlock connects with `ExecCondition=` in the service. |
-| Klipper macro (optional) | `PRINTERKEEP_BACKUP` |
+| systemd units | systemd user units in `~/.config/systemd/user/`: `printerkeep.service` (`Type=oneshot`, runs `printerkeep backup`) and `printerkeep.timer`. layerlock connects with `ExecCondition=` in the service. |
+| Klipper macro (optional, not in 0.1) | `PRINTERKEEP_BACKUP`. In 0.1, the manual start is `printerkeep backup`. |
 
 ### Files on the printer
 
@@ -149,6 +150,8 @@ printerkeep writes it.
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
 | `printerkeep restore <url> [<printer name>]` | Restores a printer from the repository. |
 | `printerkeep add-repository <url>` | Connects the printer to a repository. With an `https://` URL it asks for a personal access token. With an SSH URL it makes an SSH key and shows the public key. |
+| `printerkeep install` | Installs printerkeep for this user, or updates the installation. No root access. |
+| `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |
 | `printerkeep follow <file>` | Starts to follow a shared file. |
 | `printerkeep stop-following <file>` | Stops following a shared file. The file stays on the printer. |
 | `printerkeep copy-to-shared <file>` | Makes the shared version equal to this printer's version, except override lines. |

@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use printerkeep::{app, log, paths::Paths};
+use printerkeep::{app, install, log, paths::Paths};
 use std::io::{BufRead, IsTerminal};
 use std::path::PathBuf;
 use std::process::{Command as Process, ExitCode, Stdio};
@@ -47,6 +47,14 @@ enum Command {
         #[arg(long)]
         overwrite: bool,
     },
+    /// Install printerkeep for this user, or update the installation. Needs no root access (no sudo).
+    ///
+    /// Puts the program in ~/printerkeep (for Moonraker's update manager), links ~/.local/bin/printerkeep,
+    /// makes a backup every 5 minutes with a systemd user timer, and adds [update_manager printerkeep] to
+    /// moonraker.conf.
+    Install,
+    /// Remove what install made. Keeps the history, the login for the repository and printerkeep.conf.
+    Uninstall,
 }
 
 fn main() -> ExitCode {
@@ -74,6 +82,12 @@ fn main() -> ExitCode {
             read_token(url)
         })
         .map(|report| report.lines()),
+        Command::Install => install::Locations::from_env()
+            .and_then(|at| install::install(&paths, &at))
+            .map_err(app::Error::from),
+        Command::Uninstall => install::Locations::from_env()
+            .and_then(|at| install::uninstall(&paths, &at))
+            .map_err(app::Error::from),
     };
 
     match result {
