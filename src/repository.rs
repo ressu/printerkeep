@@ -20,10 +20,7 @@ pub enum RepositoryError {
         "printerkeep cannot use the URL '{0}'. Use an https:// URL (token), an SSH URL (key), or a folder."
     )]
     UnsupportedUrl(String),
-    #[error(
-        "The repository did not accept the login, or the URL is wrong ({url}). If the token expired or the key \
-         was removed, run: printerkeep add-repository {url}"
-    )]
+    #[error("{}", login_failed(url))]
     LoginFailed { url: String },
     #[error("Cannot connect to the repository {url}: {message}")]
     Connection { url: String, message: String },
@@ -107,19 +104,39 @@ fn credentials_file(paths: &Paths) -> PathBuf {
     paths.data.join("credentials")
 }
 
+fn new_credentials_file(paths: &Paths) -> PathBuf {
+    paths.data.join("credentials.new")
+}
+
 fn key_file(paths: &Paths) -> PathBuf {
     paths.data.join("id_ed25519")
 }
 
-/// Stores the token for `url` in git's credential file format. Only this user can read the file.
-pub fn store_token(paths: &Paths, url: &str, token: &str) -> Result<(), RepositoryError> {
+/// The user name and the host of an https:// URL.
+fn https_login(url: &str) -> (&str, &str) {
     let rest = url.strip_prefix("https://").unwrap_or(url);
     let authority = rest.split('/').next().unwrap_or_default();
-    let (user, host) = match authority.rsplit_once('@') {
+    match authority.rsplit_once('@') {
         Some((user, host)) => (user, host),
         // Most git hosts (GitHub, GitLab, Gitea) accept any user name with a token.
         None => ("printerkeep", authority),
-    };
+    }
+}
+
+/// True if a token for the host of `url` is stored.
+pub fn has_token(paths: &Paths, url: &str) -> bool {
+    let (_, host) = https_login(url);
+    std::fs::read_to_string(credentials_file(paths)).is_ok_and(|text| {
+        text.lines()
+            .any(|line| line.rsplit_once('@').is_some_and(|(_, h)| h == host))
+    })
+}
+
+/// Stores a new token for `url` next to the current one, in git's credential file format. Only this user
+/// can read the file. Test it with `new_token_remote`, then call `keep_new_token` or `discard_new_token`.
+/// Thus, a wrong token never replaces a token that works.
+pub fn store_new_token(paths: &Paths, url: &str, token: &str) -> Result<(), RepositoryError> {
+    let (user, host) = https_login(url);
     let line = format!(
         "https://{}:{}@{host}\n",
         percent_encode(user),
@@ -131,7 +148,7 @@ pub fn store_token(paths: &Paths, url: &str, token: &str) -> Result<(), Reposito
         move |source| RepositoryError::Io { context, source }
     };
     create_private_folder(&paths.data).map_err(io("Cannot make the data folder"))?;
-    let file = credentials_file(paths);
+    let file = new_credentials_file(paths);
     let _ = std::fs::remove_file(&file);
     std::fs::OpenOptions::new()
         .write(true)
@@ -140,6 +157,40 @@ pub fn store_token(paths: &Paths, url: &str, token: &str) -> Result<(), Reposito
         .open(&file)
         .and_then(|mut f| f.write_all(line.as_bytes()))
         .map_err(io("Cannot store the token"))
+}
+
+/// The login for `url` with the new token (see `store_new_token`).
+pub fn new_token_remote(url: &str, paths: &Paths) -> Remote {
+    Remote {
+        url: url.to_string(),
+        auth: Auth::Token {
+            credentials: new_credentials_file(paths),
+        },
+    }
+}
+
+/// The new token replaces the current one.
+pub fn keep_new_token(paths: &Paths) -> Result<(), RepositoryError> {
+    std::fs::rename(new_credentials_file(paths), credentials_file(paths)).map_err(|source| {
+        RepositoryError::Io {
+            context: "Cannot store the token".into(),
+            source,
+        }
+    })
+}
+
+/// Removes the new token. The current token does not change.
+pub fn discard_new_token(paths: &Paths) {
+    let _ = std::fs::remove_file(new_credentials_file(paths));
+}
+
+fn login_failed(url: &str) -> String {
+    let what = if url.starts_with("https://") {
+        "If the token expired or was removed, run: printerkeep change-token".to_string()
+    } else {
+        format!("If the key was removed, run: printerkeep add-repository {url}")
+    };
+    format!("The repository did not accept the login, or the URL is wrong ({url}). {what}")
 }
 
 /// Makes printerkeep's SSH key if it does not exist. Returns the public key.
@@ -464,12 +515,15 @@ mod tests {
     fn token_file_is_private_and_in_git_format() {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::new(dir.path());
-        store_token(
-            &paths,
-            "https://github.com/me/printers.git",
-            "github_pat_A1b2",
-        )
-        .unwrap();
+        let url = "https://github.com/me/printers.git";
+        assert!(!has_token(&paths, url));
+        store_new_token(&paths, url, "github_pat_A1b2").unwrap();
+        // Not used until it is kept.
+        assert!(!has_token(&paths, url));
+        keep_new_token(&paths).unwrap();
+        assert!(has_token(&paths, url));
+        assert!(!has_token(&paths, "https://gitlab.com/me/printers.git"));
+
         let file = dir.path().join("printerkeep/credentials");
         assert_eq!(
             std::fs::read_to_string(&file).unwrap(),
@@ -488,13 +542,22 @@ mod tests {
             0o700
         );
 
+        // A discarded token does not change the stored one.
+        store_new_token(&paths, url, "wrong").unwrap();
+        discard_new_token(&paths);
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "https://printerkeep:github_pat_A1b2@github.com\n"
+        );
+
         // A user name in the URL is used, and special characters are encoded.
-        store_token(
+        store_new_token(
             &paths,
             "https://me@git.example:3000/me/printers.git",
             "a/b c",
         )
         .unwrap();
+        keep_new_token(&paths).unwrap();
         assert_eq!(
             std::fs::read_to_string(&file).unwrap(),
             "https://me:a%2Fb%20c@git.example:3000\n"

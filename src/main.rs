@@ -35,6 +35,10 @@ enum Command {
         /// The repository URL, without a token.
         url: String,
     },
+    /// Replace the personal access token of the repository, for example when it expired.
+    ///
+    /// printerkeep tests the new token. It replaces the old token only if the repository accepts the new one.
+    ChangeToken,
     /// Restore the config folder from the repository, for example after a new install.
     ///
     /// Never removes files. Files that are different from the backup are replaced only with --overwrite.
@@ -72,16 +76,21 @@ fn main() -> ExitCode {
             Vec::new()
         }),
         Command::AddRepository { url } => {
-            app::add_repository(&paths, url, &|| read_token(url)).map(|report| report.lines())
+            app::add_repository(&paths, url, &read_token).map(|report| report.lines())
         }
         Command::Restore {
             url,
             printer_name,
             overwrite,
-        } => app::restore(&paths, url, printer_name.as_deref(), *overwrite, &|| {
-            read_token(url)
-        })
+        } => app::restore(
+            &paths,
+            url,
+            printer_name.as_deref(),
+            *overwrite,
+            &read_token,
+        )
         .map(|report| report.lines()),
+        Command::ChangeToken => app::change_token(&paths, &read_token),
         Command::Install => install::Locations::from_env()
             .and_then(|at| install::install(&paths, &at))
             .map_err(app::Error::from),
@@ -122,7 +131,7 @@ fn log_lines(paths: &Paths, lines: &[String]) {
 }
 
 /// Reads a personal access token. On a terminal, asks for it and does not show it.
-fn read_token(url: &str) -> std::io::Result<String> {
+fn read_token(request: app::TokenRequest, url: &str) -> std::io::Result<String> {
     let stdin = std::io::stdin();
     let mut line = String::new();
     if !stdin.is_terminal() {
@@ -130,7 +139,19 @@ fn read_token(url: &str) -> std::io::Result<String> {
         return Ok(line);
     }
 
-    eprintln!("printerkeep needs a personal access token for {url}.");
+    match request {
+        app::TokenRequest::New => {
+            eprintln!("printerkeep needs a personal access token for {url}.")
+        }
+        app::TokenRequest::StoredRefused => eprintln!(
+            "The repository did not accept the stored token. It can be expired or removed.\n\
+             printerkeep needs a new personal access token for {url}."
+        ),
+        app::TokenRequest::Replace => eprintln!(
+            "Give the new personal access token for {url}. printerkeep tests it before it replaces the \
+             old token."
+        ),
+    }
     if url.contains("github.com") {
         eprintln!(
             "To make one on GitHub: Settings > Developer settings > Personal access tokens > \

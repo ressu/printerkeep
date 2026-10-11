@@ -43,6 +43,17 @@ pub enum Error {
     #[error("No token. printerkeep needs a personal access token for an https:// repository.")]
     NoToken,
     #[error(
+        "The repository did not accept the token, or the URL is wrong ({url}). The stored login did not change."
+    )]
+    TokenRefused { url: String },
+    #[error("This printer has no repository. To add one: printerkeep add-repository <url>")]
+    NoRepository,
+    #[error(
+        "The repository {0} uses an SSH key, not a token. If the repository does not accept the key, run: \
+         printerkeep add-repository {0}"
+    )]
+    NoTokenForUrl(String),
+    #[error(
         "The repository did not accept printerkeep's SSH key. Add this public key to the repository as a \
          deploy key with write access:\n\n{public_key}\n\n\
          (GitHub: the repository's Settings > Deploy keys > Add deploy key, then select \"Allow write access\".)\n\
@@ -191,6 +202,7 @@ fn backup_and_send(
 #[derive(Debug)]
 pub struct AddReport {
     pub url: String,
+    pub token: TokenUse,
     pub printer_name: String,
     pub history: History,
     pub backup: BackupReport,
@@ -199,6 +211,11 @@ pub struct AddReport {
 impl AddReport {
     pub fn lines(&self) -> Vec<String> {
         let mut lines = vec![format!("Connected to the repository {}.", self.url)];
+        match self.token {
+            TokenUse::Stored => lines.push("Used the stored token.".to_string()),
+            TokenUse::New => lines.push("Stored the token.".to_string()),
+            TokenUse::None => {}
+        }
         match &self.history {
             History::New => lines.push(format!(
                 "The repository has no backups of {}. printerkeep sends the backups of this printer.",
@@ -223,12 +240,34 @@ impl AddReport {
     }
 }
 
-/// Connects the printer to a repository. `token` is called only for an https:// URL.
-pub fn add_repository(
-    paths: &Paths,
-    url: &str,
-    token: &dyn Fn() -> std::io::Result<String>,
-) -> Result<AddReport, Error> {
+/// Why printerkeep asks for a token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenRequest {
+    /// No token is stored for the repository.
+    New,
+    /// The repository did not accept the stored token (for example, it expired).
+    StoredRefused,
+    /// The user replaces the token (`change-token`).
+    Replace,
+}
+
+/// Asks the user for a token for the repository URL.
+pub type AskToken<'a> = &'a dyn Fn(TokenRequest, &str) -> std::io::Result<String>;
+
+/// Which token a connection used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenUse {
+    /// Not an https:// repository.
+    None,
+    /// The token that was stored before.
+    Stored,
+    /// A new token from the user. It is stored now.
+    New,
+}
+
+/// Connects the printer to a repository. `token` is called only for an https:// URL without a stored token
+/// that works.
+pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddReport, Error> {
     let settings = settings::load(&paths.settings())?;
     let printer_name = printer_name(&settings)?;
     let kind = repository::url_kind(url)?;
@@ -238,10 +277,10 @@ pub fn add_repository(
     if !git.exists() {
         git.init(&printer_name)?;
     }
-    let remote = login(paths, url, kind, &printer_name, token)?;
-    let remote_commit = connect(&git, &remote, kind, paths, &printer_name)?;
+    let connection = connect(&git, paths, url, kind, &printer_name, token)?;
+    let remote = connection.remote;
 
-    let history = match remote_commit {
+    let history = match connection.commit {
         None => History::New,
         Some(_) => {
             let fetched = repository::fetched_ref(&printer_name);
@@ -261,61 +300,149 @@ pub fn add_repository(
     let backup = backup_and_send(paths, &settings, &printer_name)?;
     Ok(AddReport {
         url: url.to_string(),
+        token: connection.token,
         printer_name,
         history,
         backup,
     })
 }
 
-/// Stores the login for `url`. Asks for the token, or makes the SSH key.
-fn login(
+/// A working connection to the repository.
+struct Connection {
+    remote: git::Remote,
+    /// The repository's commit for the printer, if there is one.
+    commit: Option<String>,
+    token: TokenUse,
+}
+
+/// Connects to the repository and tests the login. For https://, printerkeep uses the stored token, and
+/// asks for a new one only if there is no stored token or the repository does not accept it. For SSH,
+/// printerkeep makes its key, and shows it if the repository does not accept it.
+fn connect(
+    git: &Git,
     paths: &Paths,
     url: &str,
     kind: UrlKind,
     printer_name: &str,
-    token: &dyn Fn() -> std::io::Result<String>,
-) -> Result<git::Remote, Error> {
+    token: AskToken,
+) -> Result<Connection, Error> {
     match kind {
-        UrlKind::Https => {
-            let token = token()
-                .map_err(|source| Error::Io {
-                    context: "Cannot read the token".into(),
-                    source,
-                })?
-                .trim()
-                .to_string();
-            if token.is_empty() {
-                return Err(Error::NoToken);
-            }
-            repository::store_token(paths, url, &token)?;
-        }
+        UrlKind::Https => connect_with_token(git, paths, url, printer_name, token, false),
         UrlKind::Ssh => {
             repository::ensure_ssh_key(paths, printer_name)?;
+            let remote = repository::remote(url, paths)?;
+            match git.remote_branch(&remote, printer_name) {
+                Ok(commit) => Ok(Connection {
+                    remote,
+                    commit,
+                    token: TokenUse::None,
+                }),
+                Err(error) => match repository::classify(error, url) {
+                    RepositoryError::LoginFailed { .. } => Err(Error::DeployKeyNeeded {
+                        public_key: repository::ensure_ssh_key(paths, printer_name)?,
+                    }),
+                    error => Err(error.into()),
+                },
+            }
         }
-        UrlKind::Folder => {}
+        UrlKind::Folder => {
+            let remote = repository::remote(url, paths)?;
+            let commit = git
+                .remote_branch(&remote, printer_name)
+                .map_err(|e| repository::classify(e, url))?;
+            Ok(Connection {
+                remote,
+                commit,
+                token: TokenUse::None,
+            })
+        }
     }
-    Ok(repository::remote(url, paths)?)
 }
 
-/// Tests the connection and returns the repository's commit for this printer, if there is one.
-fn connect(
+/// `replace`: do not use the stored token, ask for a new one.
+fn connect_with_token(
     git: &Git,
-    remote: &git::Remote,
-    kind: UrlKind,
     paths: &Paths,
+    url: &str,
     printer_name: &str,
-) -> Result<Option<String>, Error> {
-    match git.remote_branch(remote, printer_name) {
-        Ok(commit) => Ok(commit),
-        Err(error) => match repository::classify(error, &remote.url) {
-            RepositoryError::LoginFailed { .. } if kind == UrlKind::Ssh => {
-                Err(Error::DeployKeyNeeded {
-                    public_key: repository::ensure_ssh_key(paths, printer_name)?,
-                })
+    token: AskToken,
+    replace: bool,
+) -> Result<Connection, Error> {
+    let mut request = if replace {
+        TokenRequest::Replace
+    } else {
+        TokenRequest::New
+    };
+    if !replace && repository::has_token(paths, url) {
+        let remote = repository::remote(url, paths)?;
+        match git.remote_branch(&remote, printer_name) {
+            Ok(commit) => {
+                return Ok(Connection {
+                    remote,
+                    commit,
+                    token: TokenUse::Stored,
+                });
             }
-            error => Err(error.into()),
-        },
+            Err(error) => match repository::classify(error, url) {
+                RepositoryError::LoginFailed { .. } => request = TokenRequest::StoredRefused,
+                error => return Err(error.into()),
+            },
+        }
     }
+
+    let new_token = token(request, url)
+        .map_err(|source| Error::Io {
+            context: "Cannot read the token".into(),
+            source,
+        })?
+        .trim()
+        .to_string();
+    if new_token.is_empty() {
+        return Err(Error::NoToken);
+    }
+    // The new token replaces the stored one only when the repository accepts it.
+    repository::store_new_token(paths, url, &new_token)?;
+    match git.remote_branch(&repository::new_token_remote(url, paths), printer_name) {
+        Ok(commit) => {
+            repository::keep_new_token(paths)?;
+            Ok(Connection {
+                remote: repository::remote(url, paths)?,
+                commit,
+                token: TokenUse::New,
+            })
+        }
+        Err(error) => {
+            repository::discard_new_token(paths);
+            Err(match repository::classify(error, url) {
+                RepositoryError::LoginFailed { .. } => Error::TokenRefused {
+                    url: url.to_string(),
+                },
+                error => error.into(),
+            })
+        }
+    }
+}
+
+/// Replaces the token of the printer's repository. The new token must work before it replaces the old
+/// one. Then printerkeep sends the backups that are not in the repository.
+pub fn change_token(paths: &Paths, token: AskToken) -> Result<Vec<String>, Error> {
+    let settings = settings::load(&paths.settings())?;
+    let url = settings.repository.clone().ok_or(Error::NoRepository)?;
+    if repository::url_kind(&url)? != UrlKind::Https {
+        return Err(Error::NoTokenForUrl(url));
+    }
+    let printer_name = printer_name(&settings)?;
+    let _lock = lock(paths)?;
+    let git = Git::new(&paths.git_dir);
+    if !git.exists() {
+        git.init(&printer_name)?;
+    }
+    connect_with_token(&git, paths, &url, &printer_name, token, true)?;
+    let mut lines = vec![format!(
+        "The repository {url} accepted the new token. printerkeep uses it from now on."
+    )];
+    lines.extend(backup_and_send(paths, &settings, &printer_name)?.lines());
+    Ok(lines)
 }
 
 /// What `restore` did.
@@ -363,7 +490,7 @@ pub fn restore(
     url: &str,
     printer: Option<&str>,
     overwrite: bool,
-    token: &dyn Fn() -> std::io::Result<String>,
+    token: AskToken,
 ) -> Result<RestoreReport, Error> {
     let kind = repository::url_kind(url)?;
     let _lock = lock(paths)?;
@@ -373,9 +500,7 @@ pub fn restore(
     if !git.exists() {
         git.init(&key_name)?;
     }
-    let remote = login(paths, url, kind, &key_name, token)?;
-    // Tests the connection, as in add-repository.
-    connect(&git, &remote, kind, paths, &key_name)?;
+    let remote = connect(&git, paths, url, kind, &key_name, token)?.remote;
 
     let available: Vec<String> = git
         .remote_branches(&remote)

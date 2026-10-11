@@ -402,9 +402,12 @@ impl Remote {
             Auth::None => {}
             Auth::Token { credentials } => {
                 // The empty value removes the user's own credential helpers, so only printerkeep's file is used.
+                // The helper answers "get" only. When the repository refuses a token, git tells the helpers
+                // to erase it, and the "store" helper would remove it from the file. printerkeep alone
+                // changes the file: a short failure on the server must not remove a token that works.
                 command.args(["-c", "credential.helper="]);
                 command.arg("-c").arg(format!(
-                    "credential.helper=store --file={}",
+                    "credential.helper=!f() {{ test \"$1\" = get && git credential-store --file={} get; }}; f",
                     shell_quote(credentials)
                 ));
             }
@@ -530,7 +533,9 @@ mod tests {
         git.init("printer-1").unwrap();
         let remote = Remote {
             url: "https://github.com/me/printers.git".into(),
-            auth: Auth::Token { credentials },
+            auth: Auth::Token {
+                credentials: credentials.clone(),
+            },
         };
 
         let mut command = remote.command(&git);
@@ -547,5 +552,20 @@ mod tests {
         let text = String::from_utf8(stdout).unwrap();
         assert!(text.contains("username=printerkeep\n"), "{text}");
         assert!(text.contains("password=github_pat_test\n"), "{text}");
+
+        // When the repository refuses the token, git tells the helper to erase it. The file stays.
+        let mut reject = remote.command(&git);
+        reject.args(["credential", "reject"]);
+        run(
+            &mut reject,
+            Some(
+                b"protocol=https\nhost=github.com\nusername=printerkeep\npassword=github_pat_test\n\n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&credentials).unwrap(),
+            "https://printerkeep:github_pat_test@github.com\n"
+        );
     }
 }

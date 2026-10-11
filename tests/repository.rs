@@ -3,7 +3,6 @@
 use assert_cmd::Command;
 use predicates::str::contains;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
@@ -348,9 +347,9 @@ fn token_in_the_url_is_refused() {
 }
 
 #[test]
-fn token_from_standard_input_is_stored_privately() {
+fn token_is_not_stored_without_a_connection() {
     let printer = Printer::new("printer-1");
-    // Nothing listens on port 9, so the connection fails after the token is stored.
+    // Nothing listens on port 9.
     printer
         .command(&["add-repository", "https://127.0.0.1:9/me/printers.git"])
         .write_stdin("github_pat_test\n")
@@ -358,16 +357,9 @@ fn token_from_standard_input_is_stored_privately() {
         .failure()
         .stderr(contains("Cannot connect to the repository"));
 
-    let credentials = printer.dir.path().join("printerkeep/credentials");
-    assert_eq!(
-        fs::read_to_string(&credentials).unwrap(),
-        "https://printerkeep:github_pat_test@127.0.0.1:9\n"
-    );
-    assert_eq!(
-        fs::metadata(&credentials).unwrap().permissions().mode() & 0o777,
-        0o600
-    );
-    // Without a connection, printerkeep.conf does not change.
+    let data = printer.dir.path().join("printerkeep");
+    assert!(!data.join("credentials").exists());
+    assert!(!data.join("credentials.new").exists());
     assert_eq!(
         printer.read("printerkeep.conf"),
         "[printerkeep]\nprinter_name: printer-1\n"

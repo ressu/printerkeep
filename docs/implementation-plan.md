@@ -131,6 +131,18 @@ Each milestone ends with working, tested software.
 - No git remote is configured. Each network command gets the URL and the login. A token uses
   `-c credential.helper=` (removes the user's own helpers) and git's `store` helper with printerkeep's file.
   SSH uses printerkeep's own key and `known_hosts` file.
+- **Tokens (changed 2026-10-11, after the first live test):**
+  - The token is stored per `printer_data` folder (`printer_data/printerkeep/credentials`), not per user. A
+    test copy in another folder has its own token.
+  - `add-repository` uses the stored token. It asks for a token only if there is none, or if the repository
+    does not accept it.
+  - `change-token` replaces the token. A new token goes to `credentials.new` first. It replaces the old token
+    only after the repository accepts it, so a wrong token never breaks a working login.
+  - git's `store` helper removes a token when the repository refuses it once. printerkeep's helper answers
+    `get` only, so a short failure on the server cannot remove a token that works. Only printerkeep changes
+    the file.
+  - The tests use a local HTTPS git server (`tests/support/https_git_server.py`, python3 and openssl) that
+    accepts one token, as GitHub does.
 - A folder or `file://` URL is a repository without login (a network share, and the tests).
 - printerkeep remembers the last backup that it sent (`refs/printerkeep/sent/<printer name>`). When nothing
   changed, a run makes no network connection.
