@@ -58,7 +58,8 @@ includes these.
 - **S1 Backup.** printerkeep makes a backup only when a file changed. The backup has a useful message. A timer
   starts it. The user can also start it manually.
 - **S2 Add a repository later.** A user with only local history adds a repository (any git host; GitHub is
-  the most likely). printerkeep guides the user through authentication.
+  the most likely). printerkeep guides the user through authentication. A personal access token (HTTPS) and
+  an SSH key both work. With a token, one token can serve all printers.
 - **S3 Restore.** The SD card fails. The user installs Klipper again and restores the configuration from the
   repository.
 - **S4 Update printerkeep** with Moonraker's update_manager (the update panel in Fluidd or Mainsail).
@@ -180,6 +181,10 @@ Not in version 1 and not designed for. But the design must not make them impossi
   every shared version comes from the user's own printers.
 - **Groups of printers**, if users need them.
 - **Backup when a file changes (inotify)**, settings for apply and restart, more commands for experts.
+- **Time gating for state files.** Files that extensions rewrite often (`[save_variables]` files such as
+  `variables.cfg`, Happy Hare's `mmu_vars.cfg`) can cause a backup at almost every run. Version 1 backs them
+  up like other files. Later, printerkeep can back up such files less often (for example, at most once per
+  hour).
 
 ## Not goals
 

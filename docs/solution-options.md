@@ -138,11 +138,21 @@ Moonraker notification is possible later. See the open questions.
 
 ### C8. Repository, restore, update
 
-- **S2 Add a repository:** one command on the printer, `printerkeep add-repository <url>`. It makes an SSH key and
-  shows the public key, with instructions to add it as a deploy key. Without SSH: put the URL in the settings
-  file with Fluidd. printerkeep writes the public key into the log file.
-- **S3 Restore:** install printerkeep, then `printerkeep restore <url> [<printer name>]`. This needs a key, the
-  same as S2.
+- **S2 Add a repository:** one command on the printer, `printerkeep add-repository <url>`. The URL selects
+  the authentication:
+  - `https://…`: a **personal access token** (for GitHub: a fine-grained token for this one repository, with
+    "Contents: read and write"). printerkeep asks for the token, or reads it from standard input. One token
+    can serve all printers, so there are no keys to manage per printer.
+  - `git@…` or `ssh://…`: an **SSH key**. printerkeep makes a key and shows the public key, with instructions
+    to add it as a deploy key.
+
+  printerkeep keeps the token with git's own `store` credential helper, in
+  `printer_data/printerkeep/credentials` (mode 600), outside the config folder. **A token or key never goes in
+  `printerkeep.conf`**: that file is in the config folder, so the repository would get it. When
+  authentication fails (for example, an expired token), the status says so and tells the user to run
+  `add-repository` again.
+- **S3 Restore:** install printerkeep, then `printerkeep restore <url> [<printer name>]`. This needs a token or
+  a key, the same as S2.
 - **S4 Update printerkeep:** an update_manager entry. How depends on the language (git repository or compiled
   release). It does not depend on the option.
 - **S5 Busy printer:** printerkeep runs as a systemd service with a timer. layerlock connects through

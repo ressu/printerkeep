@@ -104,9 +104,15 @@ Each milestone ends with working, tested software.
 
 ### M2. Repository and restore (S2, S3)
 
-- `add-repository <url>`: make an ed25519 key with `ssh-keygen` in `printer_data/printerkeep/`, use it with
-  `GIT_SSH_COMMAND`, show the public key and the deploy-key steps (terminal and log), write
-  `printerkeep.conf`.
+- `add-repository <url>`, two kinds of authentication (the URL selects):
+  - `https://`: personal access token, from a prompt or standard input. Stored with
+    `git -c credential.helper="store --file=printer_data/printerkeep/credentials"` (mode 600). Show the
+    GitHub steps for a fine-grained token (one repository, "Contents: read and write").
+  - SSH: make an ed25519 key with `ssh-keygen` in `printer_data/printerkeep/`, use it with
+    `GIT_SSH_COMMAND`, show the public key and the deploy-key steps.
+
+  Both: test the connection, write `repository:` (the URL only, never a token) to `printerkeep.conf`.
+  Authentication errors (expired token, removed key) give a clear status.
 - **Existing printer branch:** if the branch exists in the repository, printerkeep continues its history.
   The next backup is a child of the branch's last commit. This is needed for the migration guide.
 - Push after each backup. If the repository has commits that the printer does not have, printerkeep does

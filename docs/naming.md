@@ -147,7 +147,7 @@ printerkeep writes it.
 | `printerkeep backup` | Makes a backup if a file changed, and applies changes from shared. The timer runs this. |
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
 | `printerkeep restore <url> [<printer name>]` | Restores a printer from the repository. |
-| `printerkeep add-repository <url>` | Connects the printer to a repository. Makes an SSH key and shows the public key. |
+| `printerkeep add-repository <url>` | Connects the printer to a repository. With an `https://` URL it asks for a personal access token. With an SSH URL it makes an SSH key and shows the public key. |
 | `printerkeep follow <file>` | Starts to follow a shared file. |
 | `printerkeep stop-following <file>` | Stops following a shared file. The file stays on the printer. |
 | `printerkeep copy-to-shared <file>` | Makes the shared version equal to this printer's version, except override lines. |
