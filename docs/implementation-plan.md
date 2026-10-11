@@ -126,6 +126,22 @@ Each milestone ends with working, tested software.
   existing branch, no force-push when the repository is ahead, restore to an empty folder, refusal and
   `--overwrite` on a non-empty folder.
 
+**Decisions made in M2 (2026-10-11):**
+
+- No git remote is configured. Each network command gets the URL and the login. A token uses
+  `-c credential.helper=` (removes the user's own helpers) and git's `store` helper with printerkeep's file.
+  SSH uses printerkeep's own key and `known_hosts` file.
+- A folder or `file://` URL is a repository without login (a network share, and the tests).
+- printerkeep remembers the last backup that it sent (`refs/printerkeep/sent/<printer name>`). When nothing
+  changed, a run makes no network connection.
+- When the repository already has the printer's branch, printerkeep continues it. Backups that were only on
+  the printer are kept as `refs/printerkeep/kept/<printer name>-<time>`. They are not sent and not removed.
+- `backup` exits with 0 when the backup worked, also when sending failed. The output, the log and `status`
+  show the problem. A printer that is offline for a short time is not a failed service.
+- A URL with a token in it is refused, because printerkeep.conf (which is backed up) would contain it.
+- `add-repository` and `restore` write `printer_name` and `repository` to printerkeep.conf, so a new host
+  name does not start a new history.
+
 ### M3. Installer and updates (S4, S5)
 
 - Spike first: confirm the `executable` type details (`is_system_service`, managed services,

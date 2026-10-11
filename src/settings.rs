@@ -28,6 +28,12 @@ pub enum SettingsError {
         #[source]
         source: std::io::Error,
     },
+    #[error("Cannot write {file}: {source}")]
+    Write {
+        file: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 const SECTION: &str = "printerkeep";
@@ -199,6 +205,71 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
     Ok(settings)
 }
 
+/// Sets single-value options in the settings file and keeps all other lines and comments.
+/// Makes the file if it does not exist. The file is replaced in one step (no half-written file).
+pub fn set_options(path: &Path, options: &[(&str, &str)]) -> Result<(), SettingsError> {
+    let file = path.display().to_string();
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(source) => return Err(SettingsError::Read { file, source }),
+    };
+    // Never change a file that printerkeep cannot read.
+    parse(&text, &file)?;
+
+    let mut lines: Vec<String> = text
+        .lines()
+        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+        .collect();
+    for (option, value) in options {
+        debug_assert!(
+            kind(option) == Some(Kind::Single),
+            "{option} is not a single-value option"
+        );
+        let new_line = format!("{option}: {value}");
+        let existing = lines.iter().position(|line| {
+            !line.starts_with(char::is_whitespace)
+                && line
+                    .find([':', '='])
+                    .is_some_and(|i| line[..i].trim() == *option)
+        });
+        let header = lines.iter().position(|line| {
+            line.strip_prefix('[')
+                .map(strip_comment)
+                .and_then(|h| h.strip_suffix(']'))
+                .is_some_and(|name| name.trim() == SECTION)
+        });
+        match (existing, header) {
+            (Some(index), _) => lines[index] = new_line,
+            // New options go at the end of the section (the file has only this section).
+            (None, Some(index)) => {
+                let last = lines
+                    .iter()
+                    .rposition(|l| !l.trim().is_empty())
+                    .map_or(index, |last| last.max(index));
+                lines.insert(last + 1, new_line);
+            }
+            (None, None) => {
+                if lines.last().is_some_and(|l| !l.trim().is_empty()) {
+                    lines.push(String::new());
+                }
+                lines.push(format!("[{SECTION}]"));
+                lines.push(new_line);
+            }
+        }
+    }
+
+    let mut text = lines.join("\n");
+    text.push('\n');
+    let write_error = |source| SettingsError::Write {
+        file: file.clone(),
+        source,
+    };
+    let temporary = path.with_file_name(".printerkeep.conf.new");
+    std::fs::write(&temporary, &text).map_err(write_error)?;
+    std::fs::rename(&temporary, path).map_err(write_error)
+}
+
 /// Removes an inline comment: `#` or `;` after a space.
 fn strip_comment(text: &str) -> &str {
     let mut previous_space = false;
@@ -288,6 +359,57 @@ mod tests {
     #[test]
     fn blank_line_ends_a_list() {
         assert!(err("[printerkeep]\nignore:\n  a\n\n  b\n").contains("line 5"));
+    }
+
+    #[test]
+    fn set_options_keeps_comments_and_other_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("printerkeep.conf");
+        std::fs::write(
+            &path,
+            "# My printer\n[printerkeep]\nrepository: old-url # old\nignore:\n  a/\n",
+        )
+        .unwrap();
+        set_options(
+            &path,
+            &[("repository", "new-url"), ("printer_name", "printer-1")],
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# My printer\n[printerkeep]\nrepository: new-url\nignore:\n  a/\nprinter_name: printer-1\n"
+        );
+        assert!(!dir.path().join(".printerkeep.conf.new").exists());
+    }
+
+    #[test]
+    fn set_options_makes_a_new_file_and_a_section() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("printerkeep.conf");
+        set_options(&path, &[("repository", "/srv/printers.git")]).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[printerkeep]\nrepository: /srv/printers.git\n"
+        );
+
+        std::fs::write(&path, "# only a comment\n").unwrap();
+        set_options(&path, &[("printer_name", "printer-2")]).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# only a comment\n\n[printerkeep]\nprinter_name: printer-2\n"
+        );
+    }
+
+    #[test]
+    fn set_options_refuses_an_invalid_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("printerkeep.conf");
+        std::fs::write(&path, "[printerkeep]\nfolow: a\n").unwrap();
+        assert!(set_options(&path, &[("repository", "x")]).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[printerkeep]\nfolow: a\n"
+        );
     }
 
     #[test]

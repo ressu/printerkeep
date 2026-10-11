@@ -250,6 +250,16 @@ impl Git {
         Ok(())
     }
 
+    /// Moves `reference` to `new`, whatever it points to now. For printerkeep's own references only.
+    pub fn set_ref(&self, reference: &str, new: &str, reason: &str) -> Result<(), GitError> {
+        run(
+            self.command()
+                .args(["update-ref", "-m", reason, reference, new]),
+            None,
+        )?;
+        Ok(())
+    }
+
     /// The commit time (seconds since 1970) and subject of `commit`.
     pub fn commit_info(&self, commit: &str) -> Result<(u64, String), GitError> {
         let stdout = run(
@@ -274,6 +284,149 @@ impl Git {
             command: "rev-list".into(),
         })
     }
+
+    /// The number of commits in `to` that are not in `from`.
+    pub fn count_between(&self, from: &str, to: &str) -> Result<u64, GitError> {
+        let stdout = run(
+            self.command()
+                .args(["rev-list", "--count"])
+                .arg(format!("{from}..{to}")),
+            None,
+        )?;
+        line(&stdout).parse().map_err(|_| GitError::Unexpected {
+            command: "rev-list".into(),
+        })
+    }
+
+    /// `true` if `ancestor` is in the history of `commit` (or is `commit`).
+    pub fn is_ancestor(&self, ancestor: &str, commit: &str) -> Result<bool, GitError> {
+        let output = output(
+            self.command()
+                .args(["merge-base", "--is-ancestor", ancestor, commit]),
+            None,
+        )?;
+        match output.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => Err(failed("merge-base", &output)),
+        }
+    }
+
+    /// The commit of `refs/heads/<branch>` in the repository, or `None` if the branch does not exist.
+    /// Also tests the connection and the authentication.
+    pub fn remote_branch(&self, remote: &Remote, branch: &str) -> Result<Option<String>, GitError> {
+        let stdout = run(
+            remote
+                .command(self)
+                .args(["ls-remote", "--heads", &remote.url])
+                .arg(format!("refs/heads/{branch}")),
+            None,
+        )?;
+        Ok(String::from_utf8_lossy(&stdout)
+            .split_whitespace()
+            .next()
+            .map(str::to_string))
+    }
+
+    /// The names of all branches in the repository.
+    pub fn remote_branches(&self, remote: &Remote) -> Result<Vec<String>, GitError> {
+        let stdout = run(
+            remote
+                .command(self)
+                .args(["ls-remote", "--heads", &remote.url]),
+            None,
+        )?;
+        Ok(String::from_utf8_lossy(&stdout)
+            .lines()
+            .filter_map(|l| l.split('\t').nth(1))
+            .filter_map(|r| r.strip_prefix("refs/heads/"))
+            .map(str::to_string)
+            .collect())
+    }
+
+    /// Copies `refs/heads/<branch>` from the repository to `local_ref`.
+    pub fn fetch(&self, remote: &Remote, branch: &str, local_ref: &str) -> Result<(), GitError> {
+        run(
+            remote
+                .command(self)
+                .args(["fetch", "--quiet", "--no-tags", &remote.url])
+                .arg(format!("+refs/heads/{branch}:{local_ref}")),
+            None,
+        )?;
+        Ok(())
+    }
+
+    /// Sends `local_ref` to `refs/heads/<branch>` in the repository. Never forces.
+    pub fn push(&self, remote: &Remote, local_ref: &str, branch: &str) -> Result<(), GitError> {
+        run(
+            remote
+                .command(self)
+                .args(["push", "--quiet", &remote.url])
+                .arg(format!("{local_ref}:refs/heads/{branch}")),
+            None,
+        )?;
+        Ok(())
+    }
+}
+
+/// How printerkeep logs in to a repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Auth {
+    /// A folder on this computer or a network share: no login.
+    None,
+    /// HTTPS with a personal access token, kept by git's `store` credential helper in this file.
+    Token { credentials: PathBuf },
+    /// SSH with printerkeep's own key and its own known_hosts file.
+    Ssh { key: PathBuf, known_hosts: PathBuf },
+}
+
+/// A repository URL and its login.
+#[derive(Debug, Clone)]
+pub struct Remote {
+    pub url: String,
+    pub auth: Auth,
+}
+
+impl Remote {
+    /// A git command for this remote. The `-c` options must come before the subcommand.
+    fn command(&self, git: &Git) -> Command {
+        let mut command = git.command();
+        // Stop slow or stalled HTTPS transfers instead of hanging the timer.
+        command.args([
+            "-c",
+            "http.lowSpeedLimit=1000",
+            "-c",
+            "http.lowSpeedTime=60",
+        ]);
+        match &self.auth {
+            Auth::None => {}
+            Auth::Token { credentials } => {
+                // The empty value removes the user's own credential helpers, so only printerkeep's file is used.
+                command.args(["-c", "credential.helper="]);
+                command.arg("-c").arg(format!(
+                    "credential.helper=store --file={}",
+                    shell_quote(credentials)
+                ));
+            }
+            Auth::Ssh { key, known_hosts } => {
+                command.env(
+                    "GIT_SSH_COMMAND",
+                    format!(
+                        "ssh -i {} -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+                         -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={}",
+                        shell_quote(key),
+                        shell_quote(known_hosts)
+                    ),
+                );
+            }
+        }
+        command
+    }
+}
+
+/// Quotes a path for the shell that git uses to run helpers and `ssh`.
+fn shell_quote(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
 }
 
 /// `true` if `name` is a valid branch name.
@@ -354,4 +507,45 @@ fn failed(command: &str, output: &Output) -> GitError {
 
 fn line(stdout: &[u8]) -> String {
     String::from_utf8_lossy(stdout).trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// git must find the token through the exact options that printerkeep passes, also when the path has
+    /// a space and the user has other credential helpers.
+    #[test]
+    fn token_auth_gives_git_the_stored_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("printer data");
+        std::fs::create_dir_all(&data).unwrap();
+        let credentials = data.join("credentials");
+        std::fs::write(
+            &credentials,
+            "https://printerkeep:github_pat_test@github.com\n",
+        )
+        .unwrap();
+        let git = Git::new(dir.path().join("repo.git"));
+        git.init("printer-1").unwrap();
+        let remote = Remote {
+            url: "https://github.com/me/printers.git".into(),
+            auth: Auth::Token { credentials },
+        };
+
+        let mut command = remote.command(&git);
+        command
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "credential.helper")
+            .env("GIT_CONFIG_VALUE_0", "!echo password=wrong-helper; :")
+            .args(["credential", "fill"]);
+        let stdout = run(
+            &mut command,
+            Some(b"protocol=https\nhost=github.com\npath=me/printers.git\n\n"),
+        )
+        .unwrap();
+        let text = String::from_utf8(stdout).unwrap();
+        assert!(text.contains("username=printerkeep\n"), "{text}");
+        assert!(text.contains("password=github_pat_test\n"), "{text}");
+    }
 }

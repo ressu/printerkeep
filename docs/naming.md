@@ -25,6 +25,7 @@ This covers CLI output, status files, in-file markers, notifications, docs and t
 | **history** | All backups of a printer. | log, commits |
 | **restore** | Put a printer's files back from the repository, e.g. after a new install. | recover, clone |
 | **repository** | The git repository where backups are stored (e.g. on GitHub). | remote, origin, repo (in messages) |
+| **send** | Copy new backups from the printer to the repository. printerkeep never overwrites the repository. | push, upload, sync |
 | **settings file** | The one file in the config folder where the user changes the tool's settings. | manifest, config file (ambiguous with Klipper config) |
 
 ### Users with more printers

@@ -8,6 +8,7 @@ pub mod git;
 pub mod ignore;
 pub mod log;
 pub mod paths;
+pub mod repository;
 pub mod settings;
 pub mod snapshot;
 
