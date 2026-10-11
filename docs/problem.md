@@ -1,187 +1,197 @@
 # Problem definition
 
-Status: agreed problem statement. It deliberately contains no repo layout, mechanism, naming or language
-decisions. Solution proposals are checked against this document.
+Status: agreed. This document says *what* printerkeep must do. It does not say *how*. We check every
+solution against it. Terms follow the vocabulary in [naming.md](naming.md).
 
 ## Background
 
-[klipper-backup](https://github.com/Staubgeborener/klipper-backup) is the common way to back up a Klipper
-printer's configuration to git. It has two shortcomings:
+Most people back up a Klipper printer's configuration to git with
+[klipper-backup](https://github.com/Staubgeborener/klipper-backup). It has two problems:
 
-- It commits on every run, even when nothing changed.
-- It is one-way, printer → repo. Changes made in the repo don't find their way back to the printer.
+- It makes a commit on every run, also when no file changed.
+- It works in one direction only: printer to repository. A change in the repository does not get to the
+  printer.
 
-People with several printers have a harder problem. Their printers share some configuration (macros, toolhead
-files, feature configs) but are not identical. The common workaround, one git branch per printer, makes
-shared changes painful to coordinate: improvements made on one printer never reach the others, and it's hard
-to see how printers have drifted apart.
+People with more printers have a bigger problem. Their printers use some of the same configuration (macros,
+toolhead files, feature files), but the printers are not identical. A common workaround is one git branch per
+printer. With that workaround, a good change on one printer does not get to the other printers. It is also
+difficult to see how the printers are different.
 
-Configuration is edited in two places: on the printer (Fluidd/Mainsail, `SAVE_CONFIG`) and in the repo. Neither
-side can be the only source of truth.
+People change the configuration in two places: on the printer (Fluidd, Mainsail, `SAVE_CONFIG`) and in the
+repository. Neither place can be the only source of truth.
+
+printerkeep is for Klipper and for firmware derived from it, such as Kalico. In this document, "Klipper"
+includes these.
 
 ## Design principles
 
-1. **Single-printer first.** Backing up one printer must be clean and simple. A one-printer user never meets
-   multi-printer concepts (shared files, deviations, promotion).
-2. **Novice defaults, power-user escape hatches.** The target user is someone following KIAUH-style guides,
-   not necessarily someone who knows git.
-3. **Zero-config locally.** After install, history is kept on the printer with no setup. A remote is optional
-   and can be added later.
-4. **Never constrain how users write their config.** No required structure, fragments or override
-   conventions. Complexity needed to support that lives in code, not in the user's workflow.
-5. **No Linux desktop, no local repo clone, minimal CLI.** In order of preference: (a) nothing to do, (b) a UI
-   the user already has, where it comes cheaply (Fluidd/Mainsail file editor or notifications, the git host's
-   web UI), (c) a simple command over SSH on the printer. Rich Fluidd/Mainsail integration is not a requirement.
-   Every user action must be possible with only the printer and a browser or SSH client.
-6. **Simplicity.** Not every wish gets built. A feature that adds complexity has to show its underlying need,
-   and simpler ways to meet that need win. The tool has to make sense for people other than its authors.
-7. **Problem before mechanism; vocabulary before names.**
+1. **One printer first.** A backup of one printer must be clean and simple. A user with one printer never
+   sees multi-printer terms (shared, follow, copy to shared, override).
+2. **Defaults for beginners, options for experts.** The target user follows KIAUH-style guides and does not
+   necessarily know git.
+3. **No setup for local history.** After installation, printerkeep keeps history on the printer. A
+   repository is optional. The user can add it later.
+4. **Never control how users write their configuration.** No required structure, fragments or override
+   conventions. If this needs complexity, the complexity goes in the code, not in the user's work.
+5. **No Linux desktop, no local clone, few commands.** In order of preference: (a) the user does nothing,
+   (b) the user uses a tool they already have, where this is easy to support (the Fluidd or Mainsail editor,
+   the git host's web pages), (c) the user types a simple command over SSH on the printer. A large Fluidd or
+   Mainsail integration is not a requirement. Every user action must be possible with only the printer and a
+   browser or an SSH client.
+6. **Simplicity.** We do not build every wish. A feature that adds complexity must show the need behind it. If
+   a simpler way meets the need, we use the simpler way. printerkeep must make sense to people other than its
+   authors.
+7. **Problem before solution. Vocabulary before names.**
 
 ## Sources of change
 
-- A human editing files in Fluidd/Mainsail.
-- Klipper `SAVE_CONFIG`: rewrites the autosave block in `printer.cfg` and leaves `printer-<timestamp>.cfg`
-  backups.
-- Other services writing into the config directory: Moonraker (`.moonraker.conf.bkp`, update_manager),
+- A person edits files in Fluidd or Mainsail.
+- Klipper `SAVE_CONFIG` changes the autosave block in `printer.cfg` and writes `printer-<timestamp>.cfg` files.
+- Other services write into the config folder: Moonraker (`.moonraker.conf.bkp`, update_manager),
   KlipperScreen, Crowsnest, timelapse.
-- (Multi-printer) A human committing to the repo, from a desktop or the git host's web UI.
+- (More printers) A person makes a commit in the repository, from a desktop or the git host's web pages.
 
 ## Scenarios
 
-### Single printer (v1 must be excellent at these)
+### One printer (version 1 must do these very well)
 
-- **S1 Backup.** A change is recorded only if something actually changed, with a useful message. Triggered
-  by a timer plus a manual "backup now".
-- **S2 Add a remote later.** A user with local-only history adds a remote (any git host; GitHub is the
-  likely one) with guided authentication.
-- **S3 Restore.** The SD card dies; after a fresh Klipper install, the config is restored from the remote.
-- **S4 Self-update** through Moonraker's update_manager (the Fluidd/Mainsail update panel).
-- **S5 Busy printer.** Never disturb a running print. Gating via
-  [layerlock](https://github.com/ressu/layerlock) (systemd `ExecCondition=`) must be possible.
-- **S6 Noise and secrets.** Generated files are ignored by default. Secret paths (e.g. Moonraker's secrets
-  file) are never synced.
+- **S1 Backup.** printerkeep makes a backup only when a file changed. The backup has a useful message. A timer
+  starts it. The user can also start it manually.
+- **S2 Add a repository later.** A user with only local history adds a repository (any git host; GitHub is
+  the most likely). printerkeep guides the user through authentication.
+- **S3 Restore.** The SD card fails. The user installs Klipper again and restores the configuration from the
+  repository.
+- **S4 Update printerkeep** with Moonraker's update_manager (the update panel in Fluidd or Mainsail).
+- **S5 Busy printer.** printerkeep never disturbs a print. It must be possible to stop printerkeep during a
+  print with [layerlock](https://github.com/ressu/layerlock) (systemd `ExecCondition=`).
+- **S6 Noise and secrets.** printerkeep ignores generated files by default. It never sends secret files (for
+  example Moonraker's secrets file) to the repository.
 
-### Multi-printer (layered on top; a one-time guided migration from single-printer is acceptable)
+### More printers (added on top; a one-time guided migration from one printer is acceptable)
 
-- **M1 Shared change from the repo** reaches every printer that opted in to that file, without overwriting
-  printer-specific differences.
-- **M2 Shared content edited on a printer** is a local experiment, a *deviation*. It is backed up as that
-  printer's deviation and never spread to other printers automatically.
-- **M3 Promotion** of a deviation to the shared version is an explicit act, possible without a desktop clone.
-- **M4 Lasting variants.** A printer keeps a small difference from shared content and still receives later
-  shared updates: merged if clean, held and flagged on overlap.
-- **M5 Drift visibility.** For each printer and shared file: in sync / behind / deviated / both. Visible
-  without a desktop: e.g. a report in the repo, a Moonraker notification, or a status command on the printer.
-- **M6 Printer-specific change from the repo** lands on that printer only.
-- **M7 Long offline.** A printer comes back after weeks and catches up correctly.
-- **M8 Adopt a drifted file.** Start sharing a file that already exists, with differences, on several
-  printers. Possible without a desktop clone.
-- **M9 Resolve a held merge.** A shared update overlaps a printer's local change. The user understands what
-  happened and picks or edits the result, using at most the Fluidd editor, the git host's web UI or a simple
-  command on the printer. The printer's config stays valid until it's resolved: conflict markers never appear
-  in a live file.
+- **M1 Changes from shared** get to every printer that follows the file. They do not remove the printer's
+  local changes.
+- **M2 A shared file edited on a printer.** The edit is a local change. It is an experiment on that printer.
+  printerkeep backs it up and never sends it to other printers automatically.
+- **M3 Copy to shared.** The user decides to send a local change to the other printers. This must be possible
+  without a local clone.
+- **M4 Lasting local changes.** A printer keeps a small difference from shared and still gets later changes
+  from shared. If the changes do not touch the same lines, printerkeep merges them. If they touch the same
+  lines, the file needs decision.
+- **M5 Status.** For each printer and each followed file, the user can see one status: up to date, local
+  changes, changes waiting or needs decision. The user can see it without a desktop, for example in the
+  overview in the repository, in Fluidd, or with a command on the printer.
+- **M6 A printer's own file changed in the repository** gets to that printer only.
+- **M7 Long offline.** A printer is offline for weeks. When it comes back, it gets all changes correctly.
+- **M8 Start to share a file that is already different on many printers.** This must be possible without a
+  local clone.
+- **M9 Needs decision.** A change from shared and a local change touch the same lines. The user understands
+  what happened and selects or edits the result. The user needs at most the Fluidd editor, the git host's web
+  pages or a simple command on the printer. Until the user decides, the configuration stays valid. Git
+  conflict markers never get into a live file.
 
-### Apply policy (v1, fixed)
+### How changes are applied (version 1, fixed)
 
-Incoming changes are written to disk, Klipper is never restarted, and the user is notified. Klipper only
-reads its config on restart, so writing files does not disturb a running print.
+printerkeep writes changes to the files, never restarts Klipper and tells the user. Klipper reads its
+configuration only when it starts. Thus, writing files does not disturb a print.
 
-## What is shared
+## What printers share
 
-- Identical whole files.
-- Nearly identical files with small per-printer differences.
-- Each shared file is used by some of the printers. Printers opt in per file; there is no group concept.
+- Identical files.
+- Files that are almost identical, with small differences per printer.
+- Each shared file is used by some printers, not necessarily all. Each printer follows each file it wants.
+  There are no groups of printers.
 
-## Core problem (multi-printer)
+## The core problem (more printers)
 
-For every shared file a printer uses, the system must know three versions:
+For each file that a printer follows, printerkeep must know three versions:
 
-1. the printer's current local version,
-2. the shared version it last took in (the *base*),
-3. the latest shared version.
+1. the printer's current version,
+2. the shared version that the printer took last (the *base*),
+3. the current shared version.
 
-Backup records (1). Propagating a shared change is a three-way merge of (1) and (3) against (2). Drift compares
-all three.
+A backup records version 1. To apply changes from shared, printerkeep does a three-way merge of versions 1 and
+3, with version 2 as the base. The status compares all three versions.
 
-## Evidence from real configs
+## Evidence from real configurations
 
-Source: a real four-printer setup backed up with klipper-backup, one branch per printer. The printers are
-called 1–4 here.
+Source: a real setup with four printers, backed up with klipper-backup, one branch per printer. This document
+calls the printers 1–4.
 
-- **Identical files exist**: `macros/reset.cfg` on three printers; `spoolman.cfg`, `temperature.cfg` and
-  `ui-helpers.cfg` on pairs.
-- **Line-ending noise**: printer 2's `macros/temperature.cfg` differs from printer 3's only by CRLF.
-- **Feature-presence variants**: `ui-helpers.cfg` and `macros.cfg` differ by lines commented out where a
-  printer lacks LEDs or a runout sensor (`# STATUS_HEATING`, `# _RUNOUT_ON`).
-- **Value variants**: `KAMP_Settings.cfg` differs only in `variable_*` values and in which `[include]`s are
-  commented out.
-- **Improvements that never spread**: printer 4 has a better `END_PRINT` retract (KAMP `tip_distance`);
-  printer 3 added `LOAD_FILAMENT`/`UNLOAD_FILAMENT`.
-- **Same path, unrelated content**: printer 1's `macros/temperature.cfg` is a different file from the others;
-  `core/host-mcu.cfg` differs in substance. Same path does not mean shared.
-- **Same file, different path**: `macros.cfg` at the root on printer 1 vs `macros/macros.cfg` elsewhere.
-- **Non-Klipper files worth backing up**: `ukam/` firmware build configs, `crowsnest.conf`,
-  `octoeverywhere.conf`, `moonraker.conf`. All of them live *inside* the config directory. KAMP itself is a
-  symlink to an external repo and is not backed up.
-- **Nothing outside the config directory is backed up.** klipper-backup is configured with
-  `backupPaths=( "printer_data/config/*" )`, and every branch contains only `printer_data/config/…`.
-  System-level configuration is handled separately (configuration management).
+- **Identical files exist.** `macros/reset.cfg` is identical on three printers. `spoolman.cfg`,
+  `temperature.cfg` and `ui-helpers.cfg` are identical on two printers each.
+- **Line endings.** Printer 2's `macros/temperature.cfg` is different from printer 3's only in its line
+  endings (CRLF).
+- **Different features.** `ui-helpers.cfg` and `macros.cfg` have lines that are commented out on printers
+  without LEDs or without a runout sensor (`# STATUS_HEATING`, `# _RUNOUT_ON`).
+- **Different values.** `KAMP_Settings.cfg` is different only in `variable_*` values and in which `[include]`
+  lines are commented out.
+- **Good changes that did not spread.** Printer 4 has a better `END_PRINT` retract (KAMP `tip_distance`).
+  Printer 3 added `LOAD_FILAMENT` and `UNLOAD_FILAMENT`.
+- **Same path, different file.** Printer 1's `macros/temperature.cfg` is a different file from the other
+  printers' files. `core/host-mcu.cfg` is very different between printers. Thus, the same path does not mean
+  the same file.
+- **Same file, different path.** Printer 1 has `macros.cfg` at the top of the config folder. The other
+  printers have `macros/macros.cfg`.
+- **Other useful files.** `ukam/` firmware build files, `crowsnest.conf`, `octoeverywhere.conf` and
+  `moonraker.conf`. All of them are in the config folder. KAMP itself is a symlink to another repository and
+  is not backed up.
+- **Nothing outside the config folder.** The klipper-backup setting is
+  `backupPaths=( "printer_data/config/*" )`. Every branch has only `printer_data/config/…`. A separate tool
+  (configuration management) controls the system-level configuration.
 
-The real variants (commented-out lines, changed values, added macros) are what line-level three-way merges
-handle well.
+A three-way merge per line handles these real differences well: commented-out lines, changed values and added
+macros.
 
 ## Decisions
 
 | Wish | Real need | Decision |
 |---|---|---|
-| Deviations + merge-if-clean (M2, M4) | Printers differ a little and still get shared improvements | Done in the tool: a printer's copy = shared version + its local changes, three-way merged against its base. Overlaps are held and flagged. Users are not asked to restructure configs (e.g. "identical shared file + Klipper overrides" was rejected). |
-| Groups of printers | Some things apply to only some printers | No groups. Each printer opts in per file. |
-| Desktop tooling (M3, M5, M9) | See drift, promote, resolve overlaps | No desktop tooling required. The tool runs on the printer; its CLI over SSH is acceptable, but zero-touch or existing UIs are preferred where cheap. |
-| Timer and inotify | Changes captured promptly | Timer plus manual "backup now". No inotify in v1. |
-| Configurable apply/restart | Don't surprise a printing machine | Fixed for v1 (see above). |
-| Single → multi migration | Grow from one printer to several | A one-time guided migration is acceptable. |
-| Self-update via update_manager | Easy install and update | Required (S4). update_manager natively handles git repos and Python packages; a compiled binary needs extra distribution work. This is an input to the language decision. |
+| Local changes, merged when possible (M2, M4) | Printers are a little different and still get good changes | printerkeep does this. A printer's file = the shared version + its local changes, with a three-way merge against its base. When changes touch the same lines, the file needs decision. Users do not change the structure of their configuration. ("Identical shared file + Klipper overrides" was rejected for this reason.) |
+| Groups of printers | Some files are for some printers only | No groups. Each printer follows each file it wants. |
+| Desktop tools (M3, M5, M9) | See status, copy to shared, decide | No desktop tools are necessary. printerkeep runs on the printer. Its commands over SSH are acceptable, but no action or an existing tool is better where it is easy. |
+| Timer and file watching | Back up changes soon | A timer and a manual start. No file watching (inotify) in version 1. |
+| Settings for apply and restart | Do not surprise a printer that prints | Fixed in version 1 (see above). |
+| One printer → more printers | Grow from one printer to more | A one-time guided migration is acceptable. |
+| Update with update_manager | Easy installation and updates | Required (S4). update_manager supports git repositories and Python packages directly. A compiled program needs more work for distribution. This is an input to the language decision. |
 
-Further decisions:
+More decisions:
 
-- **Scope is exactly the printer's config directory** (Moonraker's config root, normally
-  `~/printer_data/config`), recursively, and nothing outside it. The rule for users: if Fluidd/Mainsail shows
-  it in the config view, it's backed up (unless ignored); if not, it's not this tool's business. Arbitrary
-  extra paths (klipper-backup's `backupPaths`) are not supported. They would mean several roots, path mapping,
-  file permissions (some need sudo to write) and restores touching system files. Files such as firmware build
-  configs are covered by keeping them in the config directory.
+- **The scope is the config folder only.** That is Moonraker's config root (usually `~/printer_data/config`),
+  with all its subfolders, and nothing outside it. The rule for users: if Fluidd or Mainsail shows a file in
+  the configuration view, printerkeep backs it up (unless it is ignored). If not, printerkeep does not touch
+  it. Other paths (like klipper-backup's `backupPaths`) are not supported. They would need more roots, path
+  mapping, file permissions (some files need sudo) and restores that change system files. Keep files such as
+  firmware build files in the config folder.
+- **A shared file has the same path on each printer.** No path mapping.
+- **Start to share a file that is already different (M8).** The version of one printer becomes the shared
+  version. On each other printer that follows the file, its current differences become local changes.
+- **printerkeep ignores symlinks.** To restore tools such as KAMP, Shake&Tune or `mainsail.cfg`, install
+  them again.
+- **Line endings do not count.** printerkeep ignores line-ending differences when it compares files. A
+  difference only in line endings never causes a backup or a status change.
 
-- **Same path required for sharing.** A shared file sits at the same relative path on every printer that
-  opts in. No path mapping.
-- **Adopting a drifted file (M8)**: one printer's version becomes the shared version. Every other opted-in
-  printer keeps its current differences as local deviations.
-- **Symlinks are skipped.** External tools (KAMP, Shake&Tune, `mainsail.cfg`, …) are restored by reinstalling
-  them.
-- **Line endings are normalised** for comparison. CRLF-only differences never cause drift or commits.
+## Future possibilities
 
-## Future considerations
+Not in version 1 and not designed for. But the design must not make them impossible.
 
-Not v1 and not designed for, but the model shouldn't rule them out.
+- **Changes from other people.** Copy and paste is possibly enough. It is similar to M8: a version from
+  another person becomes the shared version, and local changes merge on top. The design must not expect that
+  every shared version comes from the user's own printers.
+- **Groups of printers**, if users need them.
+- **Backup when a file changes (inotify)**, settings for apply and restart, more commands for experts.
 
-- **Adopting changes from other users.** Copy-paste may be enough. It has the same shape as M8: an outside
-  version becomes the shared source and local differences merge on top. The model shouldn't assume every
-  shared version comes from one of the user's own printers.
-- **Groups of printers**, if they emerge naturally.
-- **inotify-triggered backup**, a configurable apply/restart policy, power-user CLI conveniences.
+## Not goals
 
-## Non-goals
-
-- Central push automation to printers.
-- Templating as a requirement.
-- Depending on GitHub-specific features.
-- Backing up anything outside the config directory (system files, `printer_data/systemd`, Moonraker's
-  database, gcodes, logs). That belongs to installers, configuration management or other backup tools.
+- Central control that pushes configuration to printers.
+- Templates as a requirement.
+- Features that work only with GitHub.
+- Backups of files outside the config folder (system files, `printer_data/systemd`, Moonraker's database,
+  gcode files, logs). Installers, configuration management or other backup tools do this.
 
 ## Next steps
 
-1. `docs/solution-options.md`: 2–3 candidate models, plus today's branch-per-printer setup as a baseline,
-   scored against every scenario. Each option includes step-by-step walkthroughs of M3, M8 and M9 for a user
-   with only a browser and SSH, and is walked through the real drift cases above.
-2. `docs/naming.md`: user-facing vocabulary first, then project, crate, binary, config file, systemd unit
-   and update_manager names, checked for clashes.
-3. Confirm the language (Rust is the leaning) and plan the implementation.
+1. Done: [solution-options.md](solution-options.md) (option A).
+2. Done: vocabulary and project name in [naming.md](naming.md).
+3. Decide the language (Rust is the preference) and plan the implementation.
+4. Then: names of commands, files, systemd units and the update_manager entry.
