@@ -43,6 +43,11 @@ impl Paths {
         self.data.join("lock")
     }
 
+    /// Why the last try to send backups did not work. Removed when a send works.
+    pub fn send_problem(&self) -> PathBuf {
+        self.data.join("send-problem")
+    }
+
     /// A temporary git index, used to build trees. Never in the config folder.
     pub fn index(&self) -> PathBuf {
         self.data.join("index")

@@ -2,6 +2,7 @@
 //! (`tests/support/https_git_server.py`). Needs python3 and openssl.
 
 use assert_cmd::Command;
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -199,6 +200,15 @@ fn change_token_after_the_token_expired() {
         .success()
         .stdout(contains("printerkeep change-token"));
     assert_ne!(server.branch("printer-1"), Some(printer.sent()));
+    // status has no network, but it tells the problem of the last try.
+    printer
+        .command(&["status"])
+        .assert()
+        .success()
+        .stdout(contains(
+            "Backups not in the repository: 1. The last try to send them did not work:",
+        ))
+        .stdout(contains("printerkeep change-token"));
     // git did not remove the old token: only printerkeep changes the file.
     assert!(printer.credentials().contains(":token-1@"));
 
@@ -220,6 +230,12 @@ fn change_token_after_the_token_expired() {
         .stdout(contains("accepted the new token"));
     assert!(printer.credentials().contains(":token-2@"));
     assert_eq!(server.branch("printer-1"), Some(printer.sent()));
+    printer
+        .command(&["status"])
+        .assert()
+        .success()
+        .stdout(contains("All backups are in the repository."))
+        .stdout(contains("did not work").not());
 }
 
 #[test]

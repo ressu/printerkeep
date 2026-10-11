@@ -190,6 +190,16 @@ fn backup_and_send(
         repository::remote(url, paths)
             .and_then(|remote| repository::send(&git, &remote, printer_name))
     });
+    // status has no network. It shows the problem from the last try.
+    match &sent {
+        Some(Err(error)) => {
+            let _ = std::fs::write(paths.send_problem(), format!("{error}\n"));
+        }
+        Some(Ok(_)) => {
+            let _ = std::fs::remove_file(paths.send_problem());
+        }
+        None => {}
+    }
     Ok(BackupReport {
         printer_name: printer_name.to_string(),
         outcome,
@@ -563,6 +573,8 @@ pub struct Status {
     pub repository: Option<String>,
     /// Backups that are not in the repository yet. `None` without a repository or backups.
     pub not_sent: Option<u64>,
+    /// Why the last try to send did not work.
+    pub send_problem: Option<String>,
 }
 
 #[derive(Debug)]
@@ -622,6 +634,10 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
         skipped: scan.skipped,
         repository: settings.repository,
         not_sent,
+        send_problem: std::fs::read_to_string(paths.send_problem())
+            .ok()
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty()),
     })
 }
 
@@ -660,10 +676,17 @@ impl fmt::Display for Status {
                 writeln!(f, "Repository: {url}")?;
                 match self.not_sent {
                     Some(0) => writeln!(f, "All backups are in the repository."),
-                    Some(n) => writeln!(
-                        f,
-                        "Backups not in the repository: {n}. The next backup sends them."
-                    ),
+                    Some(n) => match &self.send_problem {
+                        Some(problem) => writeln!(
+                            f,
+                            "Backups not in the repository: {n}. The last try to send them did not \
+                             work:\n{problem}"
+                        ),
+                        None => writeln!(
+                            f,
+                            "Backups not in the repository: {n}. The next backup sends them."
+                        ),
+                    },
                     None => Ok(()),
                 }
             }
