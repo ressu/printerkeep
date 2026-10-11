@@ -334,6 +334,49 @@ fn find_layerlock() -> Option<PathBuf> {
         })
 }
 
+/// Problems with the installation that the user must know about, for `printerkeep status`. systemd skips
+/// a backup when layerlock cannot run, so printerkeep cannot tell it in the log.
+pub fn problems(at: &Locations) -> Vec<String> {
+    let Ok(service) = fs::read_to_string(at.units.join(SERVICE)) else {
+        // Not installed with printerkeep install (for example a test copy).
+        return Vec::new();
+    };
+    let condition = service
+        .lines()
+        .find_map(|line| line.strip_prefix("ExecCondition="))
+        .map(unit_unquote);
+    match (condition, find_layerlock()) {
+        (Some(layerlock), _) if !layerlock.exists() => vec![format!(
+            "Problem: the backup service uses layerlock at {}, but that file does not exist. systemd \
+             skips every backup. Run: printerkeep install",
+            layerlock.display()
+        )],
+        (None, Some(layerlock)) => vec![format!(
+            "Note: layerlock is installed ({}), but the backup service does not use it. Backups can start \
+             during a print. Run: printerkeep install",
+            layerlock.display()
+        )],
+        _ => Vec::new(),
+    }
+}
+
+/// The first word of a systemd command line, as written by `unit_quote`.
+fn unit_unquote(value: &str) -> PathBuf {
+    let Some(rest) = value.strip_prefix('"') else {
+        return PathBuf::from(value.split_whitespace().next().unwrap_or_default());
+    };
+    let mut text = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => text.extend(chars.next()),
+            '"' => break,
+            c => text.push(c),
+        }
+    }
+    PathBuf::from(text.replace("%%", "%"))
+}
+
 /// Quotes a path for a systemd unit file.
 fn unit_quote(path: &Path) -> String {
     let text = path
@@ -347,7 +390,9 @@ fn unit_quote(path: &Path) -> String {
 
 fn service_unit(program: &Path, printer_data: &Path, layerlock: Option<&Path>) -> String {
     let condition = match layerlock {
-        Some(layerlock) => format!("ExecCondition={}\n", unit_quote(layerlock)),
+        // --fail-open: only a print (printing or paused) skips a backup. When Moonraker does not answer,
+        // the backup runs.
+        Some(layerlock) => format!("ExecCondition={} --fail-open\n", unit_quote(layerlock)),
         None => String::new(),
     };
     format!(
@@ -637,5 +682,23 @@ mod tests {
              \"/home/pi/printer 50%%\" backup\n"
         ));
         assert!(!unit.contains("ExecCondition"));
+    }
+
+    #[test]
+    fn unit_paths_are_read_back() {
+        for path in [
+            "/usr/local/bin/layerlock",
+            "/home/pi/my \"bin\" 50%/layerlock",
+        ] {
+            let quoted = unit_quote(Path::new(path));
+            assert_eq!(
+                unit_unquote(&format!("{quoted} --fail-open")),
+                PathBuf::from(path)
+            );
+        }
+        assert_eq!(
+            unit_unquote("/usr/bin/layerlock --fail-open"),
+            PathBuf::from("/usr/bin/layerlock")
+        );
     }
 }

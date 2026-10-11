@@ -73,6 +73,11 @@ fn main() -> ExitCode {
         Command::Backup => app::backup(&paths).map(|report| report.lines()),
         Command::Status => app::status(&paths).map(|status| {
             print!("{status}");
+            if let Ok(at) = install::Locations::from_env() {
+                for problem in install::problems(&at) {
+                    println!("{problem}");
+                }
+            }
             Vec::new()
         }),
         Command::AddRepository { url } => {

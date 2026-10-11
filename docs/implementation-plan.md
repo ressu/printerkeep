@@ -208,6 +208,11 @@ Each milestone ends with working, tested software.
 - The timer runs at every fifth minute (`OnCalendar=*:0/5`), with a random delay of up to 30 seconds. A
   calendar timer runs also after a skipped run (layerlock).
 - The service runs with `Nice=10` and `IOSchedulingClass=idle`, so a backup does not slow Klipper.
+- layerlock runs with `--fail-open`: only a print (printing or paused) skips a backup. When Moonraker does not
+  answer, the backup runs. `install` finds layerlock in `PATH` or `/usr/local/bin` and writes its path into the
+  service. When layerlock cannot run, systemd skips every backup and printerkeep cannot log it. Thus,
+  `status` tells the user when the service uses a layerlock that does not exist, or when layerlock is installed
+  but the service does not use it. In both cases, `printerkeep install` fixes the service.
 - The update channel follows the installed version: a pre-release (`0.1.0-rc.1`) gets `channel: beta`.
 - `install` makes the first backup, after it changed `moonraker.conf`.
 

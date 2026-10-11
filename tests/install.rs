@@ -194,9 +194,35 @@ fn install_uses_layerlock_when_it_is_installed() {
         .stdout(contains("layerlock: no backup starts during a print."));
     let service = fs::read_to_string(host.units().join("printerkeep.service")).unwrap();
     assert!(service.contains(&format!(
-        "ExecCondition=\"{}\"\n",
+        "ExecCondition=\"{}\" --fail-open\n",
         host.bin().join("layerlock").display()
     )));
+    host.run(&["status"])
+        .assert()
+        .success()
+        .stdout(contains("layerlock").not());
+
+    // layerlock removed: systemd would skip every backup, so status tells it.
+    fs::remove_file(host.bin().join("layerlock")).unwrap();
+    host.run(&["status"]).assert().success().stdout(contains(
+        "but that file does not exist. systemd skips every backup.",
+    ));
+}
+
+#[test]
+fn status_tells_when_layerlock_was_installed_later() {
+    let host = Host::new();
+    host.run(&["install"]).assert().success();
+    host.fake("layerlock", "exit 0");
+    host.run(&["status"])
+        .assert()
+        .success()
+        .stdout(contains("but the backup service does not use it"));
+    host.run(&["install"]).assert().success();
+    host.run(&["status"])
+        .assert()
+        .success()
+        .stdout(contains("layerlock").not());
 }
 
 #[test]
