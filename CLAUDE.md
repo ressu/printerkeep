@@ -24,7 +24,7 @@ qemu-aarch64 target/aarch64-unknown-linux-musl/release/printerkeep --version
 Try a build on a real printer, on a copy of its config folder (all files go to `~/printerkeep-test`):
 
 ```sh
-scripts/try-on-printer.sh <ssh host> [printerkeep command...]
+scripts/try-on-printer.sh [--reset] [--copy] <ssh host> [printerkeep command and arguments...]
 ```
 
 Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
