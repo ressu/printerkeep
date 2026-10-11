@@ -1,8 +1,8 @@
 # Solution options
 
 Status: **decided: option A + common core** (2026-10-11). We checked each option against
-[problem.md](problem.md). Terms follow the vocabulary in [naming.md](naming.md). Command names in this
-document are provisional. They are decided with the other artifact names.
+[problem.md](problem.md). Terms follow the vocabulary in [naming.md](naming.md). Names of commands and
+files are in [naming.md](naming.md).
 
 Most of the design does **not** depend on the shape of the repository. This document describes that part
 once, as the common core. The options are different only in how they organise the repository.
@@ -38,8 +38,8 @@ Each printer has two files:
 - **Settings file** (the user edits it). It is in the config folder, so Fluidd can edit it. It lists the files
   that this printer follows from shared, and the few optional settings (repository, more ignore rules). A user
   with one printer never needs to open it.
-- **State** (printerkeep writes it). It is in printerkeep's data folder, with a copy in the repository. For
-  each followed file it records the **base**: the shared commit with the version of the file that this printer
+- **State** (printerkeep writes it). It is the file `.printerkeep-state.json` in the config folder, so each
+  backup includes it on the printer's branch. For each followed file it records the **base**: the shared commit with the version of the file that this printer
   took last.
 
 A followed file has the same path in shared and on the printer.
@@ -129,7 +129,7 @@ switch_pin: ^PG12   # printerkeep: override
 
 At each run, printerkeep writes a short status that people can read:
 
-- into the config folder (a status file that Fluidd can open), and
+- into the log file `printer_data/logs/printerkeep.log` (Fluidd and Mainsail show it), and
 - into the repository, in the overview, which shows all printers.
 
 Each followed file has one status: *up to date*, *local changes*, *changes waiting* or *needs decision*. On the
@@ -138,9 +138,9 @@ Moonraker notification is possible later. See the open questions.
 
 ### C8. Repository, restore, update
 
-- **S2 Add a repository:** one command on the printer, `printerkeep repository <url>`. It makes an SSH key and
+- **S2 Add a repository:** one command on the printer, `printerkeep add-repository <url>`. It makes an SSH key and
   shows the public key, with instructions to add it as a deploy key. Without SSH: put the URL in the settings
-  file with Fluidd. printerkeep writes the public key into the status file.
+  file with Fluidd. printerkeep writes the public key into the log file.
 - **S3 Restore:** install printerkeep, then `printerkeep restore <url> [<printer name>]`. This needs a key, the
   same as S2.
 - **S4 Update printerkeep:** an update_manager entry. How depends on the language (git repository or compiled
@@ -303,7 +303,7 @@ retract to shared (M3). Then printer 2 gets it as a change from shared.
 
 ### M9: needs decision on printer 2
 
-1. The status (the status file in Fluidd, the overview) shows `KAMP_Settings.cfg: needs decision`.
+1. The status (the log file in Fluidd, the overview) shows `KAMP_Settings.cfg: needs decision`.
 2. In Fluidd, open `KAMP_Settings.cfg`. The `####` block shows this printer's active line and the shared line,
    commented out, below it.
 3. Keep one line. Delete the `####` lines. Save.
@@ -356,5 +356,5 @@ is a problem in practice.
    into the config folder.
 4. Decided in [language.md](language.md): the system `git` command. Merges per file need only
    `git merge-file`, which all git versions in use have.
-5. Where is the state (C3) in the repository for option A: on the printer's branch (for example a dotfile at
-   the top, which Klipper does not load) or on `shared` next to the overview?
+5. Decided in [naming.md](naming.md): the state is `.printerkeep-state.json` in the config folder, so it is on
+   the printer's branch.

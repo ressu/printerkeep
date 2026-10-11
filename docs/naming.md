@@ -1,6 +1,6 @@
 # Naming
 
-Status: **vocabulary and project name decided** (2026-10-11). Artifact names come later (see the end of this file).
+Status: **decided** (2026-10-11): vocabulary, project name and artifact names.
 
 ## Writing rule
 
@@ -93,14 +93,79 @@ Candidates considered and rejected:
 | seedbed / seedbedd | Runner-up: a strong character name (seed repository + print bed). Plain "seedbed" is hard to search; the Fluidd-style "seedbedd" fixes that but needs a tagline to explain. |
 | cfgkeep, configkeep | Too close to existing "ConfigKeeper" projects; "cfg" is jargon for novices. |
 
-## Open naming items
+## Artifact names
 
-These depend on the language decision and on file-format choices. See [solution-options.md](solution-options.md).
+Decided 2026-10-11. Version 1 supports one Klipper instance per host (see [language.md](language.md) for
+platforms). The data paths are per `printer_data` folder, so more instances per host are possible later.
 
-- Package and binary names. The binary is typed often, so keep it short.
-- Settings, state and status file names and extensions. Files in the config folder must not end in `.cfg`,
-  because `[include *.cfg]` globs would make Klipper load them.
-- Command names. The docs use these provisional names: `backup` (it also applies changes from shared),
-  `follow`, `stop-following`, `copy-to-shared`, `decide`, `restore`, `status`, `repository`.
-- The final text of the `#### printerkeep: needs decision` marker block. The `printerkeep:` token is decided.
-- systemd unit names, the Moonraker `[update_manager …]` entry name, an optional Klipper macro name.
+### Program and distribution
+
+| Artifact | Name |
+|---|---|
+| GitHub repository, crate, binary | `printerkeep`. Later crates in a workspace use `printerkeep-*`. |
+| Release assets | `printerkeep-linux-aarch64`, `printerkeep-linux-armv7`, `printerkeep-linux-armv6`, `printerkeep-linux-x86_64`. The installer selects one from `uname -m`. |
+| Program folder | `~/printerkeep/`, with the binary and `release_info.json` (update_manager `path`). |
+| update_manager entry | `[update_manager printerkeep]` with `type: executable` |
+| systemd units | `printerkeep.service` (`Type=oneshot`, runs `printerkeep backup`) and `printerkeep.timer`. layerlock connects with `ExecCondition=` in the service. |
+| Klipper macro (optional) | `PRINTERKEEP_BACKUP` |
+
+### Files on the printer
+
+| File | Name and place | Notes |
+|---|---|---|
+| Settings file | `printerkeep.conf` in the config folder | Moonraker style (see below). Never `.cfg`: `[include *.cfg]` would make Klipper load it. |
+| State | `.printerkeep-state.json` in the config folder | printerkeep writes it. Backups include it, so it is on the printer's branch and comes back with a restore. Fluidd hides dotfiles. |
+| Log and status | `printer_data/logs/printerkeep.log` | Fluidd and Mainsail show the logs folder. Each run writes the status of each followed file and, after `add-repository`, the public key. Not in the config folder, so it never causes a backup. |
+| Git data | `printer_data/printerkeep/repo.git` | Outside the config folder (C1). |
+
+### Settings file format
+
+The settings file uses a strict subset of the Moonraker format: `[section]`, `key: value`, values that
+continue on indented lines, and full-line `#` comments. Lists are indented lines, as in Moonraker's
+`persistent_files:`. This subset is small. printerkeep does not need a full INI parser.
+
+```
+# printerkeep.conf
+[printerkeep]
+printer_name: printer-1
+repository: git@github.com:me/printers.git
+follow:
+  macros/macros.cfg
+  KAMP_Settings.cfg
+ignore:
+  timelapse/*
+```
+
+`printer_name` is optional. The default is the host name. A user with one printer and no repository does not
+need this file. When the user runs `add-repository`,
+printerkeep writes it.
+
+### Commands
+
+| Command | Does |
+|---|---|
+| `printerkeep backup` | Makes a backup if a file changed, and applies changes from shared. The timer runs this. |
+| `printerkeep status` | Shows the status of the printer and of each followed file. |
+| `printerkeep restore <url> [<printer name>]` | Restores a printer from the repository. |
+| `printerkeep add-repository <url>` | Connects the printer to a repository. Makes an SSH key and shows the public key. |
+| `printerkeep follow <file>` | Starts to follow a shared file. |
+| `printerkeep stop-following <file>` | Stops following a shared file. The file stays on the printer. |
+| `printerkeep copy-to-shared <file>` | Makes the shared version equal to this printer's version, except override lines. |
+| `printerkeep decide <file> --use-shared\|--keep-mine` | Finishes a needs-decision file without editing it. |
+
+Commands are verbs. `add-repository` replaces the earlier `repository`.
+
+### In the repository
+
+| Item | Name |
+|---|---|
+| Printer branch | The printer name. Default: the host name. A printer cannot be named `shared`. |
+| Shared branch | `shared` |
+| Overview | `README.md` on the `shared` branch |
+
+### Markers in configuration files
+
+| Marker | Text |
+|---|---|
+| Override | `# printerkeep: override` (inline, at the end of the line) |
+| Needs decision | A block that starts with `#### printerkeep: needs decision` and ends with `#### printerkeep: end`. Every line in the block starts with `####` or is a configuration line. The exact help text in the block can change; the start and end lines cannot. |
