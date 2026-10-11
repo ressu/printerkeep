@@ -5,8 +5,10 @@ printers can follow shared files and still keep their own changes.
 
 printerkeep works with Klipper and with firmware derived from it, such as Kalico.
 
-> **Status: in development.** printerkeep does not work yet. Release 0.1 replaces
+> **Status: in development, not released yet.** Release 0.1 replaces
 > [klipper-backup](https://github.com/Staubgeborener/klipper-backup) for one printer.
+> To move from klipper-backup and keep your history, read
+> [the migration guide](docs/migrate-from-klipper-backup.md).
 
 ## What printerkeep does
 
@@ -89,6 +91,89 @@ rm printerkeep-linux-aarch64
   panel shows printerkeep. To update by hand, install again in one of the three ways.
 - **Remove:** `printerkeep uninstall`. It keeps the history of the backups, the login for the repository and
   `printerkeep.conf`.
+
+## Use
+
+### Backups
+
+After the install, printerkeep makes a backup every 5 minutes, but only when a file in the config folder
+changed. The history is on the printer, in `printer_data/printerkeep`. Each backup has a message that tells
+which files changed, for example `Changed printer.cfg, added macros/new.cfg`, or
+`SAVE_CONFIG changed printer.cfg`.
+
+```sh
+printerkeep backup     # make a backup now
+printerkeep status     # the last backup, changes since then, and the repository
+```
+
+printerkeep writes what it does to `printer_data/logs/printerkeep.log`. Fluidd and Mainsail show it with the
+other logs.
+
+### Send backups to a repository
+
+A repository keeps your backups safe when the printer's SD card fails. Make an **empty, private** repository,
+for example on GitHub. Then:
+
+```sh
+printerkeep add-repository https://github.com/<user>/<repository>.git
+```
+
+printerkeep asks for a personal access token. On GitHub: Settings > Developer settings > Personal access
+tokens > Fine-grained tokens > Generate new token. Repository access: "Only select repositories", select the
+repository. Permissions: "Contents", "Read and write".
+
+- Do not put the token in the URL. printerkeep keeps it in `printer_data/printerkeep/credentials`, which only
+  your user can read. `printerkeep.conf` gets the URL only.
+- After each backup, printerkeep sends new backups to the repository, on a branch with the name of the
+  printer. It never overwrites changes in the repository.
+- When the token expires, `printerkeep status` and the log tell you. Make a new token, then run
+  `printerkeep change-token`. printerkeep uses the new token only if the repository accepts it.
+- With an SSH URL (`git@github.com:<user>/<repository>.git`), printerkeep makes its own SSH key and shows the
+  public key. Add it to the repository as a deploy key with write access.
+
+### Restore a printer
+
+For example after a new SD card: install Klipper, Moonraker and printerkeep, then:
+
+```sh
+printerkeep restore https://github.com/<user>/<repository>.git
+```
+
+printerkeep writes the files of the backup into the config folder, and continues the history. It never
+removes files. If a file in the config folder is different from the backup, printerkeep stops and lists the
+files. Add `--overwrite` to replace them. If the repository has backups of more printers, add the printer
+name: `printerkeep restore <url> <printer name>`. Restart Moonraker and Klipper after a restore.
+
+### Settings
+
+printerkeep needs no settings. `printer_data/config/printerkeep.conf` is optional:
+
+```
+[printerkeep]
+# The name of the branch in the repository. The default is the host name.
+printer_name: printer-1
+# Written by add-repository and restore.
+repository: https://github.com/<user>/<repository>.git
+# Files that printerkeep does not back up, one rule on each line, like .gitignore rules.
+ignore:
+    *.csv
+    timelapse/
+```
+
+Change `printer_name` only before the first backup that you send. A different name starts a different
+history.
+
+### Files that are not backed up
+
+printerkeep always skips these files, in addition to your `ignore` rules:
+
+- the copies that Klipper makes for `SAVE_CONFIG` (`printer-20261011_120000.cfg`) and its temporary
+  `*_autosave` files,
+- Moonraker's copy of its configuration (`.moonraker.conf.bkp`),
+- `*.secrets` files: secrets must never go to a repository,
+- `.git` folders of tools in the config folder,
+- editor and system files (`*.swp`, `*.swo`, `*~`, `.DS_Store`, `__pycache__`, `*.pyc`),
+- symbolic links. Tools such as KAMP come back when you install them again.
 
 ## Design
 

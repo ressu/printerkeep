@@ -230,6 +230,23 @@ Each milestone ends with working, tested software.
 - User README: install, first backup, add a repository, restore.
 - **Done when:** the guide works on a real klipper-backup repository, and the authors' printers run 0.1.
 
+**Decisions made in M4 (2026-10-12):**
+
+- The guide runs on the printer only. klipper-backup keeps a clone of the repository in `~/config_backup`,
+  with its login in the remote URL. Thus, `git subtree split` and `git push` work there with no new login.
+- The new branch gets the printer name from `printerkeep status`. The guide never changes `printer_name`:
+  a changed name after backups on the printer would leave those backups on a branch that printerkeep no
+  longer uses.
+- The guide uses the same repository. klipper-backup's branch stays as an archive.
+- `git filter-branch --subdirectory-filter` is the fallback when `git subtree` is not installed. Both make
+  the same commits (same hashes, tested).
+- Tested on a copy of a real klipper-backup repository: the history continues, and backups that printerkeep
+  made before the migration stay as `refs/printerkeep/kept/*`.
+- One branch per printer in klipper-backup (`branch_name`) works with the same steps on each printer.
+- `status` shows why the last try to send did not work (for example an expired token), because `status`
+  uses no network. `backup` writes it to `printer_data/printerkeep/send-problem`, and removes it after a send
+  that works.
+
 ### M5. More printers (0.2)
 
 - Spike first: a CI job that loads test configurations with Klipper's own parser (`klippy/configfile.py`, a
