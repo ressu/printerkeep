@@ -1,0 +1,87 @@
+name: Release
+
+# A tag "v*" builds and publishes a release. A tag with a "-" (for example v0.1.0-rc.1) is a pre-release.
+# "Run workflow" builds and tests the binaries without a release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create GitHub Releases
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-musl
+            asset: printerkeep-linux-aarch64
+            run: qemu-aarch64
+          - target: armv7-unknown-linux-musleabihf
+            asset: printerkeep-linux-armv7
+            run: qemu-arm
+          - target: arm-unknown-linux-musleabihf
+            asset: printerkeep-linux-armv6
+            run: qemu-arm -cpu arm1176 # Raspberry Pi Zero W CPU
+          - target: x86_64-unknown-linux-musl
+            asset: printerkeep-linux-x86_64
+            run: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0 # same as the Nix devShell
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.23.4 # same as the Nix devShell
+
+      - name: Install qemu
+        run: sudo apt-get update && sudo apt-get install -y qemu-user
+
+      - name: Test
+        run: cargo test
+
+      - name: Build
+        run: cargo zigbuild --release --target ${{ matrix.target }}
+
+      - name: Smoke test
+        run: |
+          cp target/${{ matrix.target }}/release/printerkeep ${{ matrix.asset }}
+          ${{ matrix.run }} ./${{ matrix.asset }} --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum printerkeep-linux-* > printerkeep-checksums.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" dist/* --repo "${{ github.repository }}" --generate-notes $prerelease

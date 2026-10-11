@@ -1,0 +1,22 @@
+[package]
+name = "printerkeep"
+version = "0.1.0-dev"
+edition = "2024"
+rust-version = "1.85"
+description = "Keeps Klipper printer configuration safe in git, and keeps printers in step"
+license = "MIT"
+repository = "https://github.com/ressu/printerkeep"
+readme = "README.md"
+keywords = ["klipper", "kalico", "3d-printing", "backup", "git"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[dev-dependencies]
+assert_cmd = "2"
