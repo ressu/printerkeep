@@ -25,6 +25,7 @@ Try a build on a real printer, on a copy of its config folder (all files go to `
 
 ```sh
 scripts/try-on-printer.sh [--reset] [--copy] <ssh host> [printerkeep command and arguments...]
+scripts/try-on-printer.sh --disconnect <ssh host>   # the SSH connection otherwise stays open for 10 minutes
 ```
 
 Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
