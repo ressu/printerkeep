@@ -234,15 +234,24 @@ Each milestone ends with working, tested software.
 
 - The guide runs on the printer only. klipper-backup keeps a clone of the repository in `~/config_backup`,
   with its login in the remote URL. Thus, `git subtree split` and `git push` work there with no new login.
-- The new branch gets the printer name from `printerkeep status`. The guide never changes `printer_name`:
-  a changed name after backups on the printer would leave those backups on a branch that printerkeep no
-  longer uses.
+- Order: stop klipper-backup, make the branch, remove klipper-backup, install printerkeep. The guide is about
+  the conversion. Install and remove are links or short lists. `~/config_backup` is removed only after the
+  push, because the conversion needs it.
+- "Start again" comes first in the guide: we expect that most users do not keep the history.
+- The new branch gets the printer name from `hostname`, the same file that printerkeep reads. The guide never
+  changes `printer_name`: a changed name after backups on the printer would leave those backups on a branch
+  that printerkeep no longer uses.
 - The guide uses the same repository. klipper-backup's branch stays as an archive.
 - `git filter-branch --subdirectory-filter` is the fallback when `git subtree` is not installed. Both make
   the same commits (same hashes, tested).
 - Tested on a copy of a real klipper-backup repository: the history continues, and backups that printerkeep
   made before the migration stay as `refs/printerkeep/kept/*`.
-- One branch per printer in klipper-backup (`branch_name`) works with the same steps on each printer.
+- The usual klipper-backup repository has one `main` branch (tested on a public one: 825 commits, 86 after
+  the split, because klipper-backup also commits with no changes). One branch per printer, with the printer
+  name, collides with the new branch. The guide then copies the old branch to `klipper-backup/<name>` and
+  replaces it with `--force-with-lease` (tested).
+- No README in the printer branch, as klipper-backup has: a printer branch is the config folder, and restore
+  writes all its files. The overview on `shared` (C7, 0.2) is the place for it.
 - `status` shows why the last try to send did not work (for example an expired token), because `status`
   uses no network. `backup` writes it to `printer_data/printerkeep/send-problem`, and removes it after a send
   that works.
