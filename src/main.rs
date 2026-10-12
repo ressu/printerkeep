@@ -51,6 +51,25 @@ enum Command {
         #[arg(long)]
         overwrite: bool,
     },
+    /// Start to follow a shared file. printerkeep then writes the changes from shared into it.
+    ///
+    /// If the file is on this printer, its differences from the shared version stay as local changes.
+    Follow {
+        /// The path in the config folder, for example macros/macros.cfg.
+        file: String,
+    },
+    /// Stop following a shared file. The file stays on this printer.
+    StopFollowing {
+        /// The path in the config folder.
+        file: String,
+    },
+    /// Make the shared version of a file equal to the version on this printer, and follow the file.
+    ///
+    /// Other printers that follow the file get the changes at their next backup.
+    CopyToShared {
+        /// The path in the config folder.
+        file: String,
+    },
     /// Install printerkeep for this user, or update the installation. Needs no root access (no sudo).
     ///
     /// Puts the program in ~/printerkeep (for Moonraker's update manager), links ~/.local/bin/printerkeep,
@@ -96,6 +115,9 @@ fn main() -> ExitCode {
         )
         .map(|report| report.lines()),
         Command::ChangeToken => app::change_token(&paths, &read_token),
+        Command::Follow { file } => app::follow(&paths, file),
+        Command::StopFollowing { file } => app::stop_following(&paths, file),
+        Command::CopyToShared { file } => app::copy_to_shared(&paths, file),
         Command::Install => install::Locations::from_env()
             .and_then(|at| install::install(&paths, &at))
             .map_err(app::Error::from),

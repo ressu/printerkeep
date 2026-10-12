@@ -1,4 +1,5 @@
-//! The commands: settings, lock, printer name, backup, status, add-repository and restore.
+//! The commands: settings, lock, printer name, backup, status, add-repository, restore, and the commands
+//! for shared files.
 
 use crate::backup::{self, Changes};
 use crate::git::{self, Git, GitError, Identity};
@@ -6,11 +7,13 @@ use crate::ignore::{IgnoreRules, RuleError};
 use crate::paths::Paths;
 use crate::repository::{self, History, RepositoryError, Sent, UrlKind};
 use crate::settings::{self, Settings, SettingsError};
+use crate::shared::{self, FileEvent, SHARED_REF, SharedError};
 use crate::snapshot::{self, Scan};
+use crate::state::{self, FileState, STATE_FILE, StateError};
 use std::fmt;
 use std::fs::{File, TryLockError};
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
 #[derive(Debug, thiserror::Error)]
@@ -25,6 +28,29 @@ pub enum Error {
     Repository(#[from] RepositoryError),
     #[error(transparent)]
     Install(#[from] crate::install::InstallError),
+    #[error(transparent)]
+    State(#[from] StateError),
+    #[error(transparent)]
+    Shared(#[from] SharedError),
+    #[error("Shared files need a repository. To add one: printerkeep add-repository <url>")]
+    SharedNeedsRepository,
+    #[error("printerkeep cannot use {file}: {reason}.")]
+    CannotUseFile { file: String, reason: String },
+    #[error("{0} is not in the config folder.")]
+    NoSuchFile(String),
+    #[error("{0} is not in shared. To add it to shared: printerkeep copy-to-shared {0}")]
+    NotInShared(String),
+    #[error("printerkeep does not follow {0}.")]
+    NotFollowed(String),
+    #[error(
+        "{0} needs decision. Open the file and look for the #### lines. After the decision, printerkeep can \
+         copy it to shared."
+    )]
+    FileNeedsDecision(String),
+    #[error(
+        "Shared changed {0} at the same time. Run printerkeep backup to get the changes, then try again."
+    )]
+    SharedChanged(String),
     #[error(
         "The config folder {0} does not exist. Use --printer-data to select the printer_data folder."
     )]
@@ -86,8 +112,7 @@ pub enum Error {
     },
 }
 
-/// The name of the branch for shared files. No printer can have this name.
-pub const SHARED_BRANCH: &str = "shared";
+pub use crate::shared::SHARED_BRANCH;
 
 /// What a backup run did.
 #[derive(Debug)]
@@ -96,6 +121,8 @@ pub struct BackupReport {
     pub outcome: Outcome,
     /// Symlinks and files that printerkeep does not back up.
     pub skipped: Vec<String>,
+    /// What happened to the followed files.
+    pub shared: Vec<String>,
     /// What happened with the repository. `None` if there is no repository.
     pub sent: Option<Result<Sent, RepositoryError>>,
 }
@@ -129,6 +156,7 @@ impl BackupReport {
             Outcome::NoChange => vec!["No files changed. No backup made.".to_string()],
             Outcome::NoFiles => vec!["The config folder has no files. No backup made.".to_string()],
         };
+        lines.extend(self.shared.iter().cloned());
         match &self.sent {
             None | Some(Ok(Sent::Nothing)) => {}
             Some(Ok(Sent::Sent(1))) => lines.push("Sent 1 backup to the repository.".to_string()),
@@ -152,41 +180,29 @@ pub fn backup(paths: &Paths) -> Result<BackupReport, Error> {
     let settings = settings::load(&paths.settings())?;
     let printer_name = printer_name(&settings)?;
     let _lock = lock(paths)?;
-    backup_and_send(paths, &settings, &printer_name)
+    backup_and_send(paths, &settings, &printer_name, None, true)
 }
 
-/// The backup run. The caller holds the lock.
+/// The backup run: a backup of the config folder, then changes from shared, then send. The caller holds
+/// the lock. `message` replaces the message of the first backup. Without `send`, the backups stay on the
+/// printer.
 fn backup_and_send(
     paths: &Paths,
     settings: &Settings,
     printer_name: &str,
+    message: Option<&str>,
+    send: bool,
 ) -> Result<BackupReport, Error> {
     let rules = IgnoreRules::new(settings.ignore.iter().map(String::as_str))?;
     let git = Git::new(&paths.git_dir);
     if !git.exists() {
         git.init(printer_name)?;
     }
-    let scan = scan(paths, &rules)?;
-    let reference = branch(printer_name);
-    let prepared = backup::prepare(&git, &scan, &reference, true)?;
+    // The files on the printer go into the history before printerkeep writes a file.
+    let (outcome, skipped) = make_backup(paths, &rules, &git, printer_name, message)?;
+    let shared = follow_shared(paths, settings, &rules, &git, printer_name)?;
 
-    let outcome = if prepared.parent.is_none() && prepared.tree.is_empty() {
-        Outcome::NoFiles
-    } else {
-        let identity = Identity {
-            name: "printerkeep".to_string(),
-            email: format!("printerkeep@{printer_name}"),
-        };
-        match backup::commit(&git, &prepared, &reference, &paths.index(), &identity)? {
-            Some((commit, message)) => Outcome::Made {
-                commit,
-                summary: message.lines().next().unwrap_or_default().to_string(),
-            },
-            None => Outcome::NoChange,
-        }
-    };
-
-    let sent = settings.repository.as_ref().map(|url| {
+    let sent = settings.repository.as_ref().filter(|_| send).map(|url| {
         repository::remote(url, paths)
             .and_then(|remote| repository::send(&git, &remote, printer_name))
     });
@@ -203,9 +219,99 @@ fn backup_and_send(
     Ok(BackupReport {
         printer_name: printer_name.to_string(),
         outcome,
-        skipped: scan.skipped,
+        skipped,
+        shared,
         sent,
     })
+}
+
+/// Makes a backup if a file changed. Returns what happened and the files that were not backed up.
+fn make_backup(
+    paths: &Paths,
+    rules: &IgnoreRules,
+    git: &Git,
+    printer_name: &str,
+    message: Option<&str>,
+) -> Result<(Outcome, Vec<String>), Error> {
+    let scan = scan(paths, rules)?;
+    let reference = branch(printer_name);
+    let prepared = backup::prepare(git, &scan, &reference, true)?;
+    let outcome = if prepared.parent.is_none() && prepared.tree.is_empty() {
+        Outcome::NoFiles
+    } else {
+        match backup::commit(
+            git,
+            &prepared,
+            &reference,
+            &paths.index(),
+            &identity(printer_name),
+            message,
+        )? {
+            Some((commit, message)) => Outcome::Made {
+                commit,
+                summary: message.lines().next().unwrap_or_default().to_string(),
+            },
+            None => Outcome::NoChange,
+        }
+    };
+    Ok((outcome, scan.skipped))
+}
+
+fn identity(printer_name: &str) -> Identity {
+    Identity {
+        name: "printerkeep".to_string(),
+        email: format!("printerkeep@{printer_name}"),
+    }
+}
+
+/// Changes from shared for the followed files, and decisions. Makes a backup of the result. Returns the
+/// lines for the report.
+fn follow_shared(
+    paths: &Paths,
+    settings: &Settings,
+    rules: &IgnoreRules,
+    git: &Git,
+    printer_name: &str,
+) -> Result<Vec<String>, Error> {
+    let state_file = paths.config.join(STATE_FILE);
+    let mut state = state::load(&state_file)?;
+    if settings.follow.is_empty() && state.files.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut lines = Vec::new();
+    let tip = match &settings.repository {
+        None => {
+            lines.push(
+                "printerkeep.conf has files to follow, but this printer has no repository. \
+                 To add one: printerkeep add-repository <url>"
+                    .to_string(),
+            );
+            None
+        }
+        Some(url) => {
+            match repository::remote(url, paths).and_then(|remote| shared::fetch(git, &remote)) {
+                Ok(tip) => tip,
+                Err(error) => {
+                    lines.push(format!(
+                        "Cannot get changes from shared: {error}. printerkeep tries again at the next \
+                         backup."
+                    ));
+                    // The last copy is still a correct shared version.
+                    git.resolve(SHARED_REF)?
+                }
+            }
+        }
+    };
+    if settings.repository.is_none() && tip.is_none() {
+        return Ok(lines);
+    }
+    let events = shared::apply(git, paths, &settings.follow, tip.as_deref(), &mut state)?;
+    state::save(&state_file, &state)?;
+    lines.extend(events.iter().map(FileEvent::line));
+    if let Some(message) = shared::message(&events) {
+        make_backup(paths, rules, git, printer_name, Some(&message))?;
+    }
+    Ok(lines)
 }
 
 /// What `add-repository` did.
@@ -307,7 +413,7 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
         &[("printer_name", &printer_name), ("repository", url)],
     )?;
     let settings = settings::load(&paths.settings())?;
-    let backup = backup_and_send(paths, &settings, &printer_name)?;
+    let backup = backup_and_send(paths, &settings, &printer_name, None, true)?;
     Ok(AddReport {
         url: url.to_string(),
         token: connection.token,
@@ -451,7 +557,7 @@ pub fn change_token(paths: &Paths, token: AskToken) -> Result<Vec<String>, Error
     let mut lines = vec![format!(
         "The repository {url} accepted the new token. printerkeep uses it from now on."
     )];
-    lines.extend(backup_and_send(paths, &settings, &printer_name)?.lines());
+    lines.extend(backup_and_send(paths, &settings, &printer_name, None, true)?.lines());
     Ok(lines)
 }
 
@@ -559,6 +665,179 @@ pub fn restore(
         written: plan.write.len(),
         same: plan.same,
     })
+}
+
+/// The path of a file in the config folder, from the command line: relative, or absolute in the config folder.
+fn config_path(paths: &Paths, file: &str) -> Result<String, Error> {
+    let path = Path::new(file);
+    let relative = match path.strip_prefix(&paths.config) {
+        Ok(relative) => relative.to_string_lossy().into_owned(),
+        Err(_) => file.strip_prefix("./").unwrap_or(file).to_string(),
+    };
+    shared::check_path(&relative).map_err(|reason| Error::CannotUseFile {
+        file: file.to_string(),
+        reason,
+    })?;
+    Ok(relative)
+}
+
+/// The settings, the printer name and the repository for a command on shared files.
+fn shared_setup(paths: &Paths) -> Result<(Settings, String, git::Remote), Error> {
+    let settings = settings::load(&paths.settings())?;
+    let printer_name = printer_name(&settings)?;
+    let url = settings
+        .repository
+        .clone()
+        .ok_or(Error::SharedNeedsRepository)?;
+    let remote = repository::remote(&url, paths)?;
+    Ok((settings, printer_name, remote))
+}
+
+/// Starts to follow a shared file. If the file is on the printer, its differences become local changes.
+/// If not, printerkeep writes the shared version.
+pub fn follow(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
+    let (settings, printer_name, remote) = shared_setup(paths)?;
+    let path = config_path(paths, file)?;
+    let _lock = lock(paths)?;
+    if settings.follow.contains(&path) {
+        return Ok(vec![format!("printerkeep already follows {path}.")]);
+    }
+    let git = Git::new(&paths.git_dir);
+    if !git.exists() {
+        git.init(&printer_name)?;
+    }
+    let in_shared = match shared::fetch(&git, &remote)? {
+        Some(tip) => git.read_tree(&tip)?.contains_key(path.as_bytes()),
+        None => false,
+    };
+    if !in_shared {
+        return Err(Error::NotInShared(path));
+    }
+    settings::add_to_list(&paths.settings(), "follow", &path)?;
+    let settings = settings::load(&paths.settings())?;
+    Ok(backup_and_send(paths, &settings, &printer_name, None, true)?.lines())
+}
+
+/// Stops following a shared file. The file stays on the printer.
+pub fn stop_following(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
+    let settings = settings::load(&paths.settings())?;
+    let printer_name = printer_name(&settings)?;
+    let path = config_path(paths, file)?;
+    let _lock = lock(paths)?;
+    if !settings::remove_from_list(&paths.settings(), "follow", &path)? {
+        return Err(Error::NotFollowed(path));
+    }
+    let settings = settings::load(&paths.settings())?;
+    let mut lines = backup_and_send(paths, &settings, &printer_name, None, true)?.lines();
+    if std::fs::read(paths.config.join(&path)).is_ok_and(|c| crate::merge::has_block(&c)) {
+        lines.push(format!(
+            "{path} still has #### lines from a needs decision. Keep the lines that you want, and delete \
+             the #### lines."
+        ));
+    }
+    Ok(lines)
+}
+
+/// Makes the shared version of a file equal to this printer's version, and follows the file.
+pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
+    let (settings, printer_name, remote) = shared_setup(paths)?;
+    let path = config_path(paths, file)?;
+    let disk = paths.config.join(&path);
+    if !disk.is_file() {
+        return Err(Error::NoSuchFile(path));
+    }
+    let _lock = lock(paths)?;
+
+    // First the normal run: a backup, and the changes from shared that this printer does not have yet.
+    let mut lines = backup_and_send(paths, &settings, &printer_name, None, false)?.lines();
+    let state_file = paths.config.join(STATE_FILE);
+    let mut state = state::load(&state_file)?;
+    let io = |source| Error::Io {
+        context: format!("Cannot read {}", disk.display()),
+        source,
+    };
+    let content = std::fs::read(&disk).map_err(io)?;
+    if state
+        .files
+        .get(&path)
+        .is_some_and(|f| f.needs_decision.is_some())
+        || crate::merge::has_block(&content)
+    {
+        return Err(Error::FileNeedsDecision(path));
+    }
+    let executable = std::fs::metadata(&disk).map_err(io)?.permissions().mode() & 0o111 != 0;
+
+    let git = Git::new(&paths.git_dir);
+    let message = format!("Copied {path} from {printer_name}");
+    let mut attempts = 0;
+    let (commit, copied) = loop {
+        attempts += 1;
+        let tip = shared::fetch(&git, &remote)?;
+        // A followed file must have all changes from shared, else the copy removes changes of other printers.
+        if let (Some(entry), Some(tip)) = (state.files.get(&path), &tip) {
+            let base = shared::content_at(&git, &entry.base, &path)?;
+            let now = shared::content_at(&git, tip, &path)?;
+            if base.map(|b| crate::merge::to_lf(&b)) != now.map(|n| crate::merge::to_lf(&n)) {
+                return Err(Error::SharedChanged(path));
+            }
+        }
+        let entry = git::TreeEntry {
+            mode: if executable { "100755" } else { "100644" }.to_string(),
+            oid: git.write_blob(&content)?,
+        };
+        let new = shared::copy_commit(
+            &git,
+            paths,
+            tip.as_deref(),
+            &path,
+            entry,
+            &message,
+            &identity(&printer_name),
+        )?;
+        let Some(new) = new else {
+            break (tip.unwrap_or_default(), false);
+        };
+        match git.push(&remote, &new, SHARED_BRANCH) {
+            Ok(()) => {
+                git.set_ref(SHARED_REF, &new, "printerkeep: copied to shared")?;
+                break (new, true);
+            }
+            Err(error) => match repository::classify(error, &remote.url) {
+                // Another printer changed shared at the same time. Try again on its version.
+                RepositoryError::RepositoryAhead if attempts < 3 => continue,
+                error => return Err(error.into()),
+            },
+        }
+    };
+
+    settings::add_to_list(&paths.settings(), "follow", &path)?;
+    state.files.insert(
+        path.clone(),
+        FileState {
+            base: commit,
+            needs_decision: None,
+        },
+    );
+    state::save(&state_file, &state)?;
+    let settings = settings::load(&paths.settings())?;
+    let summary = format!("Copied {path} to shared");
+    let report = backup_and_send(paths, &settings, &printer_name, Some(&summary), true)?;
+    lines.retain(|line| line != "No files changed. No backup made.");
+    if copied {
+        lines.push(format!(
+            "Copied {path} to shared. Other printers can now follow it."
+        ));
+    } else {
+        lines.push(format!(
+            "{path} in shared is already the same as on this printer."
+        ));
+    }
+    lines.extend(
+        report.lines().into_iter().filter(|line| {
+            !line.starts_with("Backup made:") && !line.starts_with("No files changed")
+        }),
+    );
+    Ok(lines)
 }
 
 /// The state of the printer, for `printerkeep status`.

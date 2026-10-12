@@ -270,6 +270,144 @@ pub fn set_options(path: &Path, options: &[(&str, &str)]) -> Result<(), Settings
     std::fs::rename(&temporary, path).map_err(write_error)
 }
 
+/// Adds `value` to a list option (`follow`, `ignore`) in the settings file, if it is not in the list.
+/// Keeps all other lines and comments. Returns `false` if the value was already in the list.
+pub fn add_to_list(path: &Path, option: &str, value: &str) -> Result<bool, SettingsError> {
+    debug_assert!(kind(option) == Some(Kind::List), "{option} is not a list");
+    let (file, mut lines) = read_lines(path)?;
+    let settings = parse(&lines.join("\n"), &file)?;
+    let list = match option {
+        "follow" => &settings.follow,
+        _ => &settings.ignore,
+    };
+    if list.iter().any(|v| v == value) {
+        return Ok(false);
+    }
+    match find_option(&lines, option) {
+        Some((index, end)) => {
+            // The indentation of the other values, or two spaces.
+            let indent = lines[index + 1..end]
+                .iter()
+                .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with(['#', ';']))
+                .map_or("  ".to_string(), |l| {
+                    l[..l.len() - l.trim_start().len()].to_string()
+                });
+            lines.insert(end, format!("{indent}{value}"));
+        }
+        None => {
+            let at = section_end(&mut lines);
+            lines.insert(at, format!("{option}:"));
+            lines.insert(at + 1, format!("  {value}"));
+        }
+    }
+    write_lines(path, &file, &lines)?;
+    Ok(true)
+}
+
+/// Removes `value` from a list option. Returns `false` if the value was not in the list.
+pub fn remove_from_list(path: &Path, option: &str, value: &str) -> Result<bool, SettingsError> {
+    debug_assert!(kind(option) == Some(Kind::List), "{option} is not a list");
+    let (file, mut lines) = read_lines(path)?;
+    parse(&lines.join("\n"), &file)?;
+    let Some((index, end)) = find_option(&lines, option) else {
+        return Ok(false);
+    };
+    if let Some(at) = (index + 1..end).find(|&i| strip_comment(lines[i].trim()) == value) {
+        lines.remove(at);
+    } else {
+        // The value on the option line itself: "follow: a.cfg".
+        let line = &lines[index];
+        let separator = line.find([':', '=']).unwrap_or(line.len());
+        if strip_comment(line[separator + 1..].trim()) != value {
+            return Ok(false);
+        }
+        lines[index] = format!("{option}:");
+    }
+    write_lines(path, &file, &lines)?;
+    Ok(true)
+}
+
+/// The line of `option` and the end of its value (the first line after it that does not continue it).
+fn find_option(lines: &[String], option: &str) -> Option<(usize, usize)> {
+    let index = lines.iter().position(|line| {
+        !line.starts_with(char::is_whitespace)
+            && !line.trim_start().starts_with(['#', ';'])
+            && line
+                .find([':', '='])
+                .is_some_and(|i| line[..i].trim() == option)
+    })?;
+    let mut end = index + 1;
+    // The value continues on indented lines. Comment lines between them also belong to it.
+    let mut last_value = index + 1;
+    while end < lines.len() {
+        let line = &lines[end];
+        if line.trim().is_empty() {
+            break;
+        }
+        if line.starts_with(char::is_whitespace) {
+            end += 1;
+            last_value = end;
+        } else if line.trim_start().starts_with(['#', ';']) {
+            end += 1;
+        } else {
+            break;
+        }
+    }
+    Some((index, last_value))
+}
+
+/// The line after the last line of the section. Makes the section if the file has none.
+fn section_end(lines: &mut Vec<String>) -> usize {
+    let header = lines.iter().position(|line| {
+        line.strip_prefix('[')
+            .map(strip_comment)
+            .and_then(|h| h.strip_suffix(']'))
+            .is_some_and(|name| name.trim() == SECTION)
+    });
+    match header {
+        Some(index) => {
+            lines
+                .iter()
+                .rposition(|l| !l.trim().is_empty())
+                .map_or(index, |last| last.max(index))
+                + 1
+        }
+        None => {
+            if lines.last().is_some_and(|l| !l.trim().is_empty()) {
+                lines.push(String::new());
+            }
+            lines.push(format!("[{SECTION}]"));
+            lines.len()
+        }
+    }
+}
+
+fn read_lines(path: &Path) -> Result<(String, Vec<String>), SettingsError> {
+    let file = path.display().to_string();
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(source) => return Err(SettingsError::Read { file, source }),
+    };
+    let lines = text
+        .lines()
+        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+        .collect();
+    Ok((file, lines))
+}
+
+fn write_lines(path: &Path, file: &str, lines: &[String]) -> Result<(), SettingsError> {
+    let mut text = lines.join("\n");
+    text.push('\n');
+    let write_error = |source| SettingsError::Write {
+        file: file.to_string(),
+        source,
+    };
+    let temporary = path.with_file_name(".printerkeep.conf.new");
+    std::fs::write(&temporary, &text).map_err(write_error)?;
+    std::fs::rename(&temporary, path).map_err(write_error)
+}
+
 /// Removes an inline comment: `#` or `;` after a space.
 fn strip_comment(text: &str) -> &str {
     let mut previous_space = false;
@@ -285,6 +423,39 @@ fn strip_comment(text: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn follow_list_add_and_remove() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("printerkeep.conf");
+        assert!(add_to_list(&path, "follow", "macros.cfg").unwrap());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[printerkeep]\nfollow:\n  macros.cfg\n"
+        );
+
+        std::fs::write(
+            &path,
+            "[printerkeep]\nprinter_name: printer-1\nfollow:\n    a.cfg\n    # a comment\n    b.cfg\n\n# end\n",
+        )
+        .unwrap();
+        assert!(!add_to_list(&path, "follow", "a.cfg").unwrap());
+        assert!(add_to_list(&path, "follow", "c.cfg").unwrap());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[printerkeep]\nprinter_name: printer-1\nfollow:\n    a.cfg\n    # a comment\n    b.cfg\n    c.cfg\n\n# end\n"
+        );
+        assert!(remove_from_list(&path, "follow", "a.cfg").unwrap());
+        assert!(!remove_from_list(&path, "follow", "x.cfg").unwrap());
+        assert_eq!(load(&path).unwrap().follow, ["b.cfg", "c.cfg"]);
+
+        std::fs::write(&path, "[printerkeep]\nfollow: a.cfg\nignore:\n  *.csv\n").unwrap();
+        assert!(add_to_list(&path, "follow", "b.cfg").unwrap());
+        assert_eq!(load(&path).unwrap().follow, ["a.cfg", "b.cfg"]);
+        assert!(remove_from_list(&path, "follow", "a.cfg").unwrap());
+        assert_eq!(load(&path).unwrap().follow, ["b.cfg"]);
+        assert_eq!(load(&path).unwrap().ignore, ["*.csv"]);
+    }
 
     fn ok(text: &str) -> Settings {
         parse(text, "printerkeep.conf").unwrap()

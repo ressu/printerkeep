@@ -82,21 +82,26 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
     })
 }
 
-/// Makes the commit for `prepared`, if something changed. Returns the new commit and its message.
+/// Makes the commit for `prepared`, if something changed. Returns the new commit and its message. `message`
+/// replaces the message that lists the changes.
 pub fn commit(
     git: &Git,
     prepared: &Prepared,
     reference: &str,
     index: &Path,
     identity: &Identity,
+    message: Option<&str>,
 ) -> Result<Option<(String, String)>, GitError> {
     if prepared.changes.is_empty() {
         return Ok(None);
     }
     let tree = git.write_tree(&prepared.tree, index)?;
-    let message = prepared
-        .changes
-        .message(prepared.parent.is_none(), prepared.tree.len());
+    let message = match message {
+        Some(message) => format!("{message}\n"),
+        None => prepared
+            .changes
+            .message(prepared.parent.is_none(), prepared.tree.len()),
+    };
     let commit = git.commit(&tree, prepared.parent.as_deref(), &message, identity)?;
     git.update_ref(
         reference,

@@ -265,6 +265,32 @@ Each milestone ends with working, tested software.
 - When this printer has no lines at a place, the block says "Active now (this printer): no lines." and only
   "remove the # from the next lines".
 
+Part 1 (2026-10-12): state, follow, stop-following, copy-to-shared, changes from shared.
+
+- **Order in each run:** a backup of the config folder, then changes from shared, then a second backup with
+  what printerkeep did ("Changes from shared: macros.cfg", "Needs decision: …"), then send. Thus, the
+  printer's own version is always in the history before printerkeep writes a file.
+- Shared files need a repository. printerkeep gets the `shared` branch at each run only when the printer
+  follows a file. If the repository cannot be reached, printerkeep uses its last copy of `shared`.
+- A file in `follow:` in `printerkeep.conf` (for example added in Fluidd) works the same as
+  `printerkeep follow`. A file that is not in shared gets a line in the log, nothing more.
+- No base (a new follow, or shared lost the base commit): the current shared version becomes the base.
+  The differences on the printer are local changes.
+- A followed file that is not in the config folder any more is not written again. The log says how to stop
+  following it.
+- `copy-to-shared` first does the normal run, so the printer has all changes from shared. It refuses a file
+  that needs decision. If another printer changed shared at the same time, it tries again on the new
+  version, at most three times. For a file that the printer does not follow, it replaces the shared version:
+  that is what "copy to shared" means.
+- Needs decision is found by the lines that start with `#### printerkeep:`, not by all `####` lines: many
+  configurations use `####` in headings.
+- The state file is JSON with a small parser and writer in `state.rs`, not a JSON crate (few dependencies).
+- The merge works on LF line ends. The result gets the line ends of the printer's file.
+- Block text for two more cases: "Shared changed lines that this printer removed." and "Shared version.
+  No lines. To use it, delete the line(s) above."
+- Not in part 1: the override rule (until then, `copy-to-shared` copies override lines as they are),
+  `decide`, the status of each followed file, M6, the overview.
+
 ### M6. Real-data tests (0.2)
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).

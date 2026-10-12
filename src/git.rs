@@ -174,6 +174,42 @@ impl Git {
         run(self.command().args(["cat-file", "blob", oid]), None)
     }
 
+    /// Stores `content` as a blob and returns its id.
+    pub fn write_blob(&self, content: &[u8]) -> Result<String, GitError> {
+        let stdout = run(
+            self.command()
+                .args(["hash-object", "-w", "--no-filters", "--stdin"]),
+            Some(content),
+        )?;
+        Ok(line(&stdout))
+    }
+
+    /// A three-way merge of three files with `git merge-file`. Returns the result and the number of places
+    /// where the changes touch the same lines (each marked with `marker_size` `<`, `=` and `>`).
+    pub fn merge_file(
+        &self,
+        mine: &Path,
+        base: &Path,
+        theirs: &Path,
+        marker_size: usize,
+    ) -> Result<(Vec<u8>, u32), GitError> {
+        let output = output(
+            self.command()
+                .args(["merge-file", "-p"])
+                .arg(format!("--marker-size={marker_size}"))
+                .args(["-L", "mine", "-L", "base", "-L", "shared"])
+                .arg(mine)
+                .arg(base)
+                .arg(theirs),
+            None,
+        )?;
+        // The exit code is the number of conflicts (at most 127), or negative on an error.
+        match output.status.code() {
+            Some(code @ 0..=127) => Ok((output.stdout, code as u32)),
+            _ => Err(failed("merge-file", &output)),
+        }
+    }
+
     /// Writes a tree with exactly these files. `index` is a temporary index file.
     pub fn write_tree(&self, tree: &Tree, index: &Path) -> Result<String, GitError> {
         match std::fs::remove_file(index) {
@@ -354,6 +390,24 @@ impl Git {
             None,
         )?;
         Ok(())
+    }
+
+    /// Like `fetch`, but returns `false` if the repository has no such branch.
+    pub fn fetch_if_exists(
+        &self,
+        remote: &Remote,
+        branch: &str,
+        local_ref: &str,
+    ) -> Result<bool, GitError> {
+        match self.fetch(remote, branch, local_ref) {
+            Ok(()) => Ok(true),
+            Err(GitError::Failed { stderr, .. })
+                if stderr.to_lowercase().contains("couldn't find remote ref") =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// Sends `local_ref` to `refs/heads/<branch>` in the repository. Never forces.
