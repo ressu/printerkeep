@@ -4,6 +4,7 @@
 use crate::backup::{self, Changes};
 use crate::git::{self, Git, GitError, Identity};
 use crate::ignore::{IgnoreRules, RuleError};
+use crate::overrides;
 use crate::paths::Paths;
 use crate::repository::{self, History, RepositoryError, Sent, UrlKind};
 use crate::settings::{self, Settings, SettingsError};
@@ -770,6 +771,7 @@ pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
     let git = Git::new(&paths.git_dir);
     let message = format!("Copied {path} from {printer_name}");
     let mut attempts = 0;
+    let mut not_copied;
     let (commit, copied) = loop {
         attempts += 1;
         let tip = shared::fetch(&git, &remote)?;
@@ -781,10 +783,17 @@ pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
                 return Err(Error::SharedChanged(path));
             }
         }
+        // Override lines stay on this printer (C6).
+        let in_shared = match &tip {
+            Some(tip) => shared::content_at(&git, tip, &path)?,
+            None => None,
+        };
+        let for_shared = overrides::for_shared(&content, in_shared.as_deref());
         let entry = git::TreeEntry {
             mode: if executable { "100755" } else { "100644" }.to_string(),
-            oid: git.write_blob(&content)?,
+            oid: git.write_blob(&for_shared.content)?,
         };
+        not_copied = for_shared;
         let new = shared::copy_commit(
             &git,
             paths,
@@ -830,6 +839,18 @@ pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
     } else {
         lines.push(format!(
             "{path} in shared is already the same as on this printer."
+        ));
+    }
+    for key in &not_copied.kept {
+        lines.push(format!(
+            "Not copied: {key} (override). Shared keeps its own line."
+        ));
+    }
+    for key in &not_copied.placeholders {
+        lines.push(format!(
+            "Not copied: {key} (override). Shared has the value {} there. Each printer that follows the \
+             file sets its own value.",
+            overrides::PLACEHOLDER
         ));
     }
     lines.extend(

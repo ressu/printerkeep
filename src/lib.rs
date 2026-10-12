@@ -9,6 +9,7 @@ pub mod ignore;
 pub mod install;
 pub mod log;
 pub mod merge;
+pub mod overrides;
 pub mod paths;
 pub mod repository;
 pub mod settings;

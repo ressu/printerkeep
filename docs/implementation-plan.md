@@ -53,7 +53,8 @@ src/
   log.rs         printer_data/logs/printerkeep.log and the status text (C7)
   -- 0.2 --
   state.rs       .printerkeep-state.json: base per followed file (C3)
-  merge.rs       three-way merge per file, needs-decision block, override rule (C4–C6)
+  merge.rs       three-way merge per file, needs-decision block (C4, C5)
+  overrides.rs   override lines (C6)
   shared.rs      follow, stop-following, copy-to-shared, changes from shared
   overview.rs    README.md on the shared branch
 ```
@@ -288,8 +289,23 @@ Part 1 (2026-10-12): state, follow, stop-following, copy-to-shared, changes from
 - The merge works on LF line ends. The result gets the line ends of the printer's file.
 - Block text for two more cases: "Shared changed lines that this printer removed." and "Shared version.
   No lines. To use it, delete the line(s) above."
-- Not in part 1: the override rule (until then, `copy-to-shared` copies override lines as they are),
-  `decide`, the status of each followed file, M6, the overview.
+- Not in part 1: the override rule (part 2), `decide`, the status of each followed file, M6, the overview.
+
+Part 2 (2026-10-12): override lines (C6), in `overrides.rs`.
+
+- Before the merge, each line in the base and in the shared version that has the key (`[section]` and
+  option) of an override line on the printer is replaced by the printer's line. The merge then sees no
+  change there. This also applies to the "no local changes" case, so printerkeep never writes the shared
+  value over an override line.
+- `copy-to-shared` replaces each override line with shared's line for that key. If shared has no line for
+  it (the first copy, or a new option), shared gets `option: CHANGE_ME   # printerkeep: override`. A
+  printer that starts to follow the file gets a clear Klipper error, never the pins of a different printer.
+  Leaving the line out instead could make a printer use a default value without an error. The output lists
+  each override line that was not copied.
+- After `follow` writes a file with `CHANGE_ME` lines, the output tells the user to set the values.
+- The mark is found in any `#` comment of the line; spaces and capitals do not matter
+  (`#printerkeep:override` works).
+- A clean merge whose result is the printer's file writes nothing and gives no line in the log.
 
 ### M6. Real-data tests (0.2)
 

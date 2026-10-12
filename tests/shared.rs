@@ -424,3 +424,85 @@ fn shared_commands_need_a_repository_and_a_shared_file() {
         .failure()
         .stderr(contains("Shared files need a repository."));
 }
+
+const SENSOR: &str = "\
+[filament_switch_sensor runout]
+switch_pin: ^PG12   # printerkeep: override
+pause_on_runout: True
+runout_gcode:
+    PAUSE
+";
+
+#[test]
+fn override_lines_never_travel() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::new("printer-1", &url);
+    let printer2 = Printer::new("printer-2", &url);
+    let printer3 = Printer::new("printer-3", &url);
+
+    // C6: the pin of printer 1 does not go to shared.
+    printer1.write("sensor.cfg", SENSOR);
+    let output = printer1.ok(&["copy-to-shared", "sensor.cfg"]);
+    assert!(
+        output.contains(
+            "Not copied: switch_pin in [filament_switch_sensor runout] (override). Shared has the value \
+             CHANGE_ME there."
+        ),
+        "{output}"
+    );
+    let in_shared = SENSOR.replace("^PG12", "CHANGE_ME");
+    assert_eq!(shared(&url, "sensor.cfg"), in_shared);
+    assert_eq!(printer1.read("sensor.cfg"), SENSOR);
+
+    // A printer without the file gets the placeholder, and a clear line.
+    let output = printer3.ok(&["follow", "sensor.cfg"]);
+    assert!(
+        output.contains(
+            "sensor.cfg: 1 override line has the value CHANGE_ME. Set the values for this printer."
+        ),
+        "{output}"
+    );
+    assert_eq!(printer3.read("sensor.cfg"), in_shared);
+    printer3.write("sensor.cfg", &SENSOR.replace("^PG12", "^PA3"));
+    printer3.ok(&["backup"]);
+
+    let printer2_sensor = SENSOR.replace("^PG12", "^PA1");
+    printer2.write("sensor.cfg", &printer2_sensor);
+    printer2.ok(&["follow", "sensor.cfg"]);
+
+    // Printer 2 improves the runout macro. Only the macro goes to shared, and to the other printers.
+    let improved = printer2_sensor.replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n");
+    printer2.write("sensor.cfg", &improved);
+    let output = printer2.ok(&["copy-to-shared", "sensor.cfg"]);
+    assert!(
+        output.contains(
+            "Not copied: switch_pin in [filament_switch_sensor runout] (override). Shared keeps its own line."
+        ),
+        "{output}"
+    );
+    assert_eq!(
+        shared(&url, "sensor.cfg"),
+        in_shared.replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n")
+    );
+    printer1.ok(&["backup"]);
+    assert_eq!(
+        printer1.read("sensor.cfg"),
+        SENSOR.replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n")
+    );
+    let output = printer3.ok(&["backup"]);
+    assert!(
+        output.contains("sensor.cfg: wrote the changes from shared."),
+        "{output}"
+    );
+    assert_eq!(
+        printer3.read("sensor.cfg"),
+        SENSOR
+            .replace("^PG12", "^PA3")
+            .replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n")
+    );
+
+    // Printer 2's own copy: nothing to write, no needs decision.
+    let output = printer2.ok(&["backup"]);
+    assert!(!output.contains("sensor.cfg"), "{output}");
+    assert_eq!(printer2.read("sensor.cfg"), improved);
+}

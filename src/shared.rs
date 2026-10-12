@@ -5,6 +5,7 @@
 
 use crate::git::{Git, GitError, Identity, Remote, Tree, TreeEntry};
 use crate::merge::{self, Merged};
+use crate::overrides;
 use crate::paths::{Paths, SETTINGS_FILE};
 use crate::repository::{self, RepositoryError};
 use crate::state::{FileState, STATE_FILE, State};
@@ -37,6 +38,8 @@ pub enum Event {
     Started,
     /// printerkeep follows the file now. The file was not on the printer: printerkeep wrote the shared version.
     Added,
+    /// The file that printerkeep wrote has override lines with the placeholder value.
+    Placeholders(usize),
     /// The file had no local changes. printerkeep wrote the shared version.
     Written,
     /// printerkeep merged the changes from shared with the local changes.
@@ -72,6 +75,15 @@ impl FileEvent {
                 "Follows {path}. The differences on this printer are local changes. They stay."
             ),
             Event::Added => format!("Follows {path}. Wrote the shared version."),
+            Event::Placeholders(count) => format!(
+                "{path}: {count} override {} the value {}. Set the values for this printer.",
+                if *count == 1 {
+                    "line has"
+                } else {
+                    "lines have"
+                },
+                crate::overrides::PLACEHOLDER
+            ),
             Event::Written => format!("{path}: wrote the changes from shared."),
             Event::Merged => {
                 format!("{path}: wrote the changes from shared. The local changes stay.")
@@ -225,6 +237,10 @@ pub fn apply(
                 None => {
                     write(&disk, &shared, shared_entry)?;
                     event(path, Event::Added);
+                    let count = overrides::placeholders(&shared);
+                    if count > 0 {
+                        event(path, Event::Placeholders(count));
+                    }
                 }
             }
             state.files.insert(path.clone(), new_base);
@@ -239,6 +255,9 @@ pub fn apply(
             event(path, Event::MissingOnPrinter);
             continue;
         };
+        // The printer's override lines never change (C6).
+        let base = overrides::protect(&mine, &merge::to_lf(&base));
+        let shared = overrides::protect(&mine, &merge::to_lf(&shared));
         if same(&mine, &shared) {
             // For example, this printer copied the file to shared.
             state.files.insert(path.clone(), new_base);
@@ -254,9 +273,11 @@ pub fn apply(
         } else {
             match merge::merge(git, &paths.data, &mine, &base, &shared)? {
                 Merged::Clean(content) => {
-                    write(&disk, &content, shared_entry)?;
                     state.files.insert(path.clone(), new_base);
-                    event(path, Event::Merged);
+                    if content != mine {
+                        write(&disk, &content, shared_entry)?;
+                        event(path, Event::Merged);
+                    }
                 }
                 Merged::NeedsDecision(content) => {
                     write(&disk, &content, shared_entry)?;
