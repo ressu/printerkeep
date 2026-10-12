@@ -7,7 +7,7 @@ Status: draft (2026-10-11). Based on [problem.md](problem.md), [solution-options
 
 | Release | Content | Goal |
 |---|---|---|
-| **0.1** | One printer: local history, repository, restore, installer, update_manager, migration guide. | A replacement for klipper-backup. The authors move their own printers to printerkeep. |
+| **0.1** | One printer: local history, repository, restore, installer, update_manager. | A replacement for klipper-backup. The authors move their own printers to printerkeep. |
 | **0.2** | More printers: follow, changes from shared, needs decision, override, copy to shared, overview. Changes in the repository get to the printer (M6). | The full design. |
 
 0.1 already uses the 0.2 repository format (one branch per printer, files at the top). Thus, 0.2 needs no
@@ -114,7 +114,7 @@ Each milestone ends with working, tested software.
   Both: test the connection, write `repository:` (the URL only, never a token) to `printerkeep.conf`.
   Authentication errors (expired token, removed key) give a clear status.
 - **Existing printer branch:** if the branch exists in the repository, printerkeep continues its history.
-  The next backup is a child of the branch's last commit. This is needed for the migration guide.
+  The next backup is a child of the branch's last commit. This is needed to move from klipper-backup.
 - Push after each backup. If the repository has commits that the printer does not have, printerkeep does
   **not** force-push. It keeps its backups locally and writes a clear status ("the repository has changes
   that this printer does not have"). 0.2 merges them (M6).
@@ -216,45 +216,20 @@ Each milestone ends with working, tested software.
 - The update channel follows the installed version: a pre-release (`0.1.0-rc.1`) gets `channel: beta`.
 - `install` makes the first backup, after it changed `moonraker.conf`.
 
-### M4. Migration guide and release 0.1
+### M4. Release 0.1
 
-- `docs/migrate-from-klipper-backup.md` (user guide, writing rule): for a single-printer klipper-backup
-  repository, keep the history with plain git:
-  1. `git subtree split --prefix=printer_data/config -b <printer name>` (the history of the config folder,
-     with the files at the top),
-  2. push the branch to the new (or the same) repository,
-  3. stop klipper-backup's timer, install printerkeep, `add-repository <url>` with the same printer name.
-  printerkeep continues the history (M2).
-- Multi-printer klipper-backup repositories are not in scope. There is no standard layout. The same steps
-  work by hand for each branch.
 - User README: install, first backup, add a repository, restore.
-- **Done when:** the guide works on a real klipper-backup repository, and the authors' printers run 0.1.
+- People who move from klipper-backup start again with printerkeep. A guide that keeps the klipper-backup
+  history comes after 0.1 (see "After 0.1: move from klipper-backup").
+- **Done when:** the authors' printers run 0.1.
 
 **Decisions made in M4 (2026-10-12):**
 
-- The guide runs on the printer only. klipper-backup keeps a clone of the repository in `~/config_backup`,
-  with its login in the remote URL. Thus, `git subtree split` and `git push` work there with no new login.
-- Order: stop klipper-backup, make the branch, remove klipper-backup, install printerkeep. The guide is about
-  the conversion. Install and remove are links or short lists. `~/config_backup` is removed only after the
-  push, because the conversion needs it.
-- "Start again" comes first in the guide: we expect that most users do not keep the history.
-- The new branch gets the printer name from `hostname`, the same file that printerkeep reads. The guide never
-  changes `printer_name`: a changed name after backups on the printer would leave those backups on a branch
-  that printerkeep no longer uses.
-- The guide uses the same repository. klipper-backup's branch stays as an archive.
-- `git filter-branch --subdirectory-filter` is the fallback when `git subtree` is not installed. Both make
-  the same commits (same hashes, tested).
-- Tested on a copy of a real klipper-backup repository: the history continues, and backups that printerkeep
-  made before the migration stay as `refs/printerkeep/kept/*`.
-- The usual klipper-backup repository has one `main` branch (tested on a public one: 825 commits, 86 after
-  the split, because klipper-backup also commits with no changes). One branch per printer, with the printer
-  name, collides with the new branch. The guide then copies the old branch to `klipper-backup/<name>` and
-  replaces it with `--force-with-lease` (tested).
-- No README in the printer branch, as klipper-backup has: a printer branch is the config folder, and restore
-  writes all its files. The overview on `shared` (C7, 0.2) is the place for it.
 - `status` shows why the last try to send did not work (for example an expired token), because `status`
   uses no network. `backup` writes it to `printer_data/printerkeep/send-problem`, and removes it after a send
   that works.
+- No README in the printer branch, as klipper-backup has: a printer branch is the config folder, and restore
+  writes all its files. The overview on `shared` (C7, 0.2) is the place for it.
 
 ### M5. More printers (0.2)
 
@@ -278,6 +253,31 @@ Each milestone ends with working, tested software.
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).
   The fixtures test the cases in "Real differences, checked" in solution-options.md.
 - **Done when:** all real cases behave as the docs say.
+
+### After 0.1: move from klipper-backup
+
+Postponed (2026-10-12): the first guide was not good enough for 0.1. A draft,
+`docs/migrate-from-klipper-backup.md`, is in the version history. What we learned:
+
+- The conversion is plain git on the printer: `git subtree split --prefix=printer_data/config -b <printer
+  name>` in klipper-backup's clone `~/config_backup`, then a push. That clone has klipper-backup's login in
+  its remote URL. `git filter-branch --subdirectory-filter` makes the same commits (same hashes, tested), for
+  systems without `git subtree`.
+- printerkeep continues the history of an existing printer branch (M2). Backups that printerkeep made before
+  stay as `refs/printerkeep/kept/*` (tested on a copy of a real repository).
+- The usual klipper-backup repository has one `main` branch. A public one had 825 commits, 86 after the
+  split, because klipper-backup also commits with no changes.
+- One branch per printer, with the printer name, collides with the new branch. Copy the old branch to
+  `klipper-backup/<name>`, then replace it with `--force-with-lease` (tested).
+- Order: stop klipper-backup, convert, remove klipper-backup, install printerkeep. `~/config_backup` is
+  removed only after the push.
+- The branch must have the printer name before the first backup that printerkeep sends. A changed
+  `printer_name` after backups on the printer leaves those backups on a branch that printerkeep no longer
+  uses.
+- We expect that most users start again and do not keep the history.
+- After `add-repository`, the backup that `printerkeep install` made stays on the printer as a kept ref, with
+  a message, even when it has the same files as the repository. Possible improvement: continue the
+  repository's history with no kept ref in that case.
 
 ## Tests
 

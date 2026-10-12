@@ -7,8 +7,6 @@ printerkeep works with Klipper and with firmware derived from it, such as Kalico
 
 > **Status: in development, not released yet.** Release 0.1 replaces
 > [klipper-backup](https://github.com/Staubgeborener/klipper-backup) for one printer.
-> To move from klipper-backup and keep your history, read
-> [the migration guide](docs/migrate-from-klipper-backup.md).
 
 ## What printerkeep does
 
