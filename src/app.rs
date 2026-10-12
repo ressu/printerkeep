@@ -43,6 +43,13 @@ pub enum Error {
     NotInShared(String),
     #[error("printerkeep does not follow {0}.")]
     NotFollowed(String),
+    #[error("{0} does not need decision. It has no #### printerkeep lines.")]
+    NoDecision(String),
+    #[error(
+        "printerkeep cannot read the #### lines in {0}: a part of a block is changed or missing. Edit the \
+         file: keep the lines that you want, and delete all #### lines."
+    )]
+    BlockChanged(String),
     #[error(
         "{0} needs decision. Open the file and look for the #### lines. After the decision, printerkeep can \
          copy it to shared."
@@ -861,6 +868,42 @@ pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
     Ok(lines)
 }
 
+/// Finishes a needs-decision file without editing it: keeps this printer's lines, or uses the shared lines.
+pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>, Error> {
+    let settings = settings::load(&paths.settings())?;
+    let printer_name = printer_name(&settings)?;
+    let path = config_path(paths, file)?;
+    let _lock = lock(paths)?;
+    let disk = paths.config.join(&path);
+    let content = std::fs::read(&disk).map_err(|source| Error::Io {
+        context: format!("Cannot read {}", disk.display()),
+        source,
+    })?;
+    if !crate::merge::has_block(&content) {
+        return Err(Error::NoDecision(path));
+    }
+    let decided = crate::merge::decide(&content, use_shared)
+        .ok_or_else(|| Error::BlockChanged(path.clone()))?;
+    let temporary = disk.with_file_name(".printerkeep-write.tmp");
+    std::fs::write(&temporary, &decided)
+        .and_then(|()| {
+            std::fs::set_permissions(&temporary, std::fs::metadata(&disk)?.permissions())
+        })
+        .and_then(|()| std::fs::rename(&temporary, &disk))
+        .map_err(|source| Error::Io {
+            context: format!("Cannot write {}", disk.display()),
+            source,
+        })?;
+    let which = if use_shared {
+        "used the shared lines"
+    } else {
+        "kept the lines of this printer"
+    };
+    let mut lines = vec![format!("{path}: {which}.")];
+    lines.extend(backup_and_send(paths, &settings, &printer_name, None, true)?.lines());
+    Ok(lines)
+}
+
 /// The state of the printer, for `printerkeep status`.
 #[derive(Debug)]
 pub struct Status {
@@ -875,6 +918,8 @@ pub struct Status {
     pub not_sent: Option<u64>,
     /// Why the last try to send did not work.
     pub send_problem: Option<String>,
+    /// The followed files and their status.
+    pub followed: Vec<(String, shared::FileStatus)>,
 }
 
 #[derive(Debug)]
@@ -926,7 +971,26 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
         (None, changes)
     };
 
+    let mut followed = Vec::new();
+    if !settings.follow.is_empty() {
+        let state = state::load(&paths.config.join(STATE_FILE))?;
+        let tip = if git.exists() {
+            git.resolve(SHARED_REF)?
+        } else {
+            None
+        };
+        for path in &settings.follow {
+            let status = if shared::check_path(path).is_err() {
+                shared::FileStatus::NotInShared
+            } else {
+                shared::file_status(&git, paths, path, &state, tip.as_deref())?
+            };
+            followed.push((path.clone(), status));
+        }
+    }
+
     Ok(Status {
+        followed,
         printer_name,
         config: paths.config.clone(),
         last_backup,
@@ -970,6 +1034,12 @@ impl fmt::Display for Status {
         }
         if !self.skipped.is_empty() {
             writeln!(f, "Not backed up (symlinks): {}", self.skipped.join(", "))?;
+        }
+        if !self.followed.is_empty() {
+            writeln!(f, "Followed files (from shared):")?;
+            for (path, status) in &self.followed {
+                writeln!(f, "  {path}: {}", status.text())?;
+            }
         }
         match &self.repository {
             Some(url) => {

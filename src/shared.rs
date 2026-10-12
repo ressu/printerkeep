@@ -292,6 +292,74 @@ pub fn apply(
     Ok(events)
 }
 
+/// The status of a followed file. See the status words in `docs/naming.md`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileStatus {
+    /// Same as the shared version (override lines excepted).
+    UpToDate,
+    /// Has all changes from shared, plus local changes.
+    LocalChanges,
+    /// Changes from shared are not applied yet.
+    ChangesWaiting,
+    NeedsDecision,
+    /// Not in the config folder.
+    Missing,
+    /// Not in printerkeep's last copy of shared.
+    NotInShared,
+}
+
+impl FileStatus {
+    pub fn text(&self) -> &'static str {
+        match self {
+            FileStatus::UpToDate => "up to date",
+            FileStatus::LocalChanges => "local changes",
+            FileStatus::ChangesWaiting => "changes waiting. The next backup applies them",
+            FileStatus::NeedsDecision => {
+                "needs decision. Open the file and look for the #### lines"
+            }
+            FileStatus::Missing => "not in the config folder",
+            FileStatus::NotInShared => "not in shared",
+        }
+    }
+}
+
+/// The status of a followed file, from printerkeep's last copy of shared. Uses no network.
+pub fn file_status(
+    git: &Git,
+    paths: &Paths,
+    path: &str,
+    state: &State,
+    tip: Option<&str>,
+) -> Result<FileStatus, SharedError> {
+    let entry = state.files.get(path);
+    if entry.is_some_and(|e| e.needs_decision.is_some()) {
+        return Ok(FileStatus::NeedsDecision);
+    }
+    let Some(mine) = read(&paths.config.join(path))? else {
+        return Ok(FileStatus::Missing);
+    };
+    let Some(shared) = (match tip {
+        Some(tip) => content_at(git, tip, path)?,
+        None => None,
+    }) else {
+        return Ok(FileStatus::NotInShared);
+    };
+    let Some(entry) = entry else {
+        // In the follow list, but printerkeep did not take it in yet.
+        return Ok(FileStatus::ChangesWaiting);
+    };
+    let same = |a: &[u8], b: &[u8]| merge::to_lf(a) == merge::to_lf(b);
+    let base = content_at(git, &entry.base, path)?.unwrap_or_default();
+    if !same(&base, &shared) {
+        return Ok(FileStatus::ChangesWaiting);
+    }
+    if same(&mine, &overrides::protect(&mine, &merge::to_lf(&shared))) {
+        Ok(FileStatus::UpToDate)
+    } else {
+        Ok(FileStatus::LocalChanges)
+    }
+}
+
 /// The content of `path` in `commit`, or `None` if the commit or the file does not exist.
 pub fn content_at(git: &Git, commit: &str, path: &str) -> Result<Option<Vec<u8>>, GitError> {
     if git.resolve(commit)?.is_none() {

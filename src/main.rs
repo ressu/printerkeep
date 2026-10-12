@@ -70,6 +70,24 @@ enum Command {
         /// The path in the config folder.
         file: String,
     },
+    /// Finish a file that needs decision, without editing it.
+    ///
+    /// Usually you edit the file in Fluidd or Mainsail: keep the lines that you want and delete the ####
+    /// lines. printerkeep records the decision at the next backup.
+    Decide {
+        /// The path in the config folder.
+        file: String,
+        /// Use the shared lines.
+        #[arg(
+            long,
+            conflicts_with = "keep_mine",
+            required_unless_present = "keep_mine"
+        )]
+        use_shared: bool,
+        /// Keep the lines of this printer.
+        #[arg(long)]
+        keep_mine: bool,
+    },
     /// Install printerkeep for this user, or update the installation. Needs no root access (no sudo).
     ///
     /// Puts the program in ~/printerkeep (for Moonraker's update manager), links ~/.local/bin/printerkeep,
@@ -118,6 +136,9 @@ fn main() -> ExitCode {
         Command::Follow { file } => app::follow(&paths, file),
         Command::StopFollowing { file } => app::stop_following(&paths, file),
         Command::CopyToShared { file } => app::copy_to_shared(&paths, file),
+        Command::Decide {
+            file, use_shared, ..
+        } => app::decide(&paths, file, *use_shared),
         Command::Install => install::Locations::from_env()
             .and_then(|at| install::install(&paths, &at))
             .map_err(app::Error::from),

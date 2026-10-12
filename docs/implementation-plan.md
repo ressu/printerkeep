@@ -307,6 +307,17 @@ Part 2 (2026-10-12): override lines (C6), in `overrides.rs`.
   (`#printerkeep:override` works).
 - A clean merge whose result is the printer's file writes nothing and gives no line in the log.
 
+Part 3 (2026-10-12): `decide` and the status of each followed file.
+
+- `decide <file> --use-shared|--keep-mine` does the same steps as the block text tells, for all blocks
+  of the file. It refuses a file with an incomplete block, and tells the user to edit the file.
+- `status` shows each followed file with one status word (up to date, local changes, changes waiting,
+  needs decision), or "not in the config folder" / "not in shared". It uses printerkeep's last copy of
+  shared, so it uses no network. Thus, changes in shared after the last backup show only after the next one.
+- Override lines do not count as local changes for "up to date".
+- The log gets lines only when something happens to a followed file (and a "needs decision" line at each
+  run while a file needs decision). Not a full status at each run: that is a line per file every 5 minutes.
+
 ### M6. Real-data tests (0.2)
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).

@@ -506,3 +506,93 @@ fn override_lines_never_travel() {
     assert!(!output.contains("sensor.cfg"), "{output}");
     assert_eq!(printer2.read("sensor.cfg"), improved);
 }
+
+#[test]
+fn decide_and_status_of_followed_files() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::new("printer-1", &url);
+    let printer2 = Printer::new("printer-2", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.write("other.cfg", "[gcode_macro OTHER]\ngcode:\n    M118 other\n");
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "other.cfg"]);
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+    printer2.ok(&["follow", "other.cfg"]);
+
+    let status = printer2.ok(&["status"]);
+    assert!(
+        status.contains(
+            "Followed files (from shared):\n  macros/macros.cfg: up to date\n  other.cfg: up to date\n"
+        ),
+        "{status}"
+    );
+
+    printer2.write(
+        "macros/macros.cfg",
+        &MACROS.replace("variable_temp: 230", "variable_temp: 250"),
+    );
+    printer1.write(
+        "macros/macros.cfg",
+        &MACROS.replace("variable_temp: 230", "variable_temp: 240"),
+    );
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.write(
+        "other.cfg",
+        "[gcode_macro OTHER]\ngcode:\n    M118 changed\n",
+    );
+    printer1.ok(&["copy-to-shared", "other.cfg"]);
+    // status uses printerkeep's last copy of shared: it does not know about the new changes yet.
+    let status = printer2.ok(&["status"]);
+    assert!(
+        status.contains("  macros/macros.cfg: local changes\n"),
+        "{status}"
+    );
+    printer2.ok(&["backup"]);
+    let status = printer2.ok(&["status"]);
+    assert!(
+        status.contains(
+            "  macros/macros.cfg: needs decision. Open the file and look for the #### lines\n  other.cfg: up to date\n"
+        ),
+        "{status}"
+    );
+
+    let error = printer2.fails(&["decide", "other.cfg", "--keep-mine"]);
+    assert!(
+        error.contains("other.cfg does not need decision."),
+        "{error}"
+    );
+    let output = printer2.ok(&["decide", "macros/macros.cfg", "--keep-mine"]);
+    assert!(
+        output.contains("macros/macros.cfg: kept the lines of this printer."),
+        "{output}"
+    );
+    assert!(
+        output.contains("macros/macros.cfg: decision recorded."),
+        "{output}"
+    );
+    assert_eq!(
+        printer2.read("macros/macros.cfg"),
+        MACROS.replace("variable_temp: 230", "variable_temp: 250")
+    );
+    let status = printer2.ok(&["status"]);
+    assert!(
+        status.contains("  macros/macros.cfg: local changes\n"),
+        "{status}"
+    );
+
+    // Later changes from shared merge with the decision.
+    printer1.write(
+        "macros/macros.cfg",
+        &MACROS
+            .replace("variable_temp: 230", "variable_temp: 240")
+            .replace("G90", "G91"),
+    );
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer2.ok(&["backup"]);
+    assert_eq!(
+        printer2.read("macros/macros.cfg"),
+        MACROS
+            .replace("variable_temp: 230", "variable_temp: 250")
+            .replace("G90", "G91")
+    );
+}

@@ -13,6 +13,8 @@ use std::path::Path;
 pub const BLOCK_START: &str = "#### printerkeep: needs decision ##########";
 /// The last line of a needs-decision block. It cannot change.
 pub const BLOCK_END: &str = "#### printerkeep: end ######################";
+/// The line in a block before the shared lines.
+const SHARED_VERSION: &[u8] = b"#### Shared version.";
 /// Lines that start with this are printerkeep's block lines.
 const BLOCK_PREFIX: &[u8] = b"#### printerkeep:";
 
@@ -74,6 +76,43 @@ pub fn has_block(content: &[u8]) -> bool {
     content
         .split(|&b| b == b'\n')
         .any(|line| line.starts_with(BLOCK_PREFIX))
+}
+
+/// Finishes all needs-decision blocks of a file: keeps this printer's lines, or uses the shared lines. Returns
+/// `None` if a block is not complete (for example, the user changed a part of it).
+pub fn decide(content: &[u8], use_shared: bool) -> Option<Vec<u8>> {
+    enum Part {
+        Outside,
+        Mine,
+        Shared,
+    }
+    let mut part = Part::Outside;
+    let mut out = Vec::with_capacity(content.len());
+    for line in content.split_inclusive(|&b| b == b'\n') {
+        let text = line.strip_suffix(b"\n").unwrap_or(line);
+        let text = text.strip_suffix(b"\r").unwrap_or(text);
+        match part {
+            Part::Outside if text == BLOCK_START.as_bytes() => part = Part::Mine,
+            Part::Outside if text.starts_with(BLOCK_PREFIX) => return None,
+            Part::Outside => out.extend_from_slice(line),
+            _ if text == BLOCK_END.as_bytes() => part = Part::Outside,
+            _ if text.starts_with(BLOCK_PREFIX) => return None,
+            _ if text.starts_with(SHARED_VERSION) => part = Part::Shared,
+            _ if text.starts_with(b"####") => {}
+            Part::Mine => {
+                if !use_shared {
+                    out.extend_from_slice(line);
+                }
+            }
+            Part::Shared => {
+                let shared = line.strip_prefix(b"#")?;
+                if use_shared {
+                    out.extend_from_slice(shared);
+                }
+            }
+        }
+    }
+    matches!(part, Part::Outside).then_some(out)
 }
 
 /// Changes git's conflict markers into needs-decision blocks. Returns the content and the number of blocks.
@@ -288,6 +327,36 @@ mod tests {
             text(run(mine, base, shared)),
             "[a]\r\nx: 10\r\ny: 2\r\nz: 30\r\n"
         );
+    }
+
+    #[test]
+    fn decide_gives_mine_or_shared() {
+        for case in [
+            "option-value",
+            "gcode-block",
+            "no-active-lines",
+            "section-header",
+            "save-config",
+        ] {
+            let with_block = fixture(&format!("{case}.cfg"));
+            let mine = decide(with_block.as_bytes(), false).unwrap();
+            let shared = decide(with_block.as_bytes(), true).unwrap();
+            assert!(!has_block(&mine) && !has_block(&shared), "{case}");
+            let crlf = to_crlf(with_block.as_bytes());
+            assert_eq!(decide(&crlf, true).unwrap(), to_crlf(&shared), "{case}");
+        }
+        let option_value = fixture("option-value.cfg");
+        assert_eq!(
+            String::from_utf8(decide(option_value.as_bytes(), true).unwrap()).unwrap(),
+            fixture("option-value.shared.cfg")
+        );
+        assert_eq!(
+            String::from_utf8(decide(option_value.as_bytes(), false).unwrap()).unwrap(),
+            fixture("option-value.mine.cfg")
+        );
+        // An incomplete block: the user deleted the end line.
+        let broken = option_value.replace(BLOCK_END, "");
+        assert_eq!(decide(broken.as_bytes(), true), None);
     }
 
     #[test]
