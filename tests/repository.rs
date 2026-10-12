@@ -207,15 +207,131 @@ fn repository_with_newer_changes_is_never_overwritten() {
     other.ok(&["add-repository", &url]);
     let newer = remote_tip(&url, "printer-1");
 
+    // Both changed the same line: the file needs decision (M6). The newer backup stays in the history.
     first.write("printer.cfg", "[printer]\nmax_velocity: 200\n");
     let output = first.ok(&["backup"]);
-    assert!(output.starts_with("Backup made: Changed printer.cfg\n"));
-    assert!(output.contains("The repository has changes that are not on this printer."));
-    assert_eq!(remote_tip(&url, "printer-1"), newer);
+    assert!(
+        output.starts_with("Backup made: Changed printer.cfg\n"),
+        "{output}"
+    );
+    assert!(
+        output.contains("printer.cfg: needs decision. Open the file and look for the #### lines."),
+        "{output}"
+    );
+    assert!(
+        output.contains("Sent 2 backups to the repository."),
+        "{output}"
+    );
+    let tip = remote_tip(&url, "printer-1");
+    git(
+        Path::new(&url),
+        &["merge-base", "--is-ancestor", &newer, &tip],
+    );
+    let file = first.read("printer.cfg");
+    assert!(
+        file.contains(
+            "#### The repository changed this line too.\n#### Active now (this printer):\n\
+             max_velocity: 200\n#### Repository version. To use it, remove the\n"
+        ),
+        "{file}"
+    );
+    assert!(file.contains("\n#max_velocity: 300\n"), "{file}");
     assert!(
         first
             .ok(&["status"])
-            .contains("Backups not in the repository: 1.")
+            .contains("All backups are in the repository.")
+    );
+}
+
+#[test]
+fn changes_in_the_repository_get_to_the_printer() {
+    let (_dir, url) = repository();
+    let printer = Printer::new("printer-1");
+    printer.write(
+        "printer.cfg",
+        "[printer]\nmax_velocity: 300\nmax_accel: 3000\n",
+    );
+    printer.write("macros.cfg", "[gcode_macro A]\ngcode:\n    G28\n");
+    printer.ok(&["add-repository", &url]);
+
+    // An edit in the web pages of the git host: a different line, a new file, a removed file.
+    let web = tempfile::tempdir().unwrap();
+    let work = web.path().join("work");
+    let run = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .current_dir(&work)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(status.status.success(), "{status:?}");
+    };
+    std::process::Command::new("git")
+        .args(["clone", "--quiet", "--branch", "printer-1", &url])
+        .arg(&work)
+        .status()
+        .unwrap();
+    fs::write(
+        work.join("printer.cfg"),
+        "[printer]\nmax_velocity: 300\nmax_accel: 5000\n",
+    )
+    .unwrap();
+    fs::write(
+        work.join("new.cfg"),
+        "[gcode_macro NEW]\ngcode:\n    M118 new\n",
+    )
+    .unwrap();
+    fs::remove_file(work.join("macros.cfg")).unwrap();
+    run(&["add", "-A"]);
+    run(&[
+        "-c",
+        "user.name=web",
+        "-c",
+        "user.email=web@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "web edit",
+    ]);
+    run(&["push", "--quiet", "origin", "printer-1"]);
+    let web_tip = remote_tip(&url, "printer-1");
+
+    // The printer changes a different line. The next backup merges both.
+    printer.write(
+        "printer.cfg",
+        "[printer]\nmax_velocity: 250\nmax_accel: 3000\n",
+    );
+    let output = printer.ok(&["backup"]);
+    assert!(
+        output.contains(
+            "printer.cfg: wrote the changes from the repository. The changes on this printer stay."
+        ),
+        "{output}"
+    );
+    assert!(
+        output.contains("new.cfg: wrote the changes from the repository."),
+        "{output}"
+    );
+    assert!(
+        output.contains("macros.cfg: removed in the repository. printerkeep does not remove files"),
+        "{output}"
+    );
+    assert_eq!(
+        printer.read("printer.cfg"),
+        "[printer]\nmax_velocity: 250\nmax_accel: 5000\n"
+    );
+    assert_eq!(
+        printer.read("new.cfg"),
+        "[gcode_macro NEW]\ngcode:\n    M118 new\n"
+    );
+    assert!(printer.config().join("macros.cfg").exists());
+    let tip = remote_tip(&url, "printer-1");
+    git(
+        Path::new(&url),
+        &["merge-base", "--is-ancestor", &web_tip, &tip],
+    );
+    assert_eq!(
+        git(Path::new(&url), &["log", "-1", "--format=%s", "printer-1"]),
+        "Changes from the repository: new.cfg, printer.cfg"
     );
 }
 

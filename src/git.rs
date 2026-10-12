@@ -184,8 +184,8 @@ impl Git {
         Ok(line(&stdout))
     }
 
-    /// A three-way merge of three files with `git merge-file`. Returns the result and the number of places
-    /// where the changes touch the same lines (each marked with `marker_size` `<`, `=` and `>`).
+    /// A three-way merge of three files with `git merge-file --diff3`. Returns the result and the number of
+    /// places where the changes touch the same lines (each marked with `marker_size` `<`, `|`, `=` and `>`).
     pub fn merge_file(
         &self,
         mine: &Path,
@@ -195,7 +195,7 @@ impl Git {
     ) -> Result<(Vec<u8>, u32), GitError> {
         let output = output(
             self.command()
-                .args(["merge-file", "-p"])
+                .args(["merge-file", "-p", "--diff3"])
                 .arg(format!("--marker-size={marker_size}"))
                 .args(["-L", "mine", "-L", "base", "-L", "shared"])
                 .arg(mine)
@@ -262,6 +262,38 @@ impl Git {
         }
         let stdout = run(&mut command, Some(message.as_bytes()))?;
         Ok(line(&stdout))
+    }
+
+    /// A commit with more parents (a merge). printerkeep uses it to join the repository's history.
+    pub fn commit_with_parents(
+        &self,
+        tree: &str,
+        parents: &[&str],
+        message: &str,
+        identity: &Identity,
+    ) -> Result<String, GitError> {
+        let mut command = self.command();
+        command
+            .env("GIT_AUTHOR_NAME", &identity.name)
+            .env("GIT_AUTHOR_EMAIL", &identity.email)
+            .env("GIT_COMMITTER_NAME", &identity.name)
+            .env("GIT_COMMITTER_EMAIL", &identity.email)
+            .args(["commit-tree", "--no-gpg-sign", tree]);
+        for parent in parents {
+            command.args(["-p", parent]);
+        }
+        let stdout = run(&mut command, Some(message.as_bytes()))?;
+        Ok(line(&stdout))
+    }
+
+    /// The best common ancestor of two commits, or `None` if they have no common history.
+    pub fn merge_base(&self, a: &str, b: &str) -> Result<Option<String>, GitError> {
+        let output = output(self.command().args(["merge-base", a, b]), None)?;
+        match output.status.code() {
+            Some(0) => Ok(Some(line(&output.stdout))),
+            Some(1) => Ok(None),
+            _ => Err(failed("merge-base", &output)),
+        }
     }
 
     /// Moves `reference` to `new`, but only if it still points to `old` (`None`: it must not exist).

@@ -215,6 +215,11 @@ pub fn apply(
             event(path, Event::Decided);
         }
 
+        // A block from a change in the repository (M6): the user decides first.
+        if current.as_deref().is_some_and(merge::has_block) {
+            event(path, Event::StillNeedsDecision);
+            continue;
+        }
         let (Some(tip), Some(shared_entry)) = (tip, shared_tree.get(path.as_bytes())) else {
             event(path, Event::NotInShared);
             continue;
@@ -271,7 +276,14 @@ pub fn apply(
             state.files.insert(path.clone(), new_base);
             event(path, Event::Written);
         } else {
-            match merge::merge(git, &paths.data, &mine, &base, &shared)? {
+            match merge::merge(
+                git,
+                &paths.data,
+                &mine,
+                &base,
+                &shared,
+                merge::Source::Shared,
+            )? {
                 Merged::Clean(content) => {
                     state.files.insert(path.clone(), new_base);
                     if content != mine {
@@ -394,7 +406,7 @@ pub fn copy_commit(
     git.commit(&tree, tip, message, identity).map(Some)
 }
 
-fn read(disk: &Path) -> Result<Option<Vec<u8>>, SharedError> {
+pub(crate) fn read(disk: &Path) -> Result<Option<Vec<u8>>, SharedError> {
     match std::fs::read(disk) {
         Ok(content) => Ok(Some(content)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -407,7 +419,7 @@ fn read(disk: &Path) -> Result<Option<Vec<u8>>, SharedError> {
 
 /// Replaces the file in one step. Keeps the permissions of the file on the printer; a new file gets the
 /// mode from shared.
-fn write(disk: &Path, content: &[u8], shared: &TreeEntry) -> Result<(), SharedError> {
+pub(crate) fn write(disk: &Path, content: &[u8], shared: &TreeEntry) -> Result<(), SharedError> {
     if std::fs::read(disk).is_ok_and(|old| old == content) {
         return Ok(());
     }

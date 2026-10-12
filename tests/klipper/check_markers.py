@@ -31,7 +31,7 @@ import types
 MARKER = "####"
 BLOCK_START = "#### printerkeep: needs decision"
 BLOCK_END = "#### printerkeep: end"
-SHARED_VERSION = "#### Shared version."
+OTHER_VERSION = ("#### Shared version.", "#### Repository version.")
 
 
 def load_firmware(checkout):
@@ -113,7 +113,7 @@ def decide(text, use_shared):
                 out.append(line)
         elif line.startswith(BLOCK_END):
             state = "outside"
-        elif line.startswith(SHARED_VERSION):
+        elif line.startswith(OTHER_VERSION):
             state = "shared"
         elif line.startswith(MARKER):
             pass

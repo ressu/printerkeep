@@ -13,8 +13,35 @@ use std::path::Path;
 pub const BLOCK_START: &str = "#### printerkeep: needs decision ##########";
 /// The last line of a needs-decision block. It cannot change.
 pub const BLOCK_END: &str = "#### printerkeep: end ######################";
-/// The line in a block before the shared lines.
-const SHARED_VERSION: &[u8] = b"#### Shared version.";
+/// The line in a block before the other lines starts with one of these.
+const OTHER_VERSION: [&[u8]; 2] = [b"#### Shared version.", b"#### Repository version."];
+
+/// Where the other version of a merge comes from. The block text names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// The `shared` branch.
+    Shared,
+    /// The printer's own branch in the repository (for example, an edit in the web pages of the git host).
+    Repository,
+}
+
+impl Source {
+    /// "Shared changed …" / "The repository changed …"
+    fn changer(self) -> &'static str {
+        match self {
+            Source::Shared => "Shared",
+            Source::Repository => "The repository",
+        }
+    }
+
+    /// "Shared version." / "Repository version."
+    fn version(self) -> &'static str {
+        match self {
+            Source::Shared => "Shared version.",
+            Source::Repository => "Repository version.",
+        }
+    }
+}
 /// Lines that start with this are printerkeep's block lines.
 const BLOCK_PREFIX: &[u8] = b"#### printerkeep:";
 
@@ -37,6 +64,7 @@ pub fn merge(
     mine: &[u8],
     base: &[u8],
     shared: &[u8],
+    source: Source,
 ) -> Result<Merged, GitError> {
     let crlf = uses_crlf(mine);
     let missing_end = !mine.is_empty() && !mine.ends_with(b"\n");
@@ -56,7 +84,7 @@ pub fn merge(
     let (mut content, blocks) = if conflicts == 0 {
         (output, 0)
     } else {
-        render_blocks(&output)?
+        render_blocks(&output, source)?
     };
     if missing_end && content.ends_with(b"\n") && !shared.ends_with(b"\n") {
         content.pop();
@@ -97,7 +125,7 @@ pub fn decide(content: &[u8], use_shared: bool) -> Option<Vec<u8>> {
             Part::Outside => out.extend_from_slice(line),
             _ if text == BLOCK_END.as_bytes() => part = Part::Outside,
             _ if text.starts_with(BLOCK_PREFIX) => return None,
-            _ if text.starts_with(SHARED_VERSION) => part = Part::Shared,
+            _ if OTHER_VERSION.iter().any(|v| text.starts_with(v)) => part = Part::Shared,
             _ if text.starts_with(b"####") => {}
             Part::Mine => {
                 if !use_shared {
@@ -115,9 +143,15 @@ pub fn decide(content: &[u8], use_shared: bool) -> Option<Vec<u8>> {
     matches!(part, Part::Outside).then_some(out)
 }
 
-/// Changes git's conflict markers into needs-decision blocks. Returns the content and the number of blocks.
-fn render_blocks(output: &[u8]) -> Result<(Vec<u8>, usize), GitError> {
+/// Changes git's conflict parts into needs-decision blocks. Returns the content and the number of blocks.
+///
+/// git marks changes on lines next to each other as a conflict. In configuration files, that is common (two
+/// options on lines next to each other). Thus, printerkeep looks into each part again: lines that are the
+/// same on both sides are merged, and when no lines were added or removed, each line is merged alone. Only
+/// lines that both sides changed get a block.
+fn render_blocks(output: &[u8], source: Source) -> Result<(Vec<u8>, usize), GitError> {
     let start = format!("{} mine", "<".repeat(MARKER_SIZE));
+    let middle_base = format!("{} base", "|".repeat(MARKER_SIZE));
     let middle = "=".repeat(MARKER_SIZE);
     let end = format!("{} shared", ">".repeat(MARKER_SIZE));
     let unexpected = || GitError::Unexpected {
@@ -127,27 +161,29 @@ fn render_blocks(output: &[u8]) -> Result<(Vec<u8>, usize), GitError> {
     enum Part {
         Outside,
         Mine,
+        Base,
         Shared,
     }
     let mut part = Part::Outside;
     let mut content = Vec::new();
-    let (mut mine, mut shared): (Vec<&[u8]>, Vec<&[u8]>) = (Vec::new(), Vec::new());
+    let mut lines: [Vec<&[u8]>; 3] = Default::default();
     let mut blocks = 0;
     for line in output.split_inclusive(|&b| b == b'\n') {
         let text = line.strip_suffix(b"\n").unwrap_or(line);
         match part {
             Part::Outside if text == start.as_bytes() => part = Part::Mine,
             Part::Outside => content.extend_from_slice(line),
-            Part::Mine if text == middle.as_bytes() => part = Part::Shared,
-            Part::Mine => mine.push(text),
+            Part::Mine if text == middle_base.as_bytes() => part = Part::Base,
+            Part::Mine => lines[0].push(text),
+            Part::Base if text == middle.as_bytes() => part = Part::Shared,
+            Part::Base => lines[1].push(text),
             Part::Shared if text == end.as_bytes() => {
-                content.extend_from_slice(block(&mine, &shared).as_bytes());
-                mine.clear();
-                shared.clear();
-                blocks += 1;
+                let [mine, base, shared] = &lines;
+                blocks += resolve(mine, base, shared, source, &mut content);
+                lines = Default::default();
                 part = Part::Outside;
             }
-            Part::Shared => shared.push(text),
+            Part::Shared => lines[2].push(text),
         }
     }
     if !matches!(part, Part::Outside) {
@@ -156,14 +192,91 @@ fn render_blocks(output: &[u8]) -> Result<(Vec<u8>, usize), GitError> {
     Ok((content, blocks))
 }
 
+/// Writes one conflict part: merged lines, and blocks for the lines that both sides changed. Returns the
+/// number of blocks.
+fn resolve(
+    mine: &[&[u8]],
+    base: &[&[u8]],
+    shared: &[&[u8]],
+    source: Source,
+    out: &mut Vec<u8>,
+) -> usize {
+    let push = |out: &mut Vec<u8>, line: &[u8]| {
+        out.extend_from_slice(line);
+        out.push(b'\n');
+    };
+    if mine.len() == base.len() && shared.len() == base.len() {
+        // Lines were only changed: merge each line alone.
+        let mut blocks = 0;
+        let (mut my_lines, mut shared_lines) = (Vec::new(), Vec::new());
+        for i in 0..base.len() {
+            let line = if mine[i] == base[i] || mine[i] == shared[i] {
+                Some(shared[i])
+            } else if shared[i] == base[i] {
+                Some(mine[i])
+            } else {
+                None
+            };
+            match line {
+                Some(line) => {
+                    if !my_lines.is_empty() {
+                        out.extend_from_slice(block(&my_lines, &shared_lines, source).as_bytes());
+                        blocks += 1;
+                        my_lines.clear();
+                        shared_lines.clear();
+                    }
+                    push(out, line);
+                }
+                None => {
+                    my_lines.push(mine[i]);
+                    shared_lines.push(shared[i]);
+                }
+            }
+        }
+        if !my_lines.is_empty() {
+            out.extend_from_slice(block(&my_lines, &shared_lines, source).as_bytes());
+            blocks += 1;
+        }
+        return blocks;
+    }
+    // Lines that are the same at the start and at the end of both sides are merged.
+    let prefix = mine.iter().zip(shared).take_while(|(a, b)| a == b).count();
+    let suffix = mine[prefix..]
+        .iter()
+        .rev()
+        .zip(shared[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    for line in &mine[..prefix] {
+        push(out, line);
+    }
+    let (my_rest, shared_rest) = (
+        &mine[prefix..mine.len() - suffix],
+        &shared[prefix..shared.len() - suffix],
+    );
+    let blocks = if my_rest.is_empty() && shared_rest.is_empty() {
+        0
+    } else {
+        out.extend_from_slice(block(my_rest, shared_rest, source).as_bytes());
+        1
+    };
+    for line in &mine[mine.len() - suffix..] {
+        push(out, line);
+    }
+    blocks
+}
+
 /// One needs-decision block. The shared lines get a `#` with no space, so that removing the `#` gives
 /// exactly the shared line.
-fn block(mine: &[&[u8]], shared: &[&[u8]]) -> String {
+fn block(mine: &[&[u8]], shared: &[&[u8]], source: Source) -> String {
+    let (changer, version) = (source.changer(), source.version());
     let lines = |n: usize| if n == 1 { "line" } else { "lines" };
     let text = |line: &[u8]| String::from_utf8_lossy(line).into_owned();
     let mut out = vec![BLOCK_START.to_string()];
     if mine.is_empty() {
-        out.push("#### Shared changed lines that this printer removed.".into());
+        out.push(format!(
+            "#### {changer} changed lines that this printer removed."
+        ));
         out.push("#### Active now (this printer): no lines.".into());
     } else {
         let these = if mine.len() == 1 {
@@ -171,21 +284,21 @@ fn block(mine: &[&[u8]], shared: &[&[u8]]) -> String {
         } else {
             "these lines"
         };
-        out.push(format!("#### Shared changed {these} too."));
+        out.push(format!("#### {changer} changed {these} too."));
         out.push("#### Active now (this printer):".into());
         out.extend(mine.iter().map(|l| text(l)));
     }
     match (shared.len(), mine.len()) {
         (0, m) => {
-            out.push("#### Shared version. No lines. To use it,".into());
+            out.push(format!("#### {version} No lines. To use it,"));
             out.push(format!("#### delete the {} above.", lines(m)));
         }
         (s, 0) => {
-            out.push("#### Shared version. To use it, remove the".into());
+            out.push(format!("#### {version} To use it, remove the"));
             out.push(format!("#### # from the next {}:", lines(s)));
         }
         (s, m) => {
-            out.push("#### Shared version. To use it, remove the".into());
+            out.push(format!("#### {version} To use it, remove the"));
             out.push(format!("#### # from the next {} and delete the", lines(s)));
             out.push(format!("#### {} above:", lines(m)));
         }
@@ -251,6 +364,7 @@ mod tests {
             mine.as_bytes(),
             base.as_bytes(),
             shared.as_bytes(),
+            Source::Shared,
         )
         .unwrap()
     }
@@ -316,6 +430,59 @@ mod tests {
             text(run(&mine, base, &shared)),
             fixture("no-active-lines.cfg")
         );
+    }
+
+    #[test]
+    fn changes_on_lines_next_to_each_other_merge() {
+        let base = "[gcode_macro _KAMP_Settings]\nvariable_a: 1\nvariable_b: 2\nvariable_c: 3\n";
+        let mine = base.replace("variable_a: 1", "variable_a: 10");
+        let shared = base.replace("variable_b: 2", "variable_b: 20");
+        assert_eq!(
+            text(run(&mine, base, &shared)),
+            base.replace("variable_a: 1", "variable_a: 10")
+                .replace("variable_b: 2", "variable_b: 20")
+        );
+        assert!(matches!(run(&mine, base, &shared), Merged::Clean(_)));
+
+        // One line changed on both sides gets a block. The line next to it merges.
+        let mine = base
+            .replace("variable_a: 1", "variable_a: 10")
+            .replace("variable_b: 2", "variable_b: 5");
+        let merged = run(&mine, base, &shared);
+        let content = text(merged);
+        assert!(
+            content.starts_with(
+                "[gcode_macro _KAMP_Settings]\nvariable_a: 10\n#### printerkeep: needs decision"
+            ),
+            "{content}"
+        );
+        assert!(
+            content.contains("#### Active now (this printer):\nvariable_b: 5\n"),
+            "{content}"
+        );
+        assert!(content.contains("\n#variable_b: 20\n"), "{content}");
+        assert!(
+            content.ends_with("#### printerkeep: end ######################\nvariable_c: 3\n"),
+            "{content}"
+        );
+    }
+
+    #[test]
+    fn same_lines_at_the_ends_of_a_part_are_merged() {
+        let base = "[a]\nx: 1\n";
+        // Both add the same first line, and different second lines.
+        let mine = "[a]\nx: 1\ny: 2\nz: 3\n";
+        let shared = "[a]\nx: 1\ny: 2\nz: 4\nw: 5\n";
+        let content = text(run(mine, base, shared));
+        assert!(
+            content.starts_with("[a]\nx: 1\ny: 2\n#### printerkeep: needs decision"),
+            "{content}"
+        );
+        assert!(
+            content.contains("#### Active now (this printer):\nz: 3\n"),
+            "{content}"
+        );
+        assert!(content.contains("\n#z: 4\n#w: 5\n"), "{content}");
     }
 
     #[test]

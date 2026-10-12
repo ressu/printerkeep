@@ -318,6 +318,26 @@ Part 3 (2026-10-12): `decide` and the status of each followed file.
 - The log gets lines only when something happens to a followed file (and a "needs decision" line at each
   run while a file needs decision). Not a full status at each run: that is a line per file every 5 minutes.
 
+Part 4 (2026-10-12): changes in the repository on the printer's own branch (M6), in
+`repository_changes.rs`.
+
+- When the repository refuses a send because its branch has commits that the printer does not have (for
+  example, an edit in the web pages), printerkeep merges each changed file as in C4, writes the results, and
+  makes a merge commit with both histories. Then it sends again. Nothing in the repository is overwritten.
+- The block text names the source: "The repository changed this line too." and "Repository version.".
+  `decide` and the parser check accept both.
+- printerkeep never removes a file from the config folder. A file that was removed in the repository gets a
+  line in the log, and the next backup has it again. A file that the printer removed is not written again.
+- printerkeep never writes its state file from the repository, and never writes files that the ignore rules
+  skip. `printerkeep.conf` merges like any other file.
+- A followed file with any needs-decision block gets no changes from shared until the user decides.
+- **Lines next to each other:** `git merge-file` marks changes on lines next to each other as a conflict. In
+  configuration files that is common (two options, one under the other). printerkeep uses `--diff3` and looks
+  into each conflict part again: lines that are the same at the start and the end of both sides are merged,
+  and when no lines were added or removed, each line is merged alone. Only lines that both sides changed get
+  a block. This applies to shared and to the repository. (`--zdiff3` does a part of this, but needs git 2.35;
+  older printer systems have older git.)
+
 ### M6. Real-data tests (0.2)
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).

@@ -7,6 +7,7 @@ use crate::ignore::{IgnoreRules, RuleError};
 use crate::overrides;
 use crate::paths::Paths;
 use crate::repository::{self, History, RepositoryError, Sent, UrlKind};
+use crate::repository_changes;
 use crate::settings::{self, Settings, SettingsError};
 use crate::shared::{self, FileEvent, SHARED_REF, SharedError};
 use crate::snapshot::{self, Scan};
@@ -131,6 +132,8 @@ pub struct BackupReport {
     pub skipped: Vec<String>,
     /// What happened to the followed files.
     pub shared: Vec<String>,
+    /// What happened with changes in the repository on this printer's branch.
+    pub from_repository: Vec<String>,
     /// What happened with the repository. `None` if there is no repository.
     pub sent: Option<Result<Sent, RepositoryError>>,
 }
@@ -165,6 +168,7 @@ impl BackupReport {
             Outcome::NoFiles => vec!["The config folder has no files. No backup made.".to_string()],
         };
         lines.extend(self.shared.iter().cloned());
+        lines.extend(self.from_repository.iter().cloned());
         match &self.sent {
             None | Some(Ok(Sent::Nothing)) => {}
             Some(Ok(Sent::Sent(1))) => lines.push("Sent 1 backup to the repository.".to_string()),
@@ -210,10 +214,21 @@ fn backup_and_send(
     let (outcome, skipped) = make_backup(paths, &rules, &git, printer_name, message)?;
     let shared = follow_shared(paths, settings, &rules, &git, printer_name)?;
 
-    let sent = settings.repository.as_ref().filter(|_| send).map(|url| {
-        repository::remote(url, paths)
-            .and_then(|remote| repository::send(&git, &remote, printer_name))
-    });
+    let send_now = || {
+        settings.repository.as_ref().filter(|_| send).map(|url| {
+            repository::remote(url, paths)
+                .and_then(|remote| repository::send(&git, &remote, printer_name))
+        })
+    };
+    let mut sent = send_now();
+    let mut from_repository = Vec::new();
+    // The repository has changes on this printer's branch (M6): merge them, then send again.
+    if let Some(Err(RepositoryError::RepositoryAhead)) = &sent
+        && let Some(lines) = take_repository_changes(paths, &rules, &git, printer_name)?
+    {
+        from_repository = lines;
+        sent = send_now();
+    }
     // status has no network. It shows the problem from the last try.
     match &sent {
         Some(Err(error)) => {
@@ -229,8 +244,50 @@ fn backup_and_send(
         outcome,
         skipped,
         shared,
+        from_repository,
         sent,
     })
+}
+
+/// Merges the changes on this printer's branch in the repository (fetched by `send`) into the config
+/// folder, and makes a merge commit with both histories. Returns `None` if the histories have no common
+/// commit: then printerkeep does not merge.
+fn take_repository_changes(
+    paths: &Paths,
+    rules: &IgnoreRules,
+    git: &Git,
+    printer_name: &str,
+) -> Result<Option<Vec<String>>, Error> {
+    let reference = branch(printer_name);
+    let (Some(local), Some(remote)) = (
+        git.resolve(&reference)?,
+        git.resolve(&repository::fetched_ref(printer_name))?,
+    ) else {
+        return Ok(None);
+    };
+    let Some(base) = git.merge_base(&local, &remote)? else {
+        return Ok(None);
+    };
+    let events = repository_changes::apply(git, paths, rules, &base, &remote)?;
+    let scan = scan(paths, rules)?;
+    let prepared = backup::prepare(git, &scan, &reference, true)?;
+    let tree = git.write_tree(&prepared.tree, &paths.index())?;
+    let message = format!("{}\n", repository_changes::message(&events));
+    let commit =
+        git.commit_with_parents(&tree, &[&local, &remote], &message, &identity(printer_name))?;
+    git.update_ref(
+        &reference,
+        &commit,
+        Some(&local),
+        "printerkeep: join the repository's history",
+    )?;
+    // The repository has its own commits: they are not new backups to send.
+    git.set_ref(
+        &repository::sent_ref(printer_name),
+        &remote,
+        "printerkeep: in the repository",
+    )?;
+    Ok(Some(events.iter().map(|e| e.line()).collect()))
 }
 
 /// Makes a backup if a file changed. Returns what happened and the files that were not backed up.
