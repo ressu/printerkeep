@@ -248,6 +248,23 @@ Each milestone ends with working, tested software.
   different lines, the result has both; a needs-decision file is always valid configuration), and
   integration tests with three printers cover M1–M9.
 
+**Decisions made in M5 (2026-10-12):**
+
+- Spike result: Klipper and Kalico delete all text from the first `#` on each line before their parser reads
+  it, also in `gcode:` values. Thus, a marker line or a commented-out line is an empty line, and an empty line
+  in a gcode template does nothing. `tests/klipper/check_markers.py` loads test files with the real
+  `configfile.py` of both (pinned in CI) and checks: a file with blocks gives the same configuration as
+  without them, and "keep mine" and "use shared", done as the block tells, give the expected configuration.
+  Cases: an option value, lines in `gcode:`, no active lines, a block over a section header, a file with
+  `[include]` and a SAVE_CONFIG part.
+- A shared line in a block is `#` + the shared line, with no space. With `# `, removing the `#` leaves a space
+  at the start, and the parser adds the line to the value of the option above it. There is not always an
+  error (tested). The block text says "remove the #", so the result must then be exactly the shared line.
+- Marker lines start at the start of the line, also in `gcode:` values. Their indentation does not matter
+  to the parser.
+- When this printer has no lines at a place, the block says "Active now (this printer): no lines." and only
+  "remove the # from the next lines".
+
 ### M6. Real-data tests (0.2)
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).
@@ -295,6 +312,6 @@ Postponed (2026-10-12): the first guide was not good enough for 0.1. A draft,
 | Question | Milestone |
 |---|---|
 | Notifications in Fluidd/Mainsail through Moonraker | after 0.2; the log file is enough until then |
-| Klipper parser and markers | M5 spike |
+| Klipper parser and markers | M5 spike (done, see M5) |
 | Default ignore rules | M1 |
 | `executable` type details | M3 spike (done, see M3) |

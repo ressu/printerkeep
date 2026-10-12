@@ -26,3 +26,28 @@ jobs:
       # shellcheck is installed on the GitHub runners.
       - name: Shell scripts
         run: shellcheck install.sh scripts/*.sh
+
+  # Klipper's and Kalico's own config parsers ignore printerkeep's needs-decision blocks and override
+  # comments (tests/klipper/check_markers.py). Update the pins when the parsers change.
+  firmware-parsers:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - firmware: klipper
+            repository: Klipper3d/klipper
+            ref: e2b99a9159f992169c1ba53029dec020e850cc99
+          - firmware: kalico
+            repository: KalicoCrew/kalico
+            ref: 26e46bd536cd5b55c4028dd2409a2210262fc9ed
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.ref }}
+          path: firmware/${{ matrix.firmware }}
+
+      - name: Check the markers with the ${{ matrix.firmware }} parser
+        run: python3 -I tests/klipper/check_markers.py firmware/${{ matrix.firmware }} tests/klipper/cases

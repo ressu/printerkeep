@@ -2,3 +2,4 @@
 /result
 /dist
 /.direnv
+__pycache__/

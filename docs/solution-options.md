@@ -78,7 +78,7 @@ variable_purge_margin: 20
 #### Shared version. To use it, remove the
 #### # from the next line and delete the
 #### line above:
-# variable_purge_margin: 12
+#variable_purge_margin: 12
 #### When done, delete all #### lines.
 #### printerkeep: end ######################
 variable_purge_amount: 40
@@ -99,6 +99,9 @@ variable_purge_amount: 40
   from the disk.
 - The marker text must never match user content, and printerkeep must find it easily. The `printerkeep:`
   token does this.
+- A shared line gets a `#` with no space after it. When the user removes the `#`, the line is exactly the
+  shared line. With `# `, the line would start with a space, and Klipper would read it as a part of the
+  option above it (tested, M5).
 
 ### C6. Override: lines that never travel
 
@@ -362,9 +365,8 @@ is a problem in practice.
 
 1. Can a different service show a notification in Fluidd or Mainsail through Moonraker? Or is the Klipper
    console (`RESPOND`) the only easy channel? This changes C7, not the option.
-2. Test with Klipper's configuration parser that the C5 marker blocks and the commented-out lines have no
-   effect in every place where they can occur. This includes multi-line `gcode:` values (real configurations
-   already have commented-out lines there).
+2. Solved in M5: Klipper's and Kalico's parsers ignore the C5 blocks and the override comments, also in
+   multi-line `gcode:` values (`tests/klipper/check_markers.py`).
 3. Default ignore rules: find what Moonraker, KlipperScreen, Crowsnest, timelapse, Spoolman and others write
    into the config folder.
 4. Decided in [language.md](language.md): the system `git` command. Merges per file need only
