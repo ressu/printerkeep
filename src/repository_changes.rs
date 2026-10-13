@@ -42,7 +42,7 @@ impl FileEvent {
                 "{path}: wrote the changes from the repository. The changes on this printer stay."
             ),
             Event::NeedsDecision => {
-                format!("{path}: needs decision. Open the file and look for the #### lines.")
+                format!("{path}: needs a decision. Open the file and look for the #### lines.")
             }
             Event::RemovedThere => format!(
                 "{path}: removed in the repository. printerkeep does not remove files from the config \

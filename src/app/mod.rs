@@ -56,102 +56,116 @@ pub enum Error {
     State(#[from] StateError),
     #[error(transparent)]
     Shared(#[from] SharedError),
-    #[error("Shared files need a repository. To add one: printerkeep add-repository <url>")]
+    #[error(
+        "Shared files need a repository, and this printer doesn't have one yet. To add one, run:\n  \
+         printerkeep add-repository <url>"
+    )]
     SharedNeedsRepository,
-    #[error("printerkeep cannot use {file}: {reason}.")]
+    #[error("Can't use {file}: {reason}.")]
     CannotUseFile { file: String, reason: String },
-    #[error("{0} is not in the config folder.")]
+    #[error("{0} isn't in the config folder. Check the path: it starts in the config folder.")]
     NoSuchFile(String),
-    #[error("{0} is not in shared. To add it to shared: printerkeep copy-to-shared {0}")]
+    #[error("{0} isn't in shared yet. To add it to shared, run:\n  printerkeep copy-to-shared {0}")]
     NotInShared(String),
-    #[error("printerkeep does not follow {0}.")]
+    #[error("This printer doesn't follow {0}, so there's nothing to stop.")]
     NotFollowed(String),
-    #[error("{0} does not need decision. It has no #### printerkeep lines.")]
+    #[error("{0} doesn't need a decision: it has no #### printerkeep lines.")]
     NoDecision(String),
     #[error(
-        "printerkeep cannot read the #### lines in {0}: a part of a block is changed or missing. Edit the \
-         file: keep the lines that you want, and delete all #### lines."
+        "Can't read the #### lines in {0}: a part of a block was changed or deleted.\n\
+         Edit the file instead: keep the lines that you want, and delete all #### lines."
     )]
     BlockChanged(String),
     #[error(
-        "{0} needs decision. Open the file and look for the #### lines. After the decision, printerkeep can \
-         copy it to shared."
+        "{0} needs a decision first. Open the file and look for the #### lines.\n\
+         After you decide, you can copy it to shared."
     )]
     FileNeedsDecision(String),
     #[error(
-        "Shared changed {0} at the same time. Run printerkeep backup to get the changes, then try again."
+        "Another printer changed {0} in shared at the same time. To get its changes, run:\n  \
+         printerkeep backup\nThen try again."
     )]
     SharedChanged(String),
     #[error(
-        "The config folder {0} does not exist. Use --printer-data to select the printer_data folder."
+        "The config folder {0} doesn't exist. To use another printer_data folder, add \
+         --printer-data <folder>."
     )]
     NoConfigFolder(PathBuf),
-    #[error("Another printerkeep run is active. Try again later.")]
+    #[error("Another printerkeep run is in progress. Try again in a minute.")]
     Locked,
     #[error(
-        "The printer name '{0}' is not valid. Set printer_name in printerkeep.conf. \
-         Use letters, numbers and '-', for example printer-1."
+        "The printer name '{0}' can't be used. Use letters, numbers, and '-', for example printer-1, and set \
+         it with:\n  printerkeep rename <printer name>"
     )]
     InvalidPrinterName(String),
     #[error(
-        "The printer name 'shared' is not available. Set a different printer_name in printerkeep.conf."
+        "The printer name 'shared' is reserved for the shared files. Choose another name, and set it with:\n  \
+         printerkeep rename <printer name>"
     )]
     ReservedPrinterName,
-    #[error("No token. printerkeep needs a personal access token for an https:// repository.")]
+    #[error(
+        "An https:// repository needs a personal access token, and printerkeep didn't get one. Run the \
+         command again and give the token when printerkeep asks for it."
+    )]
     NoToken,
     #[error(
-        "The repository did not accept the token, or the URL is wrong ({url}). The stored login did not \
-         change. Check that the token has access to this repository, with the permission \"Contents: Read and \
-         write\", and that it did not expire. Then try again."
+        "The repository {url} refused the token, or the URL is wrong. The stored login didn't change.\n\
+         Check that the token has access to this repository with the permission \"Contents: Read and \
+         write\", and that it hasn't expired. Then try again."
     )]
     TokenRefused { url: String },
-    #[error("This printer has no repository. To add one: printerkeep add-repository <url>")]
+    #[error(
+        "This printer doesn't have a repository yet. To add one, run:\n  printerkeep add-repository <url>"
+    )]
     NoRepository,
     #[error(
-        "The repository {0} uses an SSH key, not a token. If the repository does not accept the key, run: \
+        "The repository {0} uses an SSH key, not a token. If the repository refuses the key, run:\n  \
          printerkeep add-repository {0}"
     )]
     NoTokenForUrl(String),
     #[error(
-        "The repository did not accept printerkeep's SSH key. Add this public key to the repository as a \
-         deploy key with write access:\n\n{public_key}\n\n\
-         (GitHub: the repository's Settings > Deploy keys > Add deploy key, then select \"Allow write access\".)\n\
-         Then run this command again."
+        "The repository refused printerkeep's SSH key. Add this public key to the repository as a deploy \
+         key with write access:\n\n{public_key}\n\n\
+         On GitHub: the repository's Settings > Deploy keys > Add deploy key, then select \"Allow write \
+         access\".\nThen run this command again."
     )]
     DeployKeyNeeded { public_key: String },
     #[error(
-        "The branch {name} in the repository has backups with no common history with this printer's \
-         backups.\nprinterkeep did not continue it, and changed nothing.\n\
-         To continue that branch on this printer:\n  printerkeep add-repository {url} --printer-name {name} \
-         --continue\nFor a different branch:\n  printerkeep add-repository {url} --printer-name <another name>"
+        "The branch {name} in the repository has backups that have no history in common with this \
+         printer's backups.\nprinterkeep didn't continue it, and changed nothing.\n\
+         To continue that branch on this printer, run:\n  printerkeep add-repository {url} --printer-name \
+         {name} --continue\nTo use a different branch, run:\n  printerkeep add-repository {url} \
+         --printer-name <another name>"
     )]
     NameInUse { name: String, url: String },
     #[error(
-        "The repository has printers ({}), and this printer has the default name main.\n\
-         printerkeep does not guess which printer this is.\nIf it is one of them:\n  printerkeep \
-         add-repository {url} --printer-name <its name>\nFor a new printer:\n  printerkeep add-repository \
-         {url} --printer-name <new name>",
+        "The repository has these printers: {}. This printer has the default name main, so printerkeep \
+         can't tell which printer this is, and it doesn't guess.\nIf it's one of them, run:\n  \
+         printerkeep add-repository {url} --printer-name <its name>\nFor a new printer, run:\n  \
+         printerkeep add-repository {url} --printer-name <new name>",
         .printers.join(", ")
     )]
     WhichPrinter { url: String, printers: Vec<String> },
     #[error(
-        "The repository already has a branch named '{name}' (from another printer, or from klipper-backup). \
-         rename never takes over a branch in the repository.\nSelect a different name. Or, to make this \
-         printer continue that branch:\n  printerkeep add-repository {url} --printer-name {name} --continue"
+        "The repository already has a branch named '{name}', from another printer or from klipper-backup. \
+         rename never takes over a branch in the repository, so choose a different name.\nTo make this \
+         printer continue that branch instead, run:\n  printerkeep add-repository {url} --printer-name \
+         {name} --continue"
     )]
     NameTaken { name: String, url: String },
     #[error(
-        "The repository has no backups of a printer. Check the URL. To send backups to it, run \
-         printerkeep add-repository <url> on the printer that has them."
+        "The repository has no printer backups yet. Check the URL. To send backups to it, run this on the \
+         printer that has them:\n  printerkeep add-repository <url>"
     )]
     NothingToRestore,
     #[error(
-        "The repository has backups of several printers: {}. Select one: printerkeep restore <url> --printer-name <printer name>",
+        "The repository has backups of several printers: {}. To select one, run:\n  printerkeep restore \
+         <url> --printer-name <printer name>",
         .0.join(", ")
     )]
     SelectPrinter(Vec<String>),
     #[error(
-        "The repository has no printer named '{name}'. Printers in the repository: {}. Use one of them: \
+        "The repository has no printer named '{name}'. Its printers are: {}. To restore one of them, run:\n  \
          printerkeep restore <url> --printer-name <printer name>",
         .available.join(", ")
     )]
@@ -160,7 +174,7 @@ pub enum Error {
         available: Vec<String>,
     },
     #[error(
-        "These files in the config folder are different from the backup: {}. \
+        "These files in the config folder differ from the backup: {}. printerkeep changed nothing.\n\
          To replace them with the files from the backup, add --overwrite.",
         .0.join(", ")
     )]
@@ -273,7 +287,7 @@ fn scan(paths: &Paths, rules: &IgnoreRules) -> Result<Scan, Error> {
         return Err(Error::NoConfigFolder(paths.config.clone()));
     }
     snapshot::scan(&paths.config, rules).map_err(|source| Error::Io {
-        context: format!("Cannot read the config folder {}", paths.config.display()),
+        context: format!("Can't read the config folder {}", paths.config.display()),
         source,
     })
 }
@@ -282,7 +296,7 @@ fn scan(paths: &Paths, rules: &IgnoreRules) -> Result<Scan, Error> {
 /// Also makes the data folder, readable only by this user (it can contain a token).
 fn lock(paths: &Paths) -> Result<File, Error> {
     let io = |source| Error::Io {
-        context: format!("Cannot use the lock file {}", paths.lock().display()),
+        context: format!("Can't use the lock file {}", paths.lock().display()),
         source,
     };
     std::fs::create_dir_all(&paths.data).map_err(io)?;

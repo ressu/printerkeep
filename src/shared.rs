@@ -71,9 +71,9 @@ impl FileEvent {
         let path = &self.path;
         match &self.event {
             Event::Started => format!(
-                "Follows {path}. The differences on this printer are local changes. They stay."
+                "Now follows {path}. This printer's differences from shared stay as local changes."
             ),
-            Event::Added => format!("Follows {path}. Wrote the shared version."),
+            Event::Added => format!("Now follows {path}, and wrote the shared version."),
             Event::Placeholders(count) => format!(
                 "{path}: {count} override {} the value {}. Set the values for this printer.",
                 if *count == 1 {
@@ -88,17 +88,17 @@ impl FileEvent {
                 format!("{path}: wrote the changes from shared. The local changes stay.")
             }
             Event::NeedsDecision | Event::StillNeedsDecision => {
-                format!("{path}: needs decision. Open the file and look for the #### lines.")
+                format!("{path}: needs a decision. Open the file and look for the #### lines.")
             }
             Event::Decided => format!("{path}: decision recorded."),
             Event::NotInShared => format!(
-                "{path}: not in shared. To add it to shared: printerkeep copy-to-shared {path}"
+                "{path} isn't in shared. To add it, run:\n  printerkeep copy-to-shared {path}"
             ),
             Event::MissingOnPrinter => format!(
-                "{path}: printerkeep follows it, but it is not in the config folder. \
-                 To stop following it: printerkeep stop-following {path}"
+                "{path}: printerkeep follows it, but it isn't in the config folder. \
+                 To stop following it, run:\n  printerkeep stop-following {path}"
             ),
-            Event::Invalid(reason) => format!("{path}: printerkeep cannot follow it: {reason}"),
+            Event::Invalid(reason) => format!("printerkeep can't follow {path}: {reason}"),
             Event::Stopped => format!("Stopped following {path}."),
         }
     }
@@ -416,7 +416,7 @@ pub(crate) fn read(disk: &Path) -> Result<Option<Vec<u8>>, SharedError> {
         Ok(content) => Ok(Some(content)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(source) => Err(SharedError::Io {
-            context: format!("Cannot read {}", disk.display()),
+            context: format!("Can't read {}", disk.display()),
             source,
         }),
     }
@@ -430,7 +430,7 @@ pub(crate) fn write(disk: &Path, content: &[u8], shared: &TreeEntry) -> Result<(
     }
     let mode = (!disk.exists() && shared.mode == "100755").then_some(0o755);
     crate::files::replace(disk, content, mode).map_err(|source| SharedError::Io {
-        context: format!("Cannot write {}", disk.display()),
+        context: format!("Can't write {}", disk.display()),
         source,
     })
 }

@@ -12,13 +12,15 @@ use std::process::{Command, Output, Stdio};
 
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
-    #[error("git is not installed. Install it, for example with: sudo apt install git")]
+    #[error(
+        "git isn't installed, and printerkeep needs it. Install it, for example with:\n  sudo apt install git"
+    )]
     NotInstalled,
-    #[error("Cannot run git: {0}")]
+    #[error("Can't run git: {0}")]
     Io(#[from] std::io::Error),
     #[error("git {command} failed: {stderr}")]
     Failed { command: String, stderr: String },
-    #[error("git {command} gave output that printerkeep cannot read")]
+    #[error("git {command} gave output that printerkeep can't read")]
     Unexpected { command: String },
 }
 

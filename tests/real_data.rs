@@ -160,7 +160,7 @@ fn kamp_values_stay_on_each_printer() {
     for printer in [p3, p4] {
         let output = printer.ok(&["backup"]);
         assert!(
-            output.contains("KAMP_Settings.cfg: needs decision."),
+            output.contains("KAMP_Settings.cfg: needs a decision."),
             "{output}"
         );
         let file = printer.read(path);

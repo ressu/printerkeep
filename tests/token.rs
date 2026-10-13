@@ -166,7 +166,7 @@ fn wrong_token_is_refused_and_not_stored() {
         .write_stdin("wrong\n")
         .assert()
         .failure()
-        .stderr(contains("did not accept the token"));
+        .stderr(contains("refused the token"));
     assert!(!printer.dir.path().join("printerkeep/credentials").exists());
     assert!(
         !printer
@@ -207,7 +207,7 @@ fn change_token_after_the_token_expired() {
         .assert()
         .success()
         .stdout(contains(
-            "Backups not in the repository: 1. The last try to send them did not work:",
+            "Backups not in the repository: 1. The last try to send them didn't work:",
         ))
         .stdout(contains("printerkeep change-token"));
     // git did not remove the old token: only printerkeep changes the file.
@@ -219,7 +219,7 @@ fn change_token_after_the_token_expired() {
         .write_stdin("wrong\n")
         .assert()
         .failure()
-        .stderr(contains("The stored login did not change."));
+        .stderr(contains("The stored login didn't change."));
     assert!(printer.credentials().contains(":token-1@"));
 
     // The right token replaces it, and the backup is sent.
@@ -236,7 +236,7 @@ fn change_token_after_the_token_expired() {
         .assert()
         .success()
         .stdout(contains("All backups are in the repository."))
-        .stdout(contains("did not work").not());
+        .stdout(contains("didn't work").not());
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn change_token_needs_an_https_repository() {
         .command(&["change-token"])
         .assert()
         .failure()
-        .stderr(contains("This printer has no repository."));
+        .stderr(contains("This printer doesn't have a repository yet."));
 
     fs::write(
         printer.dir.path().join("config/printerkeep.conf"),

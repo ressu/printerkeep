@@ -113,7 +113,7 @@ fn install_puts_everything_in_the_home_folder() {
         .stdout(contains("printerkeep is installed."))
         .stdout(contains("First backup: 2 files"))
         .stdout(contains(
-            "Lingering: turned on for user printer, so backups run also when nobody is logged in.",
+            "Lingering: turned on for user printer, so backups also run when nobody is logged in.",
         ))
         .stdout(contains(
             "added [update_manager printerkeep] to moonraker.conf",
@@ -173,7 +173,7 @@ fn install_again_changes_nothing_twice() {
         .stdout(contains(
             "moonraker.conf already has [update_manager printerkeep]",
         ))
-        .stdout(contains("Lingering: on for user printer."))
+        .stdout(contains("Lingering: on for user printer,"))
         .stdout(contains("No files changed"));
     assert_eq!(
         host.moonraker_conf()
@@ -191,7 +191,7 @@ fn install_uses_layerlock_when_it_is_installed() {
     host.run(&["install"])
         .assert()
         .success()
-        .stdout(contains("layerlock: no backup starts during a print."));
+        .stdout(contains("layerlock: backups wait until a print is done."));
     let service = fs::read_to_string(host.units().join("printerkeep.service")).unwrap();
     assert!(service.contains(&format!(
         "ExecCondition=\"{}\" --fail-open\n",
@@ -205,7 +205,7 @@ fn install_uses_layerlock_when_it_is_installed() {
     // layerlock removed: systemd would skip every backup, so status tells it.
     fs::remove_file(host.bin().join("layerlock")).unwrap();
     host.run(&["status"]).assert().success().stdout(contains(
-        "but that file does not exist. systemd skips every backup.",
+        "but that file doesn't exist, so systemd skips every backup.",
     ));
 }
 
@@ -217,7 +217,7 @@ fn status_tells_when_layerlock_was_installed_later() {
     host.run(&["status"])
         .assert()
         .success()
-        .stdout(contains("but the backup service does not use it"));
+        .stdout(contains("but the backup service doesn't use it"));
     host.run(&["install"]).assert().success();
     host.run(&["status"])
         .assert()
@@ -233,8 +233,8 @@ fn install_tells_how_to_turn_on_lingering_when_it_is_not_permitted() {
         .assert()
         .success()
         .stdout(contains(
-            "Backups run only while user printer is logged in. To run them always, an administrator \
-             can run: sudo loginctl enable-linger printer",
+            "backups run only while user printer is logged in. To run them always, an administrator \
+             can run:\n    sudo loginctl enable-linger printer",
         ));
 }
 
@@ -268,7 +268,7 @@ fn install_never_replaces_a_command_that_is_not_a_link() {
     host.run(&["install"])
         .assert()
         .success()
-        .stdout(contains("not changed, because"));
+        .stdout(contains("is a file that printerkeep didn't make"));
     assert_eq!(fs::read_to_string(&command).unwrap(), "my own script");
 }
 
@@ -330,7 +330,7 @@ fn install_with_a_name_sets_the_printer_name() {
         .run(&["install", "--printer-name", "two words"])
         .assert()
         .failure()
-        .stderr(contains("Cannot use the printer name"));
+        .stderr(contains("can't be used"));
     assert!(!other.program_dir().exists());
 }
 

@@ -17,7 +17,7 @@ fn add_repository_sends_all_backups_and_stores_only_the_url() {
 
     let output = printer.ok(&["add-repository", &url]);
     assert!(output.contains(&format!("Connected to the repository {url}.")));
-    assert!(output.contains("The repository has no backups of printer-1."));
+    assert!(output.contains("The repository has no branch printer-1 yet"));
     // add-repository writes the URL into printerkeep.conf, so a backup follows.
     assert!(output.contains("Backup made: Changed printerkeep.conf\n"));
     assert!(output.contains("Sent 2 backups to the repository.\n"));
@@ -76,7 +76,7 @@ fn a_printer_never_takes_over_the_branch_of_another_printer() {
     let error = String::from_utf8(error).unwrap();
     assert!(
         error.contains(
-            "The branch printer-1 in the repository has backups with no common history with this printer's"
+            "The branch printer-1 in the repository has backups that have no history in common with this printer's"
         ),
         "{error}"
     );
@@ -123,7 +123,7 @@ fn a_new_repository_with_a_readme_is_joined() {
     printer.ok(&["backup"]);
     let output = printer.ok(&["add-repository", &url]);
     assert!(
-        output.contains("printerkeep joined its history"),
+        output.contains("has no configuration yet, so printerkeep continues from it"),
         "{output}"
     );
     let tip = remote_tip(&url, "main");
@@ -160,7 +160,8 @@ fn repository_with_newer_changes_is_never_overwritten() {
         "{output}"
     );
     assert!(
-        output.contains("printer.cfg: needs decision. Open the file and look for the #### lines."),
+        output
+            .contains("printer.cfg: needs a decision. Open the file and look for the #### lines."),
         "{output}"
     );
     assert!(
@@ -267,9 +268,9 @@ fn unreachable_repository_keeps_backups_for_later() {
     fs::rename(&url, &moved).unwrap();
     printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     let output = printer.ok(&["backup"]);
-    assert!(output.contains("Cannot send the backups: "), "{output}");
+    assert!(output.contains("Can't send the backups. "), "{output}");
     assert!(
-        output.contains("Check the network connection of the printer")
+        output.contains("Check the printer's network connection")
             && output.contains("printerkeep tries again at the next run."),
         "{output}"
     );
@@ -277,10 +278,10 @@ fn unreachable_repository_keeps_backups_for_later() {
     // The same problem at the next runs: the terminal shows it, the log does not get it again.
     for _ in 0..2 {
         let output = printer.ok(&["backup"]);
-        assert!(output.contains("Cannot send the backups: "), "{output}");
+        assert!(output.contains("Can't send the backups. "), "{output}");
     }
     assert_eq!(
-        log().matches("Cannot send the backups: ").count(),
+        log().matches("Can't send the backups. ").count(),
         1,
         "{}",
         log()
@@ -288,7 +289,7 @@ fn unreachable_repository_keeps_backups_for_later() {
     assert!(
         printer
             .ok(&["status"])
-            .contains("Backups not in the repository: 1. The last try to send them did not work:")
+            .contains("Backups not in the repository: 1. The last try to send them didn't work:")
     );
 
     fs::rename(&moved, &url).unwrap();
@@ -302,7 +303,7 @@ fn unreachable_repository_keeps_backups_for_later() {
         "{output}"
     );
     assert!(log().contains("The problem of the last runs is solved."));
-    assert!(!printer.ok(&["status"]).contains("did not work"));
+    assert!(!printer.ok(&["status"]).contains("didn't work"));
 }
 
 #[test]
@@ -354,7 +355,7 @@ fn restore_replaces_different_files_only_with_overwrite() {
         .assert()
         .failure()
         .stderr(contains(
-            "These files in the config folder are different from the backup: printer.cfg.",
+            "These files in the config folder differ from the backup: printer.cfg.",
         ))
         .stderr(contains("add --overwrite"));
     assert_eq!(new.read("printer.cfg"), "# default\n");
@@ -379,7 +380,7 @@ fn restore_asks_which_printer_when_there_are_more() {
         .assert()
         .failure()
         .stderr(contains(
-            "backups of several printers: printer-1, printer-2. Select one",
+            "backups of several printers: printer-1, printer-2. To select one",
         ));
     new.command(&["restore", &url, "--printer-name", "printer-3"])
         .assert()
@@ -403,7 +404,7 @@ fn token_in_the_url_is_refused() {
         ])
         .assert()
         .failure()
-        .stderr(contains("Do not put the token in the URL"));
+        .stderr(contains("Give the URL without the token"));
     assert_eq!(
         printer.read("printerkeep.conf"),
         "[printerkeep]\nprinter_name: printer-1\n"
@@ -419,7 +420,7 @@ fn token_is_not_stored_without_a_connection() {
         .write_stdin("github_pat_test\n")
         .assert()
         .failure()
-        .stderr(contains("Cannot connect to the repository"));
+        .stderr(contains("Can't reach the repository"));
 
     let data = printer.dir.path().join("printerkeep");
     assert!(!data.join("credentials").exists());
@@ -652,7 +653,7 @@ fn rename_refuses_a_klipper_backup_branch_and_the_documented_way_continues_it() 
 
     let error = printer.fails(&["rename", "printer-1"]);
     assert!(
-        error.contains("rename never takes over a branch in the repository."),
+        error.contains("rename never takes over a branch in the repository"),
         "{error}"
     );
     assert!(

@@ -139,7 +139,10 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let Some(printer_data) = cli.printer_data.or_else(default_printer_data) else {
-        eprintln!("printerkeep: cannot find the home folder. Use --printer-data.");
+        eprintln!(
+            "printerkeep: can't find the home folder. To give the printer_data folder, add --printer-data \
+             <folder>."
+        );
         return ExitCode::FAILURE;
     };
     let paths = Paths::new(printer_data);
@@ -240,7 +243,7 @@ fn default_printer_data() -> Option<PathBuf> {
 fn log_lines(paths: &Paths, lines: &[String]) {
     if let Err(error) = log::append(&paths.log, lines) {
         eprintln!(
-            "printerkeep: cannot write the log {}: {error}",
+            "printerkeep: can't write the log {}: {error}",
             paths.log.display()
         );
     }
@@ -302,7 +305,7 @@ fn read_token(request: app::TokenRequest, url: &str) -> std::io::Result<String> 
             eprintln!("printerkeep needs a personal access token for {url}.")
         }
         app::TokenRequest::StoredRefused => eprintln!(
-            "The repository did not accept the stored token. It can be expired or removed.\n\
+            "The repository refused the stored token. It may have expired or been removed.\n\
              printerkeep needs a new personal access token for {url}."
         ),
         app::TokenRequest::Replace => eprintln!(
@@ -312,13 +315,13 @@ fn read_token(request: app::TokenRequest, url: &str) -> std::io::Result<String> 
     }
     if url.contains("github.com") {
         eprintln!(
-            "To make one on GitHub: Settings > Developer settings > Personal access tokens > \
+            "To make one on GitHub, go to Settings > Developer settings > Personal access tokens > \
              Fine-grained tokens > Generate new token.\n\
-             Repository access: \"Only select repositories\", select this repository.\n\
-             Permissions: \"Contents\", \"Read and write\"."
+             Under \"Repository access\", select \"Only select repositories\" and then this repository.\n\
+             Under \"Permissions\", give \"Contents\" the access \"Read and write\"."
         );
     }
-    eprint!("Token (it is not shown on the screen): ");
+    eprint!("Token (it stays hidden while you type): ");
     let echo_off = stty("-echo");
     let result = stdin.lock().read_line(&mut line);
     if echo_off {

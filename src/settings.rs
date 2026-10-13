@@ -55,13 +55,13 @@ pub enum SettingsError {
         line: usize,
         message: String,
     },
-    #[error("Cannot read {file}: {source}")]
+    #[error("Can't read {file}: {source}")]
     Read {
         file: String,
         #[source]
         source: std::io::Error,
     },
-    #[error("Cannot write {file}: {source}")]
+    #[error("Can't write {file}: {source}")]
     Write {
         file: String,
         #[source]
@@ -132,7 +132,7 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
             let Some(entry) = current else {
                 return Err(error(
                     number,
-                    "this line starts with a space, but it does not continue an option. \
+                    "this line starts with a space, but it doesn't continue an option. \
                      Remove the space at the start of the line."
                         .to_string(),
                 ));
@@ -156,13 +156,13 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
             if name != SECTION {
                 return Err(error(
                     number,
-                    format!("unknown section [{name}]. The file has only the [{SECTION}] section."),
+                    format!("unknown section [{name}]. The file has one section: [{SECTION}]."),
                 ));
             }
             if in_section {
                 return Err(error(
                     number,
-                    format!("the [{SECTION}] section is in the file two times."),
+                    format!("the [{SECTION}] section is in the file twice."),
                 ));
             }
             in_section = true;
@@ -173,14 +173,14 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
         if !in_section {
             return Err(error(
                 number,
-                format!("this option is not in a section. Add [{SECTION}] above it."),
+                format!("this option is outside a section. Add [{SECTION}] above it."),
             ));
         }
 
         let Some(separator) = line.find([':', '=']) else {
             return Err(error(
                 number,
-                "this line is not 'option: value'.".to_string(),
+                "this line isn't 'option: value'.".to_string(),
             ));
         };
         let option = line[..separator].trim();
@@ -196,7 +196,7 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
             return Err(error(
                 number,
                 format!(
-                    "the option '{option}' is in the file two times (also on line {}).",
+                    "the option '{option}' is in the file twice (also on line {}).",
                     earlier.line
                 ),
             ));
@@ -542,13 +542,13 @@ mod tests {
              Valid options: printer_name, repository, follow, ignore, check_repository."
         );
         assert!(err("[moonraker]\n").contains("line 1: unknown section [moonraker]"));
-        assert!(err("ignore: a\n").contains("line 1: this option is not in a section"));
+        assert!(err("ignore: a\n").contains("line 1: this option is outside a section"));
         assert!(err("[printerkeep]\n  a.cfg\n").contains("line 2: this line starts with a space"));
         assert!(err("[printerkeep]\nignore: a\nignore: b\n").contains("(also on line 2)"));
         assert!(err("[printerkeep]\nprinter_name:\n").contains("has no value"));
         assert!(err("[printerkeep]\nprinter_name: a\n  b\n").contains("only one value"));
-        assert!(err("[printerkeep]\njust words\n").contains("is not 'option: value'"));
-        assert!(err("[printerkeep]\n[printerkeep]\n").contains("two times"));
+        assert!(err("[printerkeep]\njust words\n").contains("isn't 'option: value'"));
+        assert!(err("[printerkeep]\n[printerkeep]\n").contains("twice"));
     }
 
     #[test]

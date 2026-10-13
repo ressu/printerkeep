@@ -12,25 +12,27 @@ use std::process::Command;
 #[derive(Debug, thiserror::Error)]
 pub enum RepositoryError {
     #[error(
-        "Do not put the token in the URL: printerkeep.conf would contain it, and the repository would get \
-         it. Use the URL without the token. printerkeep asks for the token."
+        "Give the URL without the token. The URL goes into printerkeep.conf, which is backed up, so the \
+         repository would get the token. printerkeep asks for the token separately."
     )]
     TokenInUrl,
     #[error(
-        "printerkeep cannot use the URL '{0}'. Use an https:// URL (token), an SSH URL (key), or a folder."
+        "Can't use the URL '{0}'. Use an https:// URL (with a token), an SSH URL (with a key), \
+         or a folder."
     )]
     UnsupportedUrl(String),
     #[error("{}", login_failed(url))]
     LoginFailed { url: String },
     #[error(
-        "Cannot connect to the repository {url}: {message}. Check the network connection of the printer, \
-         and the repository URL in printerkeep.conf"
+        "Can't reach the repository {url}: {message}. Check the printer's network connection, and the \
+         repository URL in printerkeep.conf."
     )]
     Connection { url: String, message: String },
     #[error("The repository has backups on this printer's branch that are not on this printer")]
     RepositoryAhead,
     #[error(
-        "ssh-keygen is not installed. Install it, for example with: sudo apt install openssh-client"
+        "An SSH URL needs ssh-keygen, and it isn't installed. Install it, for example with:\n  \
+         sudo apt install openssh-client"
     )]
     NoSshKeygen,
     #[error("ssh-keygen failed: {0}")]
@@ -150,7 +152,7 @@ pub fn store_new_token(paths: &Paths, url: &str, token: &str) -> Result<(), Repo
         let context = context.to_string();
         move |source| RepositoryError::Io { context, source }
     };
-    create_private_folder(&paths.data).map_err(io("Cannot make the data folder"))?;
+    create_private_folder(&paths.data).map_err(io("Can't make the data folder"))?;
     let file = new_credentials_file(paths);
     let _ = std::fs::remove_file(&file);
     std::fs::OpenOptions::new()
@@ -159,7 +161,7 @@ pub fn store_new_token(paths: &Paths, url: &str, token: &str) -> Result<(), Repo
         .mode(0o600)
         .open(&file)
         .and_then(|mut f| f.write_all(line.as_bytes()))
-        .map_err(io("Cannot store the token"))
+        .map_err(io("Can't store the token"))
 }
 
 /// The login for `url` with the new token (see `store_new_token`).
@@ -176,7 +178,7 @@ pub fn new_token_remote(url: &str, paths: &Paths) -> Remote {
 pub fn keep_new_token(paths: &Paths) -> Result<(), RepositoryError> {
     std::fs::rename(new_credentials_file(paths), credentials_file(paths)).map_err(|source| {
         RepositoryError::Io {
-            context: "Cannot store the token".into(),
+            context: "Can't store the token".into(),
             source,
         }
     })
@@ -189,11 +191,14 @@ pub fn discard_new_token(paths: &Paths) {
 
 fn login_failed(url: &str) -> String {
     let what = if url.starts_with("https://") {
-        "If the token expired or was removed, run: printerkeep change-token".to_string()
+        "If the token expired or was removed, make a new token, then run:\n  printerkeep change-token"
+            .to_string()
     } else {
-        format!("If the key was removed, run: printerkeep add-repository {url}")
+        format!(
+            "If the key was removed from the repository, run:\n  printerkeep add-repository {url}"
+        )
     };
-    format!("The repository did not accept the login, or the URL is wrong ({url}). {what}")
+    format!("The repository {url} refused the login, or the URL is wrong.\n{what}")
 }
 
 /// Makes printerkeep's SSH key if it does not exist. Returns the public key.
@@ -202,7 +207,7 @@ pub fn ensure_ssh_key(paths: &Paths, printer_name: &str) -> Result<String, Repos
     let public = key.with_extension("pub");
     if !key.exists() {
         create_private_folder(&paths.data).map_err(|source| RepositoryError::Io {
-            context: "Cannot make the data folder".into(),
+            context: "Can't make the data folder".into(),
             source,
         })?;
         let output = Command::new("ssh-keygen")
@@ -227,7 +232,7 @@ pub fn ensure_ssh_key(paths: &Paths, printer_name: &str) -> Result<String, Repos
     std::fs::read_to_string(&public)
         .map(|k| k.trim().to_string())
         .map_err(|source| RepositoryError::Io {
-            context: format!("Cannot read {}", public.display()),
+            context: format!("Can't read {}", public.display()),
             source,
         })
 }
@@ -489,7 +494,7 @@ pub fn plan_restore(git: &Git, tree: &Tree, config: &Path) -> Result<RestorePlan
         let exists = std::fs::symlink_metadata(&disk).is_ok();
         if is_regular_file {
             let content = std::fs::read(&disk).map_err(|source| RepositoryError::Io {
-                context: format!("Cannot read {}", disk.display()),
+                context: format!("Can't read {}", disk.display()),
                 source,
             })?;
             let blob = git.blob(&entry.oid).map_err(RepositoryError::Git)?;
@@ -518,7 +523,7 @@ pub fn write_files(
         let entry = &tree[path];
         let disk = config.join(OsStr::from_bytes(path));
         let io = |source| RepositoryError::Io {
-            context: format!("Cannot write {}", disk.display()),
+            context: format!("Can't write {}", disk.display()),
             source,
         };
         let content = git.blob(&entry.oid).map_err(RepositoryError::Git)?;

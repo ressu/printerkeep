@@ -138,7 +138,7 @@ impl fmt::Display for Status {
             None => {
                 writeln!(
                     f,
-                    "Last backup: none. Run 'printerkeep backup' to make the first backup."
+                    "Last backup: none yet. To make the first one, run: printerkeep backup"
                 )?;
                 writeln!(f, "Files to back up: {}", self.changes.added.len())?;
             }
@@ -166,7 +166,7 @@ impl fmt::Display for Status {
                     Some(n) => match &self.send_problem {
                         Some(problem) => writeln!(
                             f,
-                            "Backups not in the repository: {n}. The last try to send them did not \
+                            "Backups not in the repository: {n}. The last try to send them didn't \
                              work:\n{problem}"
                         ),
                         None => writeln!(

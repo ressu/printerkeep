@@ -252,7 +252,7 @@ fn printer_name_shared_is_not_allowed() {
     printer
         .printerkeep("backup")
         .failure()
-        .stderr(predicates::str::contains("'shared' is not available"));
+        .stderr(predicates::str::contains("'shared' is reserved"));
 }
 
 #[test]
@@ -266,7 +266,7 @@ fn missing_config_folder_is_a_clear_error() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "does not exist. Use --printer-data",
+            "doesn't exist. To use another printer_data folder, add --printer-data",
         ));
 }
 
@@ -284,7 +284,7 @@ fn status_before_and_after_backups() {
     let before = String::from_utf8(before).unwrap();
     assert!(before.contains("Printer name: printer-1\n"));
     assert!(
-        before.contains("Last backup: none. Run 'printerkeep backup' to make the first backup.\n")
+        before.contains("Last backup: none yet. To make the first one, run: printerkeep backup\n")
     );
     assert!(before.contains("Files to back up: 2\n"));
     assert!(before.contains("Repository: none."));

@@ -171,7 +171,7 @@ fn without_a_terminal_printerkeep_does_not_guess() {
     assert!(matches!(error, Error::WhichPrinter { .. }));
     let error = error.to_string();
     assert!(
-        error.contains("this printer has the default name main"),
+        error.contains("This printer has the default name main"),
         "{error}"
     );
     assert!(error.contains("--printer-name <its name>"), "{error}");

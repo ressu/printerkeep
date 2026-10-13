@@ -160,9 +160,8 @@ pub(super) fn backup_and_send(
                 Ok(heads) => Some(heads),
                 Err(error) => {
                     problems.push(format!(
-                        "Cannot check the repository for changes: {}. printerkeep tries again at the next \
-                         run.",
-                        repository::classify(error, &remote.url)
+                        "Can't check the repository for changes. {} printerkeep tries again at the next run.",
+                        sentence(&repository::classify(error, &remote.url).to_string())
                     ));
                     None
                 }
@@ -197,8 +196,8 @@ pub(super) fn backup_and_send(
                 }
             }
             Err(error) => problems.push(format!(
-                "Cannot get the changes from the repository: {}. printerkeep tries again at the next run.",
-                repository::classify(error, &remote.url)
+                "Can't get the changes from the repository. {} printerkeep tries again at the next run.",
+                sentence(&repository::classify(error, &remote.url).to_string())
             )),
         }
     }
@@ -224,7 +223,7 @@ pub(super) fn backup_and_send(
     if let Some(Err(error)) = &sent {
         // The repository cannot be reached: the check found the same. One line says it.
         if matches!(error, RepositoryError::Connection { .. }) {
-            problems.retain(|p| !p.starts_with("Cannot check the repository for changes"));
+            problems.retain(|p| !p.starts_with("Can't check the repository for changes."));
         }
         problems.push(send_problem(error));
     }
@@ -274,6 +273,19 @@ pub(super) fn backup_and_send(
     })
 }
 
+/// `text` as a sentence: with a capital letter and a period at the end.
+fn sentence(text: &str) -> String {
+    let mut chars = text.chars();
+    let mut out: String = match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    };
+    if !out.ends_with(['.', '!', '?']) {
+        out.push('.');
+    }
+    out
+}
+
 /// The text for a send that did not work: what happened, and what to do.
 fn send_problem(error: &RepositoryError) -> String {
     match error {
@@ -282,7 +294,10 @@ fn send_problem(error: &RepositoryError) -> String {
             the next run."
             .to_string(),
         RepositoryError::LoginFailed { .. } => error.to_string(),
-        error => format!("Cannot send the backups: {error}. printerkeep tries again at the next run."),
+        error => format!(
+            "Can't send the backups. {} printerkeep tries again at the next run.",
+            sentence(&error.to_string())
+        ),
     }
 }
 
@@ -389,7 +404,7 @@ fn take_repository_changes(
         )];
         if let Some(kept) = kept {
             lines.push(format!(
-                "The backups that were only on this printer are not sent. They stay on this printer as {kept}."
+                "The backups that were only on this printer stay on it as {kept}, and aren't sent."
             ));
         }
         make_backup(paths, files, git, printer_name, None)?;
@@ -503,7 +518,8 @@ fn follow_shared(
             Ok(tip) => tip,
             Err(error) => {
                 problem = Some(format!(
-                    "Cannot get changes from shared: {error}. printerkeep tries again at the next run."
+                    "Can't get changes from shared. {} printerkeep tries again at the next run.",
+                    sentence(&error.to_string())
                 ));
                 // The last copy is still a correct shared version.
                 local

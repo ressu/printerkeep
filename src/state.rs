@@ -28,17 +28,17 @@ pub struct FileState {
 #[derive(Debug, thiserror::Error)]
 pub enum StateError {
     #[error(
-        "printerkeep cannot read its state file {file}: {message}. Remove the file: printerkeep then \
-         takes the current shared version of each followed file as the starting point."
+        "Can't read the state file {file}: {message}.\nTo start again, delete the file. \
+         printerkeep then takes the current shared version of each followed file as the starting point."
     )]
     Syntax { file: String, message: String },
-    #[error("Cannot read {file}: {source}")]
+    #[error("Can't read {file}: {source}")]
     Read {
         file: String,
         #[source]
         source: std::io::Error,
     },
-    #[error("Cannot write {file}: {source}")]
+    #[error("Can't write {file}: {source}")]
     Write {
         file: String,
         #[source]

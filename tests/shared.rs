@@ -55,14 +55,17 @@ fn copy_to_shared_and_follow_keep_local_changes() {
     printer2.write("macros/macros.cfg", &printer2_macros);
     let output = printer2.ok(&["follow", "macros/macros.cfg"]);
     assert!(
-        output.contains("Follows macros/macros.cfg. The differences"),
+        output.contains("Now follows macros/macros.cfg. This printer's differences"),
         "{output}"
     );
     assert_eq!(printer2.read("macros/macros.cfg"), printer2_macros);
 
     // Printer 3 does not have the file: it gets the shared version.
     let output = printer3.ok(&["follow", "macros/macros.cfg"]);
-    assert!(output.contains("Wrote the shared version."), "{output}");
+    assert!(
+        output.contains(", and wrote the shared version."),
+        "{output}"
+    );
     assert_eq!(printer3.read("macros/macros.cfg"), MACROS);
 
     // M1, M4: printer 1 improves PARK. Printer 2 gets it and keeps its temperature.
@@ -146,7 +149,7 @@ fn needs_decision_waits_for_the_user() {
     let output = printer2.ok(&["backup"]);
     assert!(
         output.contains(
-            "macros/macros.cfg: needs decision. Open the file and look for the #### lines."
+            "macros/macros.cfg: needs a decision. Open the file and look for the #### lines."
         ),
         "{output}"
     );
@@ -175,7 +178,7 @@ fn needs_decision_waits_for_the_user() {
 
     // printerkeep does not copy a file with a block, and does not change the file again.
     let error = printer2.fails(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    assert!(error.contains("needs decision"), "{error}");
+    assert!(error.contains("needs a decision"), "{error}");
     printer1.write(
         "macros/macros.cfg",
         &MACROS
@@ -184,7 +187,7 @@ fn needs_decision_waits_for_the_user() {
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let output = printer2.ok(&["backup"]);
-    assert!(output.contains("needs decision"), "{output}");
+    assert!(output.contains("needs a decision"), "{output}");
     assert_eq!(printer2.read("macros/macros.cfg"), with_block);
 
     // The user uses the shared line and deletes the #### lines. The waiting change then comes in.
@@ -271,7 +274,7 @@ fn stop_following_keeps_the_file() {
 
     let error = printer2.fails(&["stop-following", "macros/macros.cfg"]);
     assert!(
-        error.contains("printerkeep does not follow macros/macros.cfg."),
+        error.contains("This printer doesn't follow macros/macros.cfg"),
         "{error}"
     );
 }
@@ -292,11 +295,13 @@ fn follow_in_the_settings_file_works_without_a_command() {
     );
     let output = printer2.ok(&["backup"]);
     assert!(
-        output.contains("Follows macros/macros.cfg. Wrote the shared version."),
+        output.contains("Now follows macros/macros.cfg, and wrote the shared version."),
         "{output}"
     );
     assert!(
-        output.contains("missing.cfg: not in shared. To add it to shared: printerkeep copy-to-shared missing.cfg"),
+        output.contains(
+            "missing.cfg isn't in shared. To add it, run:\n  printerkeep copy-to-shared missing.cfg"
+        ),
         "{output}"
     );
     assert_eq!(printer2.read("macros/macros.cfg"), MACROS);
@@ -309,7 +314,7 @@ fn shared_commands_need_a_repository_and_a_shared_file() {
     let error = printer1.fails(&["follow", "macros/macros.cfg"]);
     assert!(
         error.contains(
-            "macros/macros.cfg is not in shared. To add it to shared: printerkeep copy-to-shared"
+            "macros/macros.cfg isn't in shared yet. To add it to shared, run:\n  printerkeep copy-to-shared"
         ),
         "{error}"
     );
@@ -322,13 +327,13 @@ fn shared_commands_need_a_repository_and_a_shared_file() {
     assert!(error.contains("without '..'"), "{error}");
     let error = printer1.fails(&["copy-to-shared", "--yes", "nothing.cfg"]);
     assert!(
-        error.contains("nothing.cfg is not in the config folder."),
+        error.contains("nothing.cfg isn't in the config folder."),
         "{error}"
     );
 
     let alone = Printer::empty();
     let error = alone.fails(&["follow", "macros/macros.cfg"]);
-    assert!(error.contains("Shared files need a repository."), "{error}");
+    assert!(error.contains("Shared files need a repository,"), "{error}");
 }
 
 const SENSOR: &str = "\
@@ -351,8 +356,8 @@ fn override_lines_never_travel() {
     let output = printer1.ok(&["copy-to-shared", "--yes", "sensor.cfg"]);
     assert!(
         output.contains(
-            "Not copied: switch_pin in [filament_switch_sensor runout] (override). Shared has the value \
-             CHANGE_ME there."
+            "Kept on this printer: switch_pin in [filament_switch_sensor runout] (override). Shared has \
+             the value CHANGE_ME there"
         ),
         "{output}"
     );
@@ -382,7 +387,7 @@ fn override_lines_never_travel() {
     let output = printer2.ok(&["copy-to-shared", "--yes", "sensor.cfg"]);
     assert!(
         output.contains(
-            "Not copied: switch_pin in [filament_switch_sensor runout] (override). Shared keeps its own line."
+            "Kept on this printer: switch_pin in [filament_switch_sensor runout] (override). Shared keeps its own line."
         ),
         "{output}"
     );
@@ -464,7 +469,7 @@ fn decide_and_status_of_followed_files() {
 
     let error = printer2.fails(&["decide", "other.cfg", "--keep-mine"]);
     assert!(
-        error.contains("other.cfg does not need decision."),
+        error.contains("other.cfg doesn't need a decision"),
         "{error}"
     );
     let output = printer2.ok(&["decide", "macros/macros.cfg", "--keep-mine"]);
@@ -712,7 +717,7 @@ fn copy_to_shared_shows_the_changes_and_asks_first() {
     printer1.write("macros/macros.cfg", MACROS);
     let output = printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     assert!(
-        output.contains("macros/macros.cfg is not in shared yet. It goes to shared with 10 lines."),
+        output.contains("macros/macros.cfg isn't in shared yet. It goes to shared with 10 lines."),
         "{output}"
     );
 

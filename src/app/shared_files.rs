@@ -82,7 +82,7 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
     let state_file = paths.config.join(STATE_FILE);
     let mut state = state::load(&state_file)?;
     let io = |source| Error::Io {
-        context: format!("Cannot read {}", disk.display()),
+        context: format!("Can't read {}", disk.display()),
         source,
     };
     let content = std::fs::read(&disk).map_err(io)?;
@@ -132,12 +132,12 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
         if attempts == 1 && old_oid.as_deref() != Some(entry.oid.as_str()) {
             let preview = copy_preview(&git, &path, old_oid.as_deref(), &entry.oid, &for_shared)?;
             let yes = confirm(&preview).map_err(|source| Error::Io {
-                context: "Cannot copy to shared".into(),
+                context: "Can't copy to shared".into(),
                 source,
             })?;
             if !yes {
                 return Ok(vec![format!(
-                    "Nothing copied. {path} in shared did not change."
+                    "Nothing copied: {path} in shared stays as it was."
                 )]);
             }
         }
@@ -214,13 +214,13 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
     }
     for key in &not_copied.kept {
         lines.push(format!(
-            "Not copied: {key} (override). Shared keeps its own line."
+            "Kept on this printer: {key} (override). Shared keeps its own line."
         ));
     }
     for key in &not_copied.placeholders {
         lines.push(format!(
-            "Not copied: {key} (override). Shared has the value {} there. Each printer that follows the \
-             file sets its own value.",
+            "Kept on this printer: {key} (override). Shared has the value {} there, and each printer that \
+             follows the file sets its own value.",
             overrides::PLACEHOLDER
         ));
     }
@@ -239,7 +239,7 @@ pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>
     let _lock = lock(paths)?;
     let disk = paths.config.join(&path);
     let content = std::fs::read(&disk).map_err(|source| Error::Io {
-        context: format!("Cannot read {}", disk.display()),
+        context: format!("Can't read {}", disk.display()),
         source,
     })?;
     if !crate::merge::has_block(&content) {
@@ -248,7 +248,7 @@ pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>
     let decided = crate::merge::decide(&content, use_shared)
         .ok_or_else(|| Error::BlockChanged(path.clone()))?;
     crate::files::replace(&disk, &decided, None).map_err(|source| Error::Io {
-        context: format!("Cannot write {}", disk.display()),
+        context: format!("Can't write {}", disk.display()),
         source,
     })?;
     let which = if use_shared {
@@ -277,17 +277,17 @@ fn copy_preview(
         ),
         None => {
             let lines = git.blob(new)?.iter().filter(|&&b| b == b'\n').count();
-            format!("{path} is not in shared yet. It goes to shared with {lines} lines.\n")
+            format!("{path} isn't in shared yet. It goes to shared with {lines} lines.\n")
         }
     };
     for key in &for_shared.kept {
         text.push_str(&format!(
-            "Not copied: {key} (override). Shared keeps its own line.\n"
+            "Kept on this printer: {key} (override). Shared keeps its own line.\n"
         ));
     }
     for key in &for_shared.placeholders {
         text.push_str(&format!(
-            "Not copied: {key} (override). Shared gets the value {}.\n",
+            "Kept on this printer: {key} (override). Shared gets the value {}.\n",
             overrides::PLACEHOLDER
         ));
     }

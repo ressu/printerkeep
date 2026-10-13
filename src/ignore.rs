@@ -41,7 +41,7 @@ pub struct IgnoreRules {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("The ignore rule '{rule}' is not valid: {message}")]
+#[error("The ignore rule '{rule}' isn't valid: {message}")]
 pub struct RuleError {
     pub rule: String,
     pub message: String,

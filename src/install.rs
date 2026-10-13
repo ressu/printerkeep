@@ -22,24 +22,25 @@ const TARGET: &str = env!("PRINTERKEEP_TARGET");
 #[derive(Debug, thiserror::Error)]
 pub enum InstallError {
     #[error(
-        "Run this command as the printer's user, not as root. printerkeep installs for one user and needs \
-         no root access."
+        "Run this command as the printer's user instead of root. printerkeep installs for one user, and it \
+         needs no root access."
     )]
     Root,
-    #[error("This build of printerkeep is not for a printer (build target {0}).")]
+    #[error("This build of printerkeep is for another kind of computer (build target {0}).")]
     UnknownTarget(String),
     #[error(
-        "The config folder {0} does not exist. Use --printer-data to select the printer_data folder."
+        "The config folder {0} doesn't exist. To use another printer_data folder, add \
+         --printer-data <folder>."
     )]
     NoConfigFolder(PathBuf),
-    #[error("Cannot use the printer name: {0}")]
+    #[error("{0}")]
     Name(String),
-    #[error("The HOME variable is not set.")]
+    #[error("The HOME variable isn't set, so printerkeep can't find the home folder.")]
     NoHome,
     #[error(
-        "'systemctl --user {command}' did not work: {message}\n\
-         printerkeep uses the systemd user manager. Log in over SSH as the printer's user (not with su or \
-         sudo), and try again."
+        "'systemctl --user {command}' failed: {message}\n\
+         printerkeep uses the systemd user manager, which starts when you log in as the printer's user. Log \
+         in over SSH as that user (su and sudo don't start it), and try again."
     )]
     Systemd { command: String, message: String },
     #[error("{context}: {source}")]
@@ -126,19 +127,17 @@ pub fn install(
         None => Vec::new(),
     };
     let printer_data = std::path::absolute(&paths.printer_data)
-        .map_err(io_error("Cannot find the printer_data folder"))?;
+        .map_err(io_error("Can't find the printer_data folder"))?;
     let mut lines = vec![format!(
         "Installing printerkeep {} ({asset}):",
         crate::VERSION
     )];
 
     // The program and release_info.json.
-    fs::create_dir_all(&at.program_dir).map_err(io_error(format!(
-        "Cannot make {}",
-        at.program_dir.display()
-    )))?;
+    fs::create_dir_all(&at.program_dir)
+        .map_err(io_error(format!("Can't make {}", at.program_dir.display())))?;
     let program = at.program_dir.join(asset);
-    let running = std::env::current_exe().map_err(io_error("Cannot find this program"))?;
+    let running = std::env::current_exe().map_err(io_error("Can't find this program"))?;
     if !same_file(&running, &program) {
         copy_program(&running, &program)?;
     }
@@ -155,7 +154,7 @@ pub fn install(
     let linger = turn_on_linger(paths);
     let layerlock = find_layerlock();
     fs::create_dir_all(&at.units)
-        .map_err(io_error(format!("Cannot make {}", at.units.display())))?;
+        .map_err(io_error(format!("Can't make {}", at.units.display())))?;
     write_file(
         &at.units.join(SERVICE),
         &service_unit(&program, &printer_data, layerlock.as_deref()),
@@ -169,9 +168,9 @@ pub fn install(
             .to_string(),
     );
     lines.push(match &layerlock {
-        Some(_) => "- layerlock: no backup starts during a print.".to_string(),
+        Some(_) => "- layerlock: backups wait until a print is done.".to_string(),
         None => {
-            "- layerlock: not installed. Backups can start during a print (with a low priority)."
+            "- layerlock: not installed, so backups can start during a print (at a low priority)."
                 .to_string()
         }
     });
@@ -189,7 +188,7 @@ pub fn install(
     );
     match crate::app::backup(paths, true) {
         Ok(report) => lines.extend(report.lines()),
-        Err(error) => lines.push(format!("The first backup did not work: {error}")),
+        Err(error) => lines.push(format!("The first backup failed: {error}")),
     }
     lines.push(String::new());
     lines.push(format!(
@@ -260,7 +259,7 @@ pub fn uninstall(paths: &Paths, at: &Locations) -> Result<Vec<String>, InstallEr
 
     if at.program_dir.exists() {
         fs::remove_dir_all(&at.program_dir).map_err(io_error(format!(
-            "Cannot remove {}",
+            "Can't remove {}",
             at.program_dir.display()
         )))?;
         lines.push(format!("Removed {}.", at.program_dir.display()));
@@ -306,7 +305,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// Copies the program in one step: a running program can be replaced, and there is never a half copy.
 fn copy_program(from: &Path, to: &Path) -> Result<(), InstallError> {
-    let context = format!("Cannot copy the program to {}", to.display());
+    let context = format!("Can't copy the program to {}", to.display());
     let program = fs::read(from).map_err(io_error(context.clone()))?;
     crate::files::replace(to, &program, Some(0o755)).map_err(io_error(context))
 }
@@ -325,7 +324,7 @@ fn make_link(program: &Path, link: &Path) -> Result<String, InstallError> {
     if let Ok(meta) = fs::symlink_metadata(link) {
         if !meta.file_type().is_symlink() {
             return Ok(format!(
-                "- Command: not changed, because {} is not a link. Use {}.",
+                "- Command: {} is a file that printerkeep didn't make, so it left it alone. Use {}.",
                 link.display(),
                 program.display()
             ));
@@ -333,11 +332,10 @@ fn make_link(program: &Path, link: &Path) -> Result<String, InstallError> {
         remove_file(link)?;
     }
     if let Some(parent) = link.parent() {
-        fs::create_dir_all(parent)
-            .map_err(io_error(format!("Cannot make {}", parent.display())))?;
+        fs::create_dir_all(parent).map_err(io_error(format!("Can't make {}", parent.display())))?;
     }
     std::os::unix::fs::symlink(program, link)
-        .map_err(io_error(format!("Cannot make the link {}", link.display())))?;
+        .map_err(io_error(format!("Can't make the link {}", link.display())))?;
     let in_path = link.parent().is_some_and(|dir| {
         std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|p| p == dir))
     });
@@ -345,7 +343,7 @@ fn make_link(program: &Path, link: &Path) -> Result<String, InstallError> {
         format!("- Command: printerkeep ({})", link.display())
     } else {
         format!(
-            "- Command: printerkeep ({}). Log in again if the shell does not find the command.",
+            "- Command: printerkeep ({}). If the shell can't find the command, log in again.",
             link.display()
         )
     })
@@ -374,13 +372,13 @@ pub fn problems(at: &Locations) -> Vec<String> {
         .map(unit_unquote);
     match (condition, find_layerlock()) {
         (Some(layerlock), _) if !layerlock.exists() => vec![format!(
-            "Problem: the backup service uses layerlock at {}, but that file does not exist. systemd \
-             skips every backup. Run: printerkeep install",
+            "Problem: the backup service uses layerlock at {}, but that file doesn't exist, so systemd \
+             skips every backup. To fix the service, run:\n  printerkeep install",
             layerlock.display()
         )],
         (None, Some(layerlock)) => vec![format!(
-            "Note: layerlock is installed ({}), but the backup service does not use it. Backups can start \
-             during a print. Run: printerkeep install",
+            "layerlock is installed ({}), but the backup service doesn't use it yet, so backups can start \
+             during a print. To use it, run:\n  printerkeep install",
             layerlock.display()
         )],
         _ => Vec::new(),
@@ -485,7 +483,7 @@ fn turn_on_linger(paths: &Paths) -> String {
     });
     if state.as_deref() == Some("yes") {
         return format!(
-            "- Lingering: on for user {user}. Backups run also when nobody is logged in."
+            "- Lingering: on for user {user}, so backups also run when nobody is logged in."
         );
     }
     let turned_on = Command::new("loginctl")
@@ -496,12 +494,12 @@ fn turn_on_linger(paths: &Paths) -> String {
         // Remember it, so that uninstall can tell the user.
         let _ = fs::create_dir_all(&paths.data).and_then(|()| fs::write(linger_marker(paths), ""));
         format!(
-            "- Lingering: turned on for user {user}, so backups run also when nobody is logged in."
+            "- Lingering: turned on for user {user}, so backups also run when nobody is logged in."
         )
     } else {
         format!(
-            "- Lingering: off. Backups run only while user {user} is logged in. To run them always, \
-             an administrator can run: sudo loginctl enable-linger {user}"
+            "- Lingering: off, so backups run only while user {user} is logged in. To run them always, \
+             an administrator can run:\n    sudo loginctl enable-linger {user}"
         )
     }
 }
@@ -540,7 +538,7 @@ fn add_update_manager(moonraker: &Path) -> Result<Vec<String>, InstallError> {
         }
         Err(source) => {
             return Err(InstallError::Io {
-                context: format!("Cannot read {}", moonraker.display()),
+                context: format!("Can't read {}", moonraker.display()),
                 source,
             });
         }
@@ -563,7 +561,7 @@ fn add_update_manager(moonraker: &Path) -> Result<Vec<String>, InstallError> {
         .append(true)
         .open(moonraker)
         .and_then(|mut file| file.write_all(addition.as_bytes()))
-        .map_err(io_error(format!("Cannot write {}", moonraker.display())))?;
+        .map_err(io_error(format!("Can't write {}", moonraker.display())))?;
     Ok(vec![format!(
         "- Updates: added {SECTION} to moonraker.conf. Restart Moonraker to show printerkeep in the \
          update panel of Fluidd or Mainsail."
@@ -601,19 +599,19 @@ fn remove_section(text: &str) -> Option<String> {
 }
 
 fn write_file(path: &Path, text: &str) -> Result<(), InstallError> {
-    fs::write(path, text).map_err(io_error(format!("Cannot write {}", path.display())))
+    fs::write(path, text).map_err(io_error(format!("Can't write {}", path.display())))
 }
 
 /// Replaces a file in one step and keeps its permissions.
 fn replace_file(path: &Path, text: &str) -> Result<(), InstallError> {
     crate::files::replace(path, text.as_bytes(), None)
-        .map_err(io_error(format!("Cannot write {}", path.display())))
+        .map_err(io_error(format!("Can't write {}", path.display())))
 }
 
 fn remove_file(path: &Path) -> Result<(), InstallError> {
     match fs::remove_file(path) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(InstallError::Io {
-            context: format!("Cannot remove {}", path.display()),
+            context: format!("Can't remove {}", path.display()),
             source: e,
         }),
         _ => Ok(()),

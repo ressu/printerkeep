@@ -32,7 +32,7 @@ impl AddReport {
         }
         match &self.history {
             History::New => lines.push(format!(
-                "The repository has no backups of {}. printerkeep sends the backups of this printer.",
+                "The repository has no branch {} yet, so printerkeep starts it with this printer's backups.",
                 self.printer_name
             )),
             History::Same => {}
@@ -50,18 +50,17 @@ impl AddReport {
                 );
             }
             History::Joined => lines.push(format!(
-                "The repository has no configuration on the branch {}. printerkeep joined its history.",
+                "The branch {} in the repository has no configuration yet, so printerkeep continues from it.",
                 self.printer_name
             )),
             History::Continued { kept } => {
                 lines.push(format!(
-                    "The repository has backups of {}. printerkeep continues that history.",
+                    "The repository has backups of {}, and printerkeep continues that history.",
                     self.printer_name
                 ));
                 if let Some(kept) = kept {
                     lines.push(format!(
-                        "The backups that were only on this printer are not sent. They stay on this \
-                         printer as {kept}."
+                        "The backups that were only on this printer stay on it as {kept}, and aren't sent."
                     ));
                 }
             }
@@ -407,7 +406,7 @@ fn connect_with_token(
 
     let new_token = token(request, url)
         .map_err(|source| Error::Io {
-            context: "Cannot read the token".into(),
+            context: "Can't read the token".into(),
             source,
         })?
         .trim()
@@ -538,7 +537,7 @@ pub fn restore(
     let tree = git.read_tree(&commit)?;
 
     std::fs::create_dir_all(&paths.config).map_err(|source| Error::Io {
-        context: format!("Cannot make the config folder {}", paths.config.display()),
+        context: format!("Can't make the config folder {}", paths.config.display()),
         source,
     })?;
     let plan = repository::plan_restore(&git, &tree, &paths.config)?;
