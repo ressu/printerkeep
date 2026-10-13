@@ -1,8 +1,8 @@
 # printerkeep
 
-printerkeep keeps the configuration of your Klipper printers in a git repository: one repository for one
-printer or for several. It is a standalone tool that stays out of your way. After the install it runs by
-itself, and you need no git client and no other computer.
+printerkeep keeps the configuration of your Klipper printers in a git repository: one repository for one or
+more printers. It is a standalone tool that stays out of your way. After the install it runs by itself, and
+you don't need git skills or a second computer.
 
 It has a few firm opinions, so that it can stay simple:
 
