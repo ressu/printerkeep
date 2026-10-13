@@ -14,6 +14,7 @@ printerkeep works with Klipper and with firmware derived from it, such as Kalico
 - Keeps the history on the printer. A repository (for example on GitHub) is optional.
 - Restores a printer from the repository.
 - Updates itself through Moonraker's update manager.
+- Gets changes that you make in the repository (for example in the web pages of GitHub) to the printer.
 - From release 0.2: shared files for more printers, with local changes on each printer.
 
 ## Install
@@ -181,6 +182,101 @@ printerkeep always skips these files, in addition to your `ignore` rules:
 - `.git` folders of tools in the config folder,
 - editor and system files (`*.swp`, `*.swo`, `*~`, `.DS_Store`, `__pycache__`, `*.pyc`),
 - symbolic links. Tools such as KAMP come back when you install them again.
+
+### Change files in the repository
+
+You can change the files of a printer in the repository, for example in the web pages of GitHub, on the
+branch with the printer name. printerkeep checks the repository at each run (see `check_repository` in
+[Settings](#settings)) and writes the changes into the config folder. If the printer changed the same file,
+printerkeep merges both changes. If both changed the same lines, the file needs decision (see below).
+
+printerkeep never removes a file from the config folder. If you remove a file in the repository, the log
+tells you, and you remove it on the printer.
+
+## More printers
+
+Each printer keeps its own branch. Files that more printers use can be **shared**: a printer that
+**follows** a shared file gets the changes to it, and keeps its own changes to the file (its **local
+changes**). Each printer follows only the files that it needs. All printers must use the same repository.
+
+### Copy a file to shared, and follow it
+
+On the printer with the best version of the file:
+
+```sh
+printerkeep copy-to-shared macros/macros.cfg
+```
+
+This makes the shared version equal to this printer's version, and this printer follows the file. Do the
+same later to send an improvement to the other printers.
+
+On each other printer:
+
+```sh
+printerkeep follow macros/macros.cfg
+```
+
+If the printer has the file already, its differences from the shared version stay as local changes. If not,
+printerkeep writes the shared version. You can also add the file to `follow:` in `printerkeep.conf` (in the
+Fluidd or Mainsail editor):
+
+```
+[printerkeep]
+follow:
+    macros/macros.cfg
+```
+
+To stop: `printerkeep stop-following macros/macros.cfg`. The file stays on the printer.
+
+### Changes from shared
+
+At each run, printerkeep writes the changes from shared into the followed files, and keeps the local changes.
+printerkeep never restarts Klipper. Restart it when you want to use the changes. Each change is a backup, so
+the history shows it.
+
+### Needs decision
+
+If a change from shared and a local change touch the same lines, printerkeep cannot select one. It keeps the
+printer's lines active and puts the shared lines below them, with a `#`. The file stays valid configuration:
+
+```
+#### printerkeep: needs decision ##########
+#### Shared changed this line too.
+#### Active now (this printer):
+variable_purge_margin: 20
+#### Shared version. To use it, remove the
+#### # from the next line and delete the
+#### line above:
+#variable_purge_margin: 12
+#### When done, delete all #### lines.
+#### printerkeep: end ######################
+```
+
+Keep the lines that you want, and delete all `####` lines. printerkeep records the decision at the next run.
+Until then, it writes no more changes from shared into this file. Without the editor:
+`printerkeep decide macros/macros.cfg --use-shared` or `--keep-mine`.
+
+### Lines for one printer only
+
+Some lines must be different on each printer, for example pins. Mark them with an override comment:
+
+```
+[filament_switch_sensor runout]
+switch_pin: ^PG12   # printerkeep: override
+```
+
+Changes from shared never change an override line, and `copy-to-shared` never copies it. If shared has no
+line for it yet, shared gets `switch_pin: CHANGE_ME   # printerkeep: override`. A printer that starts to
+follow the file must set its own value. Klipper refuses `CHANGE_ME` for pins and numbers, so the printer
+does not start with another printer's value.
+
+### The overview
+
+The `shared` branch has a `README.md` that shows each printer and the status of its followed files: up to
+date, local changes, changes waiting, or needs decision. On the printer, `printerkeep status` shows the same.
+
+With more printers, make `shared` the default branch of the repository, so that the repository's page shows
+the overview. On GitHub: the repository's Settings > General > Default branch.
 
 ## Design
 
