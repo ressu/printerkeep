@@ -9,7 +9,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Installs the toolchain from rust-toolchain.toml and caches the build.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -41,9 +41,9 @@ jobs:
             repository: KalicoCrew/kalico
             ref: 26e46bd536cd5b55c4028dd2409a2210262fc9ed
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ matrix.repository }}
           ref: ${{ matrix.ref }}

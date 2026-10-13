@@ -29,7 +29,7 @@ jobs:
             asset: printerkeep-linux-x86_64
             run: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # printerkeep install writes "v<version>" to release_info.json, and update_manager compares it with
       # the release title (the tag). They must be the same.
@@ -52,6 +52,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
+      # Its latest release (v2.2.1) still targets Node.js 20: GitHub runs it on Node.js 24 with a warning.
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0 # same as the Nix devShell
@@ -74,7 +75,7 @@ jobs:
           cp target/${{ matrix.target }}/release/printerkeep ${{ matrix.asset }}
           ${{ matrix.run }} ./${{ matrix.asset }} --version
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
@@ -85,9 +86,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
