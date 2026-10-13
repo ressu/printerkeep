@@ -501,6 +501,76 @@ script):
 - Earlier notes (from the postponed guide): klipper-backup's clone `~/config_backup` has its token in the
   remote URL; a public klipper-backup repository had 825 commits, 86 of them changed the config folder.
 
+### M7. Connect to a repository, and tell the user about problems
+
+Found in a test on a real printer (2026-10-13). The user removed printerkeep's local data, installed again,
+and wanted to run `add-repository` (and to test the klipper-backup conversion). What happened:
+
+- `uninstall` keeps `printerkeep.conf`, so the new install was still connected (`repository:` and
+  `printer_name:`, from an old test build). Its first backup tried to send at once. The install output did
+  not show that.
+- The printer name was `bluev2.home.ressukka.net` (the old host name default). The klipper-backup branch is
+  `bluev2`, so the conversion could not happen.
+- The new local history had no common backup with the repository's branch. Each run (every 5 minutes) the
+  send was refused, and the log said "The repository has changes that are not on this printer". That message
+  was wrong for the case and had no fix in it; the user tried `change-token`. Each run also wrote the log
+  and `send-problem`.
+
+The cause behind it: printerkeep expects the user to know hidden state (the name and the repository in
+`printerkeep.conf`) and to select the right command among `add-repository`, `restore` and `rename`. The user
+thinks "which printer in the repository is this?"; printerkeep thinks "is there a branch with my exact name?".
+
+Terms: to **continue** a history = the printer's branch is set to the repository's last backup, and the next
+backup is made on top of it from the files in the config folder. Backups that were only on the printer are
+not deleted and not sent: they are **set aside** (`refs/printerkeep/kept/<name>-<time>`). Continue never
+changes files.
+
+1. **`add-repository` and `restore` ask which printer this is.**
+   - Both first show what they found: the printer name (and where it comes from: `printerkeep.conf` or the
+     default `main`), and the printer branches in the repository, with klipper-backup branches marked.
+   - A branch with this printer's name and a different history: "Continue that history on this printer?"
+     Yes: continue (a klipper-backup branch the same way: the files move to the top). No: select another
+     name.
+   - No branch with this printer's name, but other printers in the repository: "Is this printer one of
+     them? Type its name, or press Enter for a new branch." A name: rename the printer to it, then continue.
+     This rename must work although the repository has the name (`rename` refuses that today, as a guard).
+   - A new branch, and the local history has more than the install's first backup: "Send the backups made
+     on this printer, or start the history in the repository from now?" From now: one backup of the current
+     files; the local history is set aside.
+   - Without a terminal, printerkeep never guesses: it stops, lists what it found, and names the options
+     (`--name <branch>`, `--continue`, `--from-now`).
+   - `restore` = the same, plus it writes the files of the backup (as now: never removes files, `--overwrite`
+     for different files). After a restore, the install's first backup (of the default configuration) is
+     set aside like any other local backup.
+2. **The backup run continues by itself** when the repository's branch has no common backup with the local
+   history and `printerkeep.conf` already names this repository and this printer (it was connected before).
+   One log line says so. Else it stops sending, with the message from point 4.
+3. **`install` shows the saved state:** "Connected to <url> as <name> (from printerkeep.conf)", or "Printer
+   name: main (the default)".
+4. **Messages:** each problem says what happened, why, and the exact command or step that fixes it. Review
+   all user-facing errors for this. For example: "The branch <name> in the repository has backups with no
+   common history with this printer's backups. printerkeep sends nothing, so nothing in the repository is
+   overwritten. If this printer was set up again: printerkeep add-repository <url> (and answer yes). If it
+   is a different printer: printerkeep rename <name>."
+5. **Log changes, not states:** a problem is logged when it starts, when it changes and when it is solved
+   ("Sending works again: sent 3 backups"). Runs in between are quiet, and `send-problem` is written only
+   when its text changes. `printerkeep status` always shows the current problem.
+6. **The Klipper console:** when a problem starts or is solved, a message in the console of Fluidd and
+   Mainsail, through Moonraker's local socket (`printer_data/comms/moonraker.sock`, JSON-RPC with the
+   standard library: no HTTP client). `RESPOND` if the printer has it, else `M118`.
+
+Tests: the `bluev2` case (local data removed, `printerkeep.conf` kept: the run continues by itself, logs one
+line, then sends); install as `main`, connect as `foobar` (only `foobar` locally, the local backups set aside,
+the repository's `main` not read or changed); the klipper-backup per-printer branch selected by name; "from
+now"; no terminal (stops with the options); each problem logged once.
+
+**Done when:** on a real printer, a reinstall and a reconnect, a klipper-backup conversion with a branch per
+printer, and a restore after a new install all work with `add-repository` or `restore` and its questions,
+without hidden state. A problem shows once in the log and in the console, with its fix.
+
+Backlog: log rotation. printerkeep rotates at 1 MB (`printerkeep.log` → `printerkeep.log.1`). Decide if
+that is enough, or if it should work like Moonraker's own logs.
+
 ## Tests
 
 | Kind | What |
