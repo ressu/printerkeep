@@ -540,8 +540,13 @@ changes files.
    - A new branch, and the local history has more than the install's first backup: "Send the backups made
      on this printer, or start the history in the repository from now?" From now: one backup of the current
      files; the local history is set aside.
+   - **The printer name as an argument,** the same for both commands: `add-repository <url> [printer name]`
+     and `restore <url> [printer name]` (restore has it already; add-repository has none today, and a user
+     expected it to work). With a name, this printer takes that name: if the repository has that branch, it
+     continues it (after the question); if not, it starts a new branch with that name. This replaces the
+     manual edit of `printer_name:` and a separate `--name` option.
    - Without a terminal, printerkeep never guesses: it stops, lists what it found, and names the options
-     (`--name <branch>`, `--continue`, `--from-now`).
+     (the printer name argument, `--continue`, `--from-now`).
    - `restore` = the same, plus it writes the files of the backup (as now: never removes files, `--overwrite`
      for different files). After a restore, the install's first backup (of the default configuration) is
      set aside like any other local backup.
