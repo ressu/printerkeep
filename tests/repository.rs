@@ -1,114 +1,17 @@
 //! M2: repository, sending and restore. A local bare repository stands in for GitHub.
 
-use assert_cmd::Command;
+mod common;
+
+use common::*;
+
 use predicates::str::contains;
 use std::fs;
-use std::path::{Path, PathBuf};
-use tempfile::TempDir;
-
-/// A fake printer: a printer_data folder with a config folder.
-struct Printer {
-    dir: TempDir,
-}
-
-impl Printer {
-    /// A printer with `printer_name` set in printerkeep.conf.
-    fn new(name: &str) -> Self {
-        let printer = Self::empty();
-        printer.write(
-            "printerkeep.conf",
-            &format!("[printerkeep]\nprinter_name: {name}\n"),
-        );
-        printer
-    }
-
-    /// A printer with an empty config folder (like a new install, before a restore).
-    fn empty() -> Self {
-        let printer = Self {
-            dir: tempfile::tempdir().unwrap(),
-        };
-        fs::create_dir_all(printer.config()).unwrap();
-        printer
-    }
-
-    fn config(&self) -> PathBuf {
-        self.dir.path().join("config")
-    }
-
-    fn write(&self, path: &str, content: &str) {
-        let file = self.config().join(path);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(file, content).unwrap();
-    }
-
-    fn read(&self, path: &str) -> String {
-        fs::read_to_string(self.config().join(path)).unwrap()
-    }
-
-    fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::cargo_bin("printerkeep").unwrap();
-        command
-            .env_remove("XDG_RUNTIME_DIR")
-            .arg("--printer-data")
-            .arg(self.dir.path())
-            .args(args);
-        command
-    }
-
-    /// Runs printerkeep, expects success, returns stdout.
-    fn ok(&self, args: &[&str]) -> String {
-        let output = self
-            .command(args)
-            .assert()
-            .success()
-            .get_output()
-            .stdout
-            .clone();
-        String::from_utf8(output).unwrap()
-    }
-
-    fn tip(&self, name: &str) -> String {
-        git(
-            &self.dir.path().join("printerkeep/repo.git"),
-            &["rev-parse", &format!("refs/heads/{name}")],
-        )
-    }
-}
-
-/// An empty bare repository.
-fn repository() -> (TempDir, String) {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("printers.git");
-    std::process::Command::new("git")
-        .args(["init", "--bare", "--quiet"])
-        .arg(&path)
-        .status()
-        .unwrap();
-    let url = path.to_str().unwrap().to_string();
-    (dir, url)
-}
-
-fn git(git_dir: &Path, args: &[&str]) -> String {
-    let output = std::process::Command::new("git")
-        .env("GIT_DIR", git_dir)
-        .args(args)
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "git {args:?}: {output:?}");
-    String::from_utf8(output.stdout).unwrap().trim().to_string()
-}
-
-fn remote_tip(url: &str, name: &str) -> String {
-    git(
-        Path::new(url),
-        &["rev-parse", &format!("refs/heads/{name}")],
-    )
-}
+use std::path::Path;
 
 #[test]
 fn add_repository_sends_all_backups_and_stores_only_the_url() {
     let (_dir, url) = repository();
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n");
     printer.ok(&["backup"]);
 
@@ -128,7 +31,7 @@ fn add_repository_sends_all_backups_and_stores_only_the_url() {
 #[test]
 fn backups_are_sent_and_no_change_sends_nothing() {
     let (_dir, url) = repository();
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n");
     printer.ok(&["add-repository", &url]);
 
@@ -154,13 +57,13 @@ fn backups_are_sent_and_no_change_sends_nothing() {
 #[test]
 fn a_printer_never_takes_over_the_branch_of_another_printer() {
     let (_dir, url) = repository();
-    let first = Printer::new("printer-1");
+    let first = Printer::named("printer-1");
     first.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     first.ok(&["add-repository", &url]);
     let history = remote_tip(&url, "printer-1");
 
     // A second printer (or a new install) with the same name and its own backups.
-    let second = Printer::new("printer-1");
+    let second = Printer::named("printer-1");
     second.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
     second.ok(&["backup"]);
     let error = second
@@ -198,39 +101,11 @@ fn a_printer_never_takes_over_the_branch_of_another_printer() {
 
 #[test]
 fn a_new_repository_with_a_readme_is_joined() {
-    let (dir, url) = repository();
+    let (_dir, url) = repository();
     // As GitHub makes it with "Add a README file": one commit on main, no configuration.
-    let work = dir.path().join("work");
-    let cloned = std::process::Command::new("git")
-        .args(["clone", "--quiet", &url, work.to_str().unwrap()])
-        .status()
-        .unwrap();
-    assert!(cloned.success());
-    fs::write(work.join("README.md"), "# printers\n").unwrap();
-    for args in [
-        &["checkout", "--quiet", "-b", "main"][..],
-        &["add", "-A"],
-        &[
-            "-c",
-            "user.name=web",
-            "-c",
-            "user.email=web@example.com",
-            "commit",
-            "--quiet",
-            "-m",
-            "Initial commit",
-        ],
-        &["push", "--quiet", "origin", "main"],
-    ] {
-        assert!(
-            std::process::Command::new("git")
-                .current_dir(&work)
-                .args(args)
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
+    web_commit(&url, "main", "Initial commit", |work| {
+        fs::write(work.join("README.md"), "# printers\n").unwrap();
+    });
     let readme_commit = remote_tip(&url, "main");
 
     // No printer_name: the printer is "main".
@@ -257,7 +132,7 @@ fn a_new_repository_with_a_readme_is_joined() {
 #[test]
 fn repository_with_newer_changes_is_never_overwritten() {
     let (_dir, url) = repository();
-    let first = Printer::new("printer-1");
+    let first = Printer::named("printer-1");
     first.write("printer.cfg", "[printer]\n");
     first.ok(&["add-repository", &url]);
 
@@ -307,7 +182,7 @@ fn repository_with_newer_changes_is_never_overwritten() {
 #[test]
 fn changes_in_the_repository_get_to_the_printer() {
     let (_dir, url) = repository();
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     printer.write(
         "printer.cfg",
         "[printer]\nmax_velocity: 300\nmax_accel: 3000\n",
@@ -316,44 +191,19 @@ fn changes_in_the_repository_get_to_the_printer() {
     printer.ok(&["add-repository", &url]);
 
     // An edit in the web pages of the git host: a different line, a new file, a removed file.
-    let web = tempfile::tempdir().unwrap();
-    let work = web.path().join("work");
-    let run = |args: &[&str]| {
-        let status = std::process::Command::new("git")
-            .current_dir(&work)
-            .args(args)
-            .output()
-            .unwrap();
-        assert!(status.status.success(), "{status:?}");
-    };
-    std::process::Command::new("git")
-        .args(["clone", "--quiet", "--branch", "printer-1", &url])
-        .arg(&work)
-        .status()
+    web_edit(&url, "printer-1", |work| {
+        fs::write(
+            work.join("printer.cfg"),
+            "[printer]\nmax_velocity: 300\nmax_accel: 5000\n",
+        )
         .unwrap();
-    fs::write(
-        work.join("printer.cfg"),
-        "[printer]\nmax_velocity: 300\nmax_accel: 5000\n",
-    )
-    .unwrap();
-    fs::write(
-        work.join("new.cfg"),
-        "[gcode_macro NEW]\ngcode:\n    M118 new\n",
-    )
-    .unwrap();
-    fs::remove_file(work.join("macros.cfg")).unwrap();
-    run(&["add", "-A"]);
-    run(&[
-        "-c",
-        "user.name=web",
-        "-c",
-        "user.email=web@example.com",
-        "commit",
-        "--quiet",
-        "-m",
-        "web edit",
-    ]);
-    run(&["push", "--quiet", "origin", "printer-1"]);
+        fs::write(
+            work.join("new.cfg"),
+            "[gcode_macro NEW]\ngcode:\n    M118 new\n",
+        )
+        .unwrap();
+        fs::remove_file(work.join("macros.cfg")).unwrap();
+    });
     let web_tip = remote_tip(&url, "printer-1");
 
     // The printer changes a different line. The next backup merges both.
@@ -399,7 +249,7 @@ fn changes_in_the_repository_get_to_the_printer() {
 #[test]
 fn unreachable_repository_keeps_backups_for_later() {
     let (dir, url) = repository();
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n");
     printer.ok(&["add-repository", &url]);
 
@@ -421,7 +271,7 @@ fn unreachable_repository_keeps_backups_for_later() {
 #[test]
 fn restore_into_an_empty_config_folder() {
     let (_dir, url) = repository();
-    let original = Printer::new("printer-1");
+    let original = Printer::named("printer-1");
     original.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     original.write("macros/macros.cfg", "[gcode_macro START]\n");
     original.ok(&["add-repository", &url]);
@@ -454,7 +304,7 @@ fn restore_into_an_empty_config_folder() {
 #[test]
 fn restore_replaces_different_files_only_with_overwrite() {
     let (_dir, url) = repository();
-    let original = Printer::new("printer-1");
+    let original = Printer::named("printer-1");
     original.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     original.ok(&["add-repository", &url]);
 
@@ -482,7 +332,7 @@ fn restore_replaces_different_files_only_with_overwrite() {
 fn restore_asks_which_printer_when_there_are_more() {
     let (_dir, url) = repository();
     for name in ["printer-1", "printer-2"] {
-        let printer = Printer::new(name);
+        let printer = Printer::named(name);
         printer.write("printer.cfg", &format!("# {name}\n"));
         printer.ok(&["add-repository", &url]);
     }
@@ -508,7 +358,7 @@ fn restore_asks_which_printer_when_there_are_more() {
 
 #[test]
 fn token_in_the_url_is_refused() {
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     printer
         .command(&[
             "add-repository",
@@ -525,7 +375,7 @@ fn token_in_the_url_is_refused() {
 
 #[test]
 fn token_is_not_stored_without_a_connection() {
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     // Nothing listens on port 9.
     printer
         .command(&["add-repository", "https://127.0.0.1:9/me/printers.git"])
@@ -545,7 +395,7 @@ fn token_is_not_stored_without_a_connection() {
 
 #[test]
 fn ssh_url_makes_a_key() {
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     printer
         .command(&["add-repository", "ssh://git@127.0.0.1:9/me/printers.git"])
         .assert()
@@ -557,7 +407,7 @@ fn ssh_url_makes_a_key() {
 #[test]
 fn readme_is_in_the_repository_but_not_in_the_config_folder() {
     let (_dir, url) = repository();
-    let printer = Printer::new("printer-1");
+    let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n");
     printer.ok(&["add-repository", &url]);
 
@@ -652,70 +502,39 @@ fn rename_moves_the_history_to_a_new_branch() {
 
 #[test]
 fn a_klipper_backup_branch_is_continued() {
-    let (dir, url) = repository();
+    let (_dir, url) = repository();
     // A repository as klipper-backup makes it: its README, and the config folder in printer_data/config.
-    let work = dir.path().join("work");
-    let cloned = std::process::Command::new("git")
-        .args(["clone", "--quiet", &url, work.to_str().unwrap()])
-        .status()
+    web_commit(
+        &url,
+        "main",
+        "New backup from 01/10/26 - 10:00:00",
+        |work| {
+            fs::create_dir_all(work.join("printer_data/config")).unwrap();
+            fs::write(
+            work.join("README.md"),
+            "# klipper-backup 💾 \nKlipper backup script for manual or automated GitHub backups \n",
+        )
         .unwrap();
-    assert!(cloned.success());
-    let commit = |message: &str| {
-        for args in [
-            &["add", "-A"][..],
-            &[
-                "-c",
-                "user.name=kb",
-                "-c",
-                "user.email=kb@example.com",
-                "commit",
-                "--quiet",
-                "-m",
-                message,
-            ],
-        ] {
-            assert!(
-                std::process::Command::new("git")
-                    .current_dir(&work)
-                    .args(args)
-                    .status()
-                    .unwrap()
-                    .success()
-            );
-        }
-    };
-    fs::create_dir_all(work.join("printer_data/config")).unwrap();
-    fs::write(
-        work.join("README.md"),
-        "# klipper-backup 💾 \nKlipper backup script for manual or automated GitHub backups \n",
-    )
-    .unwrap();
-    fs::write(work.join(".gitignore"), "*.swp\n").unwrap();
-    fs::write(
-        work.join("printer_data/config/printer.cfg"),
-        "[printer]\nmax_velocity: 200\n",
-    )
-    .unwrap();
-    commit("New backup from 01/10/26 - 10:00:00");
-    fs::write(
-        work.join("printer_data/config/printer.cfg"),
-        "[printer]\nmax_velocity: 250\n",
-    )
-    .unwrap();
-    commit("printer.cfg modified - 02/10/26 - 10:00:00");
-    for args in [
-        &["branch", "-M", "main"][..],
-        &["push", "--quiet", "origin", "main"],
-    ] {
-        assert!(
-            std::process::Command::new("git")
-                .current_dir(&work)
-                .args(args)
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
+            fs::write(work.join(".gitignore"), "*.swp\n").unwrap();
+            fs::write(
+                work.join("printer_data/config/printer.cfg"),
+                "[printer]\nmax_velocity: 200\n",
+            )
+            .unwrap();
+        },
+    );
+    web_commit(
+        &url,
+        "main",
+        "printer.cfg modified - 02/10/26 - 10:00:00",
+        |work| {
+            fs::write(
+                work.join("printer_data/config/printer.cfg"),
+                "[printer]\nmax_velocity: 250\n",
+            )
+            .unwrap();
+        },
+    );
     let klipper_backup = remote_tip(&url, "main");
 
     // The printer has the default name main, and its own first backup.

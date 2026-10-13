@@ -1,10 +1,12 @@
 //! M6: tests with real configuration files from four printers (`tests/fixtures/four-printers`, shortened to
 //! the lines that show each case). The cases are in "Real differences, checked" in docs/solution-options.md.
 
-use assert_cmd::Command;
+mod common;
+
+use common::*;
+
 use std::fs;
-use std::path::{Path, PathBuf};
-use tempfile::TempDir;
+use std::path::Path;
 
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/four-printers");
 
@@ -21,63 +23,13 @@ const CRLF: &[(u8, &str)] = &[
     (3, "macros/reset.cfg"),
 ];
 
-struct Printer {
-    dir: TempDir,
-}
-
-impl Printer {
-    /// Printer `n` with its real files, connected to the repository.
-    fn new(n: u8, url: &str) -> Self {
-        let printer = Self {
-            dir: tempfile::tempdir().unwrap(),
-        };
-        let source = Path::new(FIXTURES).join(format!("printer-{n}"));
-        copy_folder(&source, &source, &printer.config(), n);
-        printer.write(
-            "printerkeep.conf",
-            &format!("[printerkeep]\nprinter_name: printer-{n}\n"),
-        );
-        printer.ok(&["add-repository", url]);
-        printer
-    }
-
-    fn config(&self) -> PathBuf {
-        self.dir.path().join("config")
-    }
-
-    fn write(&self, path: &str, content: &str) {
-        let file = self.config().join(path);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(file, content).unwrap();
-    }
-
-    fn read(&self, path: &str) -> String {
-        fs::read_to_string(self.config().join(path)).unwrap()
-    }
-
-    fn ok(&self, args: &[&str]) -> String {
-        let output = Command::cargo_bin("printerkeep")
-            .unwrap()
-            .env_remove("XDG_RUNTIME_DIR")
-            .arg("--printer-data")
-            .arg(self.dir.path())
-            .args(args)
-            .assert()
-            .success()
-            .get_output()
-            .clone();
-        String::from_utf8(output.stdout).unwrap()
-    }
-
-    /// The status line of a followed file.
-    fn status_of(&self, path: &str) -> String {
-        let status = self.ok(&["status"]);
-        status
-            .lines()
-            .find_map(|l| l.strip_prefix(&format!("  {path}: ")))
-            .unwrap_or_else(|| panic!("{path} not in the status:\n{status}"))
-            .to_string()
-    }
+/// Printer `n` with its real files, connected to the repository.
+fn printer(n: u8, url: &str) -> Printer {
+    let printer = Printer::named(&format!("printer-{n}"));
+    let source = Path::new(FIXTURES).join(format!("printer-{n}"));
+    copy_folder(&source, &source, &printer.config(), n);
+    printer.ok(&["add-repository", url]);
+    printer
 }
 
 fn copy_folder(root: &Path, from: &Path, to: &Path, printer: u8) {
@@ -110,66 +62,19 @@ fn fixture(printer: u8, path: &str) -> String {
     fs::read_to_string(Path::new(FIXTURES).join(format!("printer-{printer}/{path}"))).unwrap()
 }
 
-fn repository() -> (TempDir, String) {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("printers.git");
-    let status = std::process::Command::new("git")
-        .args(["init", "--bare", "--quiet"])
-        .arg(&path)
-        .status()
-        .unwrap();
-    assert!(status.success());
-    let url = path.to_str().unwrap().to_string();
-    (dir, url)
-}
-
 /// A change to a file on the shared branch, as in the web pages of the git host.
 fn edit_shared(url: &str, path: &str, change: impl Fn(String) -> String) {
-    let dir = tempfile::tempdir().unwrap();
-    let work = dir.path().join("work");
-    let git = |args: &[&str], at: &Path| {
-        let output = std::process::Command::new("git")
-            .current_dir(at)
-            .args(args)
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "{output:?}");
-    };
-    git(
-        &[
-            "clone",
-            "--quiet",
-            "--branch",
-            "shared",
-            url,
-            work.to_str().unwrap(),
-        ],
-        dir.path(),
-    );
-    let file = work.join(path);
-    fs::write(&file, change(fs::read_to_string(&file).unwrap())).unwrap();
-    git(&["add", "-A"], &work);
-    git(
-        &[
-            "-c",
-            "user.name=web",
-            "-c",
-            "user.email=web@example.com",
-            "commit",
-            "--quiet",
-            "-m",
-            "web edit",
-        ],
-        &work,
-    );
-    git(&["push", "--quiet", "origin", "shared"], &work);
+    web_edit(url, "shared", |work| {
+        let file = work.join(path);
+        fs::write(&file, change(fs::read_to_string(&file).unwrap())).unwrap();
+    });
 }
 
 /// Only line ends are different (printers 2, 3 and 4), and the same path has an unrelated file (printer 1).
 #[test]
 fn line_ends_and_unrelated_files_with_the_same_path() {
     let (_dir, url) = repository();
-    let printers: Vec<Printer> = (1..=4).map(|n| Printer::new(n, &url)).collect();
+    let printers: Vec<Printer> = (1..=4).map(|n| printer(n, &url)).collect();
     let [p1, p2, p3, p4] = &printers[..] else {
         unreachable!()
     };
@@ -200,7 +105,7 @@ fn line_ends_and_unrelated_files_with_the_same_path() {
 #[test]
 fn identical_files_are_up_to_date() {
     let (_dir, url) = repository();
-    let printers: Vec<Printer> = (1..=3).map(|n| Printer::new(n, &url)).collect();
+    let printers: Vec<Printer> = (1..=3).map(|n| printer(n, &url)).collect();
     let path = "macros/reset.cfg";
     printers[0].ok(&["copy-to-shared", "--yes", path]);
     for printer in &printers[1..] {
@@ -213,7 +118,7 @@ fn identical_files_are_up_to_date() {
 #[test]
 fn kamp_values_stay_on_each_printer() {
     let (_dir, url) = repository();
-    let printers: Vec<Printer> = (1..=4).map(|n| Printer::new(n, &url)).collect();
+    let printers: Vec<Printer> = (1..=4).map(|n| printer(n, &url)).collect();
     let [p1, p2, p3, p4] = &printers[..] else {
         unreachable!()
     };
@@ -271,7 +176,7 @@ fn kamp_values_stay_on_each_printer() {
 #[test]
 fn commented_out_lines_for_missing_hardware_stay() {
     let (_dir, url) = repository();
-    let printers: Vec<Printer> = (2..=4).map(|n| Printer::new(n, &url)).collect();
+    let printers: Vec<Printer> = (2..=4).map(|n| printer(n, &url)).collect();
     let [p2, p3, p4] = &printers[..] else {
         unreachable!()
     };
@@ -303,7 +208,7 @@ fn commented_out_lines_for_missing_hardware_stay() {
 #[test]
 fn an_improvement_reaches_the_other_printers() {
     let (_dir, url) = repository();
-    let printers: Vec<Printer> = (1..=4).map(|n| Printer::new(n, &url)).collect();
+    let printers: Vec<Printer> = (1..=4).map(|n| printer(n, &url)).collect();
     let [p1, p2, p3, p4] = &printers[..] else {
         unreachable!()
     };

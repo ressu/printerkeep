@@ -1,10 +1,11 @@
 //! M5: shared files on more printers. A local bare repository stands in for GitHub.
 
-use assert_cmd::Command;
-use predicates::str::contains;
+mod common;
+
+use common::*;
+
 use std::fs;
 use std::path::{Path, PathBuf};
-use tempfile::TempDir;
 
 const MACROS: &str = "\
 [gcode_macro PARK]
@@ -19,101 +20,12 @@ gcode:
     G1 E50 F300
 ";
 
-struct Printer {
-    dir: TempDir,
-}
-
-impl Printer {
-    /// A printer connected to the repository `url`, with a first backup.
-    fn new(name: &str, url: &str) -> Self {
-        let printer = Self {
-            dir: tempfile::tempdir().unwrap(),
-        };
-        fs::create_dir_all(printer.config()).unwrap();
-        printer.write(
-            "printerkeep.conf",
-            &format!("[printerkeep]\nprinter_name: {name}\n"),
-        );
-        printer.write("printer.cfg", &format!("[printer]\n# {name}\n"));
-        printer.ok(&["add-repository", url]);
-        printer
-    }
-
-    fn config(&self) -> PathBuf {
-        self.dir.path().join("config")
-    }
-
-    fn write(&self, path: &str, content: &str) {
-        let file = self.config().join(path);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(file, content).unwrap();
-    }
-
-    fn read(&self, path: &str) -> String {
-        fs::read_to_string(self.config().join(path)).unwrap()
-    }
-
-    fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::cargo_bin("printerkeep").unwrap();
-        command
-            .env_remove("XDG_RUNTIME_DIR")
-            .arg("--printer-data")
-            .arg(self.dir.path())
-            .args(args);
-        command
-    }
-
-    fn ok(&self, args: &[&str]) -> String {
-        let output = self.command(args).assert().success().get_output().clone();
-        String::from_utf8(output.stdout).unwrap()
-    }
-
-    fn fails(&self, args: &[&str]) -> String {
-        let output = self.command(args).assert().failure().get_output().clone();
-        String::from_utf8(output.stderr).unwrap()
-    }
-
-    /// The subject of the last backup.
-    fn last_backup(&self, name: &str) -> String {
-        git(
-            &self.dir.path().join("printerkeep/repo.git"),
-            &["log", "-1", "--format=%s", name],
-        )
-    }
-}
-
-fn repository() -> (TempDir, String) {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("printers.git");
-    git(
-        Path::new("."),
-        &["init", "--bare", "--quiet", path.to_str().unwrap()],
-    );
-    let url = path.to_str().unwrap().to_string();
-    (dir, url)
-}
-
-fn git(git_dir: &Path, args: &[&str]) -> String {
-    let output = std::process::Command::new("git")
-        .env("GIT_DIR", git_dir)
-        .args(args)
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "git {args:?}: {output:?}");
-    String::from_utf8(output.stdout).unwrap().trim().to_string()
-}
-
-/// The content of a file on the shared branch.
-fn shared(url: &str, path: &str) -> String {
-    git(Path::new(url), &["show", &format!("shared:{path}")]) + "\n"
-}
-
 #[test]
 fn copy_to_shared_and_follow_keep_local_changes() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
-    let printer3 = Printer::new("printer-3", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
+    let printer3 = Printer::connected("printer-3", &url);
 
     // M8: printer 1's version becomes the shared version.
     printer1.write("macros/macros.cfg", MACROS);
@@ -122,7 +34,7 @@ fn copy_to_shared_and_follow_keep_local_changes() {
         output.contains("Copied macros/macros.cfg to shared. Other printers can now follow it."),
         "{output}"
     );
-    assert_eq!(shared(&url, "macros/macros.cfg"), MACROS);
+    assert_eq!(show(&url, "shared", "macros/macros.cfg"), MACROS);
     assert!(
         printer1
             .read("printerkeep.conf")
@@ -191,8 +103,8 @@ fn copy_to_shared_and_follow_keep_local_changes() {
 #[test]
 fn copy_to_shared_first_takes_the_changes_of_other_printers() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
@@ -208,15 +120,15 @@ fn copy_to_shared_first_takes_the_changes_of_other_printers() {
     let both = MACROS
         .replace("G1 E50 F300", "G1 E60 F300")
         .replace("G90", "G90\n    G28");
-    assert_eq!(shared(&url, "macros/macros.cfg"), both);
+    assert_eq!(show(&url, "shared", "macros/macros.cfg"), both);
     assert_eq!(printer2.read("macros/macros.cfg"), both);
 }
 
 #[test]
 fn needs_decision_waits_for_the_user() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
@@ -307,8 +219,8 @@ fn needs_decision_waits_for_the_user() {
 #[test]
 fn line_endings_of_the_printer_stay() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let crlf = MACROS.replace('\n', "\r\n");
@@ -330,8 +242,8 @@ fn line_endings_of_the_printer_stay() {
 #[test]
 fn stop_following_keeps_the_file() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
@@ -367,8 +279,8 @@ fn stop_following_keeps_the_file() {
 #[test]
 fn follow_in_the_settings_file_works_without_a_command() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
 
@@ -393,7 +305,7 @@ fn follow_in_the_settings_file_works_without_a_command() {
 #[test]
 fn shared_commands_need_a_repository_and_a_shared_file() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
+    let printer1 = Printer::connected("printer-1", &url);
     let error = printer1.fails(&["follow", "macros/macros.cfg"]);
     assert!(
         error.contains(
@@ -414,16 +326,9 @@ fn shared_commands_need_a_repository_and_a_shared_file() {
         "{error}"
     );
 
-    let alone = tempfile::tempdir().unwrap();
-    fs::create_dir_all(alone.path().join("config")).unwrap();
-    Command::cargo_bin("printerkeep")
-        .unwrap()
-        .arg("--printer-data")
-        .arg(alone.path())
-        .args(["follow", "macros/macros.cfg"])
-        .assert()
-        .failure()
-        .stderr(contains("Shared files need a repository."));
+    let alone = Printer::empty();
+    let error = alone.fails(&["follow", "macros/macros.cfg"]);
+    assert!(error.contains("Shared files need a repository."), "{error}");
 }
 
 const SENSOR: &str = "\
@@ -437,9 +342,9 @@ runout_gcode:
 #[test]
 fn override_lines_never_travel() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
-    let printer3 = Printer::new("printer-3", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
+    let printer3 = Printer::connected("printer-3", &url);
 
     // C6: the pin of printer 1 does not go to shared.
     printer1.write("sensor.cfg", SENSOR);
@@ -452,7 +357,7 @@ fn override_lines_never_travel() {
         "{output}"
     );
     let in_shared = SENSOR.replace("^PG12", "CHANGE_ME");
-    assert_eq!(shared(&url, "sensor.cfg"), in_shared);
+    assert_eq!(show(&url, "shared", "sensor.cfg"), in_shared);
     assert_eq!(printer1.read("sensor.cfg"), SENSOR);
 
     // A printer without the file gets the placeholder, and a clear line.
@@ -482,7 +387,7 @@ fn override_lines_never_travel() {
         "{output}"
     );
     assert_eq!(
-        shared(&url, "sensor.cfg"),
+        show(&url, "shared", "sensor.cfg"),
         in_shared.replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n")
     );
     printer1.ok(&["backup"]);
@@ -511,8 +416,8 @@ fn override_lines_never_travel() {
 #[test]
 fn decide_and_status_of_followed_files() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.write("other.cfg", "[gcode_macro OTHER]\ngcode:\n    M118 other\n");
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
@@ -620,8 +525,8 @@ fn file_times(folder: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
 #[test]
 fn a_run_with_no_change_writes_nothing() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
@@ -638,8 +543,8 @@ fn a_run_with_no_change_writes_nothing() {
 #[test]
 fn check_repository_sets_how_often_printerkeep_checks() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
@@ -688,38 +593,10 @@ fn check_repository_sets_how_often_printerkeep_checks() {
 #[test]
 fn a_web_edit_gets_to_a_printer_without_changes() {
     let (_dir, url) = repository();
-    let printer = Printer::new("printer-1", &url);
-    let web = tempfile::tempdir().unwrap();
-    let work = web.path().join("work");
-    std::process::Command::new("git")
-        .args(["clone", "--quiet", "--branch", "printer-1", &url])
-        .arg(&work)
-        .status()
-        .unwrap();
-    fs::write(work.join("printer.cfg"), "[printer]\nmax_velocity: 300\n").unwrap();
-    for args in [
-        &["add", "-A"][..],
-        &[
-            "-c",
-            "user.name=web",
-            "-c",
-            "user.email=web@example.com",
-            "commit",
-            "--quiet",
-            "-m",
-            "web",
-        ],
-        &["push", "--quiet", "origin", "printer-1"],
-    ] {
-        assert!(
-            std::process::Command::new("git")
-                .current_dir(&work)
-                .args(args)
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
+    let printer = Printer::connected("printer-1", &url);
+    web_edit(&url, "printer-1", |work| {
+        fs::write(work.join("printer.cfg"), "[printer]\nmax_velocity: 300\n").unwrap();
+    });
     let web_tip = git(Path::new(&url), &["rev-parse", "printer-1"]);
 
     let output = printer.ok(&["backup"]);
@@ -748,12 +625,12 @@ fn a_web_edit_gets_to_a_printer_without_changes() {
 #[test]
 fn shared_has_a_static_readme() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
 
-    let readme = shared(&url, "README.md");
+    let readme = show(&url, "shared", "README.md");
     assert!(
         readme.contains(&format!("printerkeep restore {url} <printer name>")),
         "{readme}"
@@ -771,43 +648,15 @@ fn shared_has_a_static_readme() {
     );
 
     // The user's own README on shared stays.
-    let web = tempfile::tempdir().unwrap();
-    let work = web.path().join("work");
-    std::process::Command::new("git")
-        .args(["clone", "--quiet", "--branch", "shared", &url])
-        .arg(&work)
-        .status()
-        .unwrap();
-    fs::write(work.join("README.md"), "# Our printers\n").unwrap();
-    for args in [
-        &["add", "-A"][..],
-        &[
-            "-c",
-            "user.name=web",
-            "-c",
-            "user.email=web@example.com",
-            "commit",
-            "--quiet",
-            "-m",
-            "own readme",
-        ],
-        &["push", "--quiet", "origin", "shared"],
-    ] {
-        assert!(
-            std::process::Command::new("git")
-                .current_dir(&work)
-                .args(args)
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
+    web_edit(&url, "shared", |work| {
+        fs::write(work.join("README.md"), "# Our printers\n").unwrap();
+    });
     printer1.write(
         "macros/macros.cfg",
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    assert_eq!(shared(&url, "README.md"), "# Our printers\n");
+    assert_eq!(show(&url, "shared", "README.md"), "# Our printers\n");
 
     // README.md on shared is not a file to follow.
     let error = printer2.fails(&["follow", "README.md"]);
@@ -817,9 +666,9 @@ fn shared_has_a_static_readme() {
 #[test]
 fn a_printer_that_was_offline_gets_all_changes_in_one_merge() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
-    let printer2 = Printer::new("printer-2", &url);
-    let printer3 = Printer::new("printer-3", &url);
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
+    let printer3 = Printer::connected("printer-3", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
@@ -857,7 +706,7 @@ fn a_printer_that_was_offline_gets_all_changes_in_one_merge() {
 #[test]
 fn copy_to_shared_shows_the_changes_and_asks_first() {
     let (_dir, url) = repository();
-    let printer1 = Printer::new("printer-1", &url);
+    let printer1 = Printer::connected("printer-1", &url);
     printer1.write("macros/macros.cfg", MACROS);
     let output = printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     assert!(
@@ -875,7 +724,7 @@ fn copy_to_shared_shows_the_changes_and_asks_first() {
         error.contains("Run it on a terminal, or add --yes"),
         "{error}"
     );
-    assert_eq!(shared(&url, "macros/macros.cfg"), MACROS);
+    assert_eq!(show(&url, "shared", "macros/macros.cfg"), MACROS);
 
     let output = printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     assert!(
