@@ -252,66 +252,25 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
 /// Sets single-value options in the settings file and keeps all other lines and comments.
 /// Makes the file if it does not exist. The file is replaced in one step (no half-written file).
 pub fn set_options(path: &Path, options: &[(&str, &str)]) -> Result<(), SettingsError> {
-    let file = path.display().to_string();
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(source) => return Err(SettingsError::Read { file, source }),
-    };
+    let (file, mut lines) = read_lines(path)?;
     // Never change a file that printerkeep cannot read.
-    parse(&text, &file)?;
-
-    let mut lines: Vec<String> = text
-        .lines()
-        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
-        .collect();
+    parse(&lines.join("\n"), &file)?;
     for (option, value) in options {
         debug_assert!(
             kind(option) == Some(Kind::Single),
             "{option} is not a single-value option"
         );
         let new_line = format!("{option}: {value}");
-        let existing = lines.iter().position(|line| {
-            !line.starts_with(char::is_whitespace)
-                && line
-                    .find([':', '='])
-                    .is_some_and(|i| line[..i].trim() == *option)
-        });
-        let header = lines.iter().position(|line| {
-            line.strip_prefix('[')
-                .map(strip_comment)
-                .and_then(|h| h.strip_suffix(']'))
-                .is_some_and(|name| name.trim() == SECTION)
-        });
-        match (existing, header) {
-            (Some(index), _) => lines[index] = new_line,
+        match find_option(&lines, option) {
+            Some((index, _)) => lines[index] = new_line,
             // New options go at the end of the section (the file has only this section).
-            (None, Some(index)) => {
-                let last = lines
-                    .iter()
-                    .rposition(|l| !l.trim().is_empty())
-                    .map_or(index, |last| last.max(index));
-                lines.insert(last + 1, new_line);
-            }
-            (None, None) => {
-                if lines.last().is_some_and(|l| !l.trim().is_empty()) {
-                    lines.push(String::new());
-                }
-                lines.push(format!("[{SECTION}]"));
-                lines.push(new_line);
+            None => {
+                let at = section_end(&mut lines);
+                lines.insert(at, new_line);
             }
         }
     }
-
-    let mut text = lines.join("\n");
-    text.push('\n');
-    let write_error = |source| SettingsError::Write {
-        file: file.clone(),
-        source,
-    };
-    let temporary = path.with_file_name(".printerkeep.conf.new");
-    std::fs::write(&temporary, &text).map_err(write_error)?;
-    std::fs::rename(&temporary, path).map_err(write_error)
+    write_lines(path, &file, &lines)
 }
 
 /// Adds `value` to a list option (`follow`, `ignore`) in the settings file, if it is not in the list.
@@ -447,9 +406,7 @@ fn write_lines(path: &Path, file: &str, lines: &[String]) -> Result<(), Settings
         file: file.to_string(),
         source,
     };
-    let temporary = path.with_file_name(".printerkeep.conf.new");
-    std::fs::write(&temporary, &text).map_err(write_error)?;
-    std::fs::rename(&temporary, path).map_err(write_error)
+    crate::files::replace(path, text.as_bytes(), None).map_err(write_error)
 }
 
 /// Removes an inline comment: `#` or `;` after a space.
@@ -617,7 +574,11 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             "# My printer\n[printerkeep]\nrepository: new-url\nignore:\n  a/\nprinter_name: printer-1\n"
         );
-        assert!(!dir.path().join(".printerkeep.conf.new").exists());
+        assert!(
+            !dir.path()
+                .join(".printerkeep.conf.printerkeep-new")
+                .exists()
+        );
     }
 
     #[test]

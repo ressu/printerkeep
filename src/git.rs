@@ -201,16 +201,6 @@ impl Git {
             .map_or(String::new(), |start| text[start..].to_string()))
     }
 
-    /// Stores `content` as a blob and returns its id.
-    pub fn write_blob(&self, content: &[u8]) -> Result<String, GitError> {
-        let stdout = run(
-            self.command()
-                .args(["hash-object", "-w", "--no-filters", "--stdin"]),
-            Some(content),
-        )?;
-        Ok(line(&stdout))
-    }
-
     /// A three-way merge of three files with `git merge-file --diff3`. Returns the result and the number of
     /// places where the changes touch the same lines (each marked with `marker_size` `<`, `|`, `=` and `>`).
     pub fn merge_file(
@@ -269,30 +259,8 @@ impl Git {
         Ok(line(&stdout))
     }
 
-    /// Makes a commit and returns its id.
+    /// Makes a commit with these parents (none for a first commit, two to join histories), and returns its id.
     pub fn commit(
-        &self,
-        tree: &str,
-        parent: Option<&str>,
-        message: &str,
-        identity: &Identity,
-    ) -> Result<String, GitError> {
-        let mut command = self.command();
-        command
-            .env("GIT_AUTHOR_NAME", &identity.name)
-            .env("GIT_AUTHOR_EMAIL", &identity.email)
-            .env("GIT_COMMITTER_NAME", &identity.name)
-            .env("GIT_COMMITTER_EMAIL", &identity.email)
-            .args(["commit-tree", "--no-gpg-sign", tree]);
-        if let Some(parent) = parent {
-            command.args(["-p", parent]);
-        }
-        let stdout = run(&mut command, Some(message.as_bytes()))?;
-        Ok(line(&stdout))
-    }
-
-    /// A commit with more parents (a merge). printerkeep uses it to join the repository's history.
-    pub fn commit_with_parents(
         &self,
         tree: &str,
         parents: &[&str],

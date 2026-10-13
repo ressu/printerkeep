@@ -6,7 +6,7 @@
 use crate::paths::Paths;
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -291,15 +291,9 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// Copies the program in one step: a running program can be replaced, and there is never a half copy.
 fn copy_program(from: &Path, to: &Path) -> Result<(), InstallError> {
-    let temporary = to.with_file_name(format!(
-        ".{}.new",
-        to.file_name().unwrap_or_default().to_string_lossy()
-    ));
     let context = format!("Cannot copy the program to {}", to.display());
-    fs::copy(from, &temporary).map_err(io_error(context.clone()))?;
-    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o755))
-        .map_err(io_error(context.clone()))?;
-    fs::rename(&temporary, to).map_err(io_error(context))
+    let program = fs::read(from).map_err(io_error(context.clone()))?;
+    crate::files::replace(to, &program, Some(0o755)).map_err(io_error(context))
 }
 
 fn release_info(asset: &str) -> String {
@@ -598,16 +592,8 @@ fn write_file(path: &Path, text: &str) -> Result<(), InstallError> {
 
 /// Replaces a file in one step and keeps its permissions.
 fn replace_file(path: &Path, text: &str) -> Result<(), InstallError> {
-    let context = format!("Cannot write {}", path.display());
-    let temporary = path.with_file_name(format!(
-        ".{}.printerkeep-new",
-        path.file_name().unwrap_or_default().to_string_lossy()
-    ));
-    fs::write(&temporary, text).map_err(io_error(context.clone()))?;
-    if let Ok(meta) = fs::metadata(path) {
-        fs::set_permissions(&temporary, meta.permissions()).map_err(io_error(context.clone()))?;
-    }
-    fs::rename(&temporary, path).map_err(io_error(context))
+    crate::files::replace(path, text.as_bytes(), None)
+        .map_err(io_error(format!("Cannot write {}", path.display())))
 }
 
 fn remove_file(path: &Path) -> Result<(), InstallError> {

@@ -73,9 +73,7 @@ pub fn save(path: &Path, state: &State) -> Result<(), StateError> {
     if std::fs::read_to_string(path).is_ok_and(|old| old == text) {
         return Ok(());
     }
-    let temporary = path.with_file_name(".printerkeep-state.json.new");
-    std::fs::write(&temporary, &text).map_err(write_error)?;
-    std::fs::rename(&temporary, path).map_err(write_error)
+    crate::files::replace(path, text.as_bytes(), None).map_err(write_error)
 }
 
 fn to_json(state: &State) -> String {

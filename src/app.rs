@@ -203,8 +203,7 @@ impl BackupReport {
 /// Makes a backup if a file changed, and sends new backups to the repository. `check_now`: check the
 /// repository for changes whatever `check_repository` says (for a run by hand).
 pub fn backup(paths: &Paths, check_now: bool) -> Result<BackupReport, Error> {
-    let settings = settings::load(&paths.settings())?;
-    let printer_name = printer_name(&settings)?;
+    let (settings, printer_name) = load(paths)?;
     let _lock = lock(paths)?;
     backup_and_send(
         paths,
@@ -247,10 +246,7 @@ fn backup_and_send(
     run: Run,
 ) -> Result<BackupReport, Error> {
     let rules = IgnoreRules::new(settings.ignore.iter().map(String::as_str))?;
-    let git = Git::new(&paths.git_dir);
-    if !git.exists() {
-        git.init(printer_name)?;
-    }
+    let git = open_git(paths, printer_name)?;
     // The files on the printer go into the history before printerkeep writes a file.
     // README.md for the printer branch in the repository (not in the config folder).
     let readme = settings
@@ -467,8 +463,7 @@ fn take_repository_changes(
     let prepared = backup::prepare(git, &scan, &reference, true)?;
     let tree = git.write_tree(&prepared.tree, &paths.index())?;
     let message = format!("{}\n", repository_changes::message(&events));
-    let commit =
-        git.commit_with_parents(&tree, &[&local, &remote], &message, &identity(printer_name))?;
+    let commit = git.commit(&tree, &[&local, &remote], &message, &identity(printer_name))?;
     git.update_ref(
         &reference,
         &commit,
@@ -671,15 +666,11 @@ pub enum TokenUse {
 /// Connects the printer to a repository. `token` is called only for an https:// URL without a stored token
 /// that works.
 pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddReport, Error> {
-    let settings = settings::load(&paths.settings())?;
-    let printer_name = printer_name(&settings)?;
+    let (_, printer_name) = load(paths)?;
     let kind = repository::url_kind(url)?;
     let _lock = lock(paths)?;
 
-    let git = Git::new(&paths.git_dir);
-    if !git.exists() {
-        git.init(&printer_name)?;
-    }
+    let git = open_git(paths, &printer_name)?;
     let connection = connect(&git, paths, url, kind, &printer_name, token)?;
     let remote = connection.remote;
 
@@ -764,7 +755,7 @@ fn join_history(
         Some(local) => {
             let tree = git.read_tree(&local)?;
             let tree = git.write_tree(&tree, &paths.index())?;
-            let commit = git.commit_with_parents(
+            let commit = git.commit(
                 &tree,
                 &[&local, remote],
                 "Joined the history of the repository\n",
@@ -910,10 +901,7 @@ pub fn change_token(paths: &Paths, token: AskToken) -> Result<Vec<String>, Error
     }
     let printer_name = printer_name(&settings)?;
     let _lock = lock(paths)?;
-    let git = Git::new(&paths.git_dir);
-    if !git.exists() {
-        git.init(&printer_name)?;
-    }
+    let git = open_git(paths, &printer_name)?;
     connect_with_token(&git, paths, &url, &printer_name, token, true)?;
     let mut lines = vec![format!(
         "The repository {url} accepted the new token. printerkeep uses it from now on."
@@ -973,10 +961,7 @@ pub fn restore(
     let _lock = lock(paths)?;
     let key_name = printer.unwrap_or(DEFAULT_NAME).to_string();
 
-    let git = Git::new(&paths.git_dir);
-    if !git.exists() {
-        git.init(&key_name)?;
-    }
+    let git = open_git(paths, &key_name)?;
     let remote = connect(&git, paths, url, kind, &key_name, token)?.remote;
 
     let available: Vec<String> = git
@@ -1044,8 +1029,7 @@ fn config_path(paths: &Paths, file: &str) -> Result<String, Error> {
 
 /// The settings, the printer name and the repository for a command on shared files.
 fn shared_setup(paths: &Paths) -> Result<(Settings, String, git::Remote), Error> {
-    let settings = settings::load(&paths.settings())?;
-    let printer_name = printer_name(&settings)?;
+    let (settings, printer_name) = load(paths)?;
     let url = settings
         .repository
         .clone()
@@ -1063,10 +1047,7 @@ pub fn follow(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
     if settings.follow.contains(&path) {
         return Ok(vec![format!("printerkeep already follows {path}.")]);
     }
-    let git = Git::new(&paths.git_dir);
-    if !git.exists() {
-        git.init(&printer_name)?;
-    }
+    let git = open_git(paths, &printer_name)?;
     let in_shared = match shared::fetch(&git, &remote)? {
         Some(tip) => git.read_tree(&tip)?.contains_key(path.as_bytes()),
         None => false,
@@ -1081,8 +1062,7 @@ pub fn follow(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
 
 /// Stops following a shared file. The file stays on the printer.
 pub fn stop_following(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
-    let settings = settings::load(&paths.settings())?;
-    let printer_name = printer_name(&settings)?;
+    let (_, printer_name) = load(paths)?;
     let path = config_path(paths, file)?;
     let _lock = lock(paths)?;
     if !settings::remove_from_list(&paths.settings(), "follow", &path)? {
@@ -1165,7 +1145,7 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
         let for_shared = overrides::for_shared(&content, in_shared.as_deref());
         let entry = git::TreeEntry {
             mode: if executable { "100755" } else { "100644" }.to_string(),
-            oid: git.write_blob(&for_shared.content)?,
+            oid: git.hash_blob(&for_shared.content, true)?,
         };
         // The changes that go to the other printers: the user sees them before they are sent (C6).
         let old_oid = match &tip {
@@ -1200,7 +1180,7 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
                 readme::README_FILE,
                 git::TreeEntry {
                     mode: "100644".to_string(),
-                    oid: git.write_blob(&shared_readme)?,
+                    oid: git.hash_blob(&shared_readme, true)?,
                 },
             ));
         }
@@ -1329,8 +1309,7 @@ pub fn rename(paths: &Paths, new: &str) -> Result<Vec<String>, Error> {
 
 /// Finishes a needs-decision file without editing it: keeps this printer's lines, or uses the shared lines.
 pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>, Error> {
-    let settings = settings::load(&paths.settings())?;
-    let printer_name = printer_name(&settings)?;
+    let (settings, printer_name) = load(paths)?;
     let path = config_path(paths, file)?;
     let _lock = lock(paths)?;
     let disk = paths.config.join(&path);
@@ -1343,16 +1322,10 @@ pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>
     }
     let decided = crate::merge::decide(&content, use_shared)
         .ok_or_else(|| Error::BlockChanged(path.clone()))?;
-    let temporary = disk.with_file_name(".printerkeep-write.tmp");
-    std::fs::write(&temporary, &decided)
-        .and_then(|()| {
-            std::fs::set_permissions(&temporary, std::fs::metadata(&disk)?.permissions())
-        })
-        .and_then(|()| std::fs::rename(&temporary, &disk))
-        .map_err(|source| Error::Io {
-            context: format!("Cannot write {}", disk.display()),
-            source,
-        })?;
+    crate::files::replace(&disk, &decided, None).map_err(|source| Error::Io {
+        context: format!("Cannot write {}", disk.display()),
+        source,
+    })?;
     let which = if use_shared {
         "used the shared lines"
     } else {
@@ -1586,6 +1559,22 @@ fn printer_name(settings: &Settings) -> Result<String, Error> {
         .unwrap_or_else(|| DEFAULT_NAME.to_string());
     check_name(&name)?;
     Ok(name)
+}
+
+/// The settings and the printer name.
+fn load(paths: &Paths) -> Result<(Settings, String), Error> {
+    let settings = settings::load(&paths.settings())?;
+    let name = printer_name(&settings)?;
+    Ok((settings, name))
+}
+
+/// printerkeep's git data. Makes it, with HEAD on the printer's branch, if it does not exist.
+fn open_git(paths: &Paths, printer_name: &str) -> Result<Git, Error> {
+    let git = Git::new(&paths.git_dir);
+    if !git.exists() {
+        git.init(printer_name)?;
+    }
+    Ok(git)
 }
 
 fn check_name(name: &str) -> Result<(), Error> {

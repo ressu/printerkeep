@@ -467,15 +467,9 @@ pub fn write_files(
             context: format!("Cannot write {}", disk.display()),
             source,
         };
-        let folder = disk.parent().unwrap_or(config);
-        std::fs::create_dir_all(folder).map_err(io)?;
         let content = git.blob(&entry.oid).map_err(RepositoryError::Git)?;
-        let temporary = folder.join(".printerkeep-restore.tmp");
-        std::fs::write(&temporary, content).map_err(io)?;
         let mode = if entry.mode == "100755" { 0o755 } else { 0o644 };
-        std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(mode)).map_err(io)?;
-        // rename replaces a symlink at the same path instead of writing through it.
-        std::fs::rename(&temporary, &disk).map_err(io)?;
+        crate::files::replace(&disk, &content, Some(mode)).map_err(io)?;
     }
     Ok(())
 }

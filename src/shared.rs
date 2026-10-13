@@ -10,7 +10,6 @@ use crate::paths::{Paths, SETTINGS_FILE};
 use crate::repository::{self, RepositoryError};
 use crate::state::{FileState, STATE_FILE, State};
 use std::collections::BTreeSet;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path};
 
 /// The name of the branch for shared files. No printer can have this name.
@@ -254,10 +253,9 @@ pub fn apply(
             state.files.insert(path.clone(), new_base);
             continue;
         };
-        let same = |a: &[u8], b: &[u8]| merge::to_lf(a) == merge::to_lf(b);
         // The file did not change in shared (only other files changed). The base stays: a
         // new base would change the state file, and make a backup, for nothing.
-        if same(&base, &shared) {
+        if merge::same_text(&base, &shared) {
             continue;
         }
         let Some(mine) = current.take() else {
@@ -267,16 +265,15 @@ pub fn apply(
         // The printer's override lines never change (C6).
         let base = overrides::protect(&mine, &merge::to_lf(&base));
         let shared = overrides::protect(&mine, &merge::to_lf(&shared));
-        if same(&mine, &shared) {
+        if merge::same_text(&mine, &shared) {
             // For example, this printer copied the file to shared.
             state.files.insert(path.clone(), new_base);
-        } else if same(&mine, &base) {
-            let content = if merge::uses_crlf(&mine) {
-                merge::to_crlf(&shared)
-            } else {
-                shared
-            };
-            write(&disk, &content, shared_entry)?;
+        } else if merge::same_text(&mine, &base) {
+            write(
+                &disk,
+                &merge::with_line_ends_of(&mine, shared),
+                shared_entry,
+            )?;
             state.files.insert(path.clone(), new_base);
             event(path, Event::Written);
         } else {
@@ -364,12 +361,11 @@ pub fn file_status(
         // In the follow list, but printerkeep did not take it in yet.
         return Ok(FileStatus::ChangesWaiting);
     };
-    let same = |a: &[u8], b: &[u8]| merge::to_lf(a) == merge::to_lf(b);
     let base = content_at(git, &entry.base, path)?.unwrap_or_default();
-    if !same(&base, &shared) {
+    if !merge::same_text(&base, &shared) {
         return Ok(FileStatus::ChangesWaiting);
     }
-    if same(&mine, &overrides::protect(&mine, &merge::to_lf(&shared))) {
+    if merge::same_text(&mine, &overrides::protect(&mine, &merge::to_lf(&shared))) {
         Ok(FileStatus::UpToDate)
     } else {
         Ok(FileStatus::LocalChanges)
@@ -411,7 +407,8 @@ pub fn copy_commit(
         tree.insert(path.as_bytes().to_vec(), entry);
     }
     let tree = git.write_tree(&tree, &paths.index())?;
-    git.commit(&tree, tip, message, identity).map(Some)
+    git.commit(&tree, tip.as_slice(), message, identity)
+        .map(Some)
 }
 
 pub(crate) fn read(disk: &Path) -> Result<Option<Vec<u8>>, SharedError> {
@@ -431,23 +428,11 @@ pub(crate) fn write(disk: &Path, content: &[u8], shared: &TreeEntry) -> Result<(
     if std::fs::read(disk).is_ok_and(|old| old == content) {
         return Ok(());
     }
-    let io = |source| SharedError::Io {
+    let mode = (!disk.exists() && shared.mode == "100755").then_some(0o755);
+    crate::files::replace(disk, content, mode).map_err(|source| SharedError::Io {
         context: format!("Cannot write {}", disk.display()),
         source,
-    };
-    let folder = disk
-        .parent()
-        .ok_or_else(|| io(std::io::ErrorKind::NotFound.into()))?;
-    std::fs::create_dir_all(folder).map_err(io)?;
-    let mode = match std::fs::metadata(disk) {
-        Ok(metadata) => metadata.permissions().mode() & 0o777,
-        Err(_) if shared.mode == "100755" => 0o755,
-        Err(_) => 0o644,
-    };
-    let temporary = folder.join(".printerkeep-write.tmp");
-    std::fs::write(&temporary, content).map_err(io)?;
-    std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(mode)).map_err(io)?;
-    std::fs::rename(&temporary, disk).map_err(io)
+    })
 }
 
 #[cfg(test)]

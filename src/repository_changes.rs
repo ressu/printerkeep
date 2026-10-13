@@ -141,7 +141,6 @@ pub fn apply(
             continue;
         };
         let theirs = git.blob(&theirs_entry.oid)?;
-        let same = |a: &[u8], b: &[u8]| merge::to_lf(a) == merge::to_lf(b);
         let Some(mine) = mine else {
             if base.is_none() {
                 // A new file in the repository.
@@ -153,16 +152,15 @@ pub fn apply(
             continue;
         };
         let base = base.unwrap_or_default();
-        if same(&mine, &theirs) {
+        if merge::same_text(&mine, &theirs) {
             continue;
         }
-        if same(&mine, &base) {
-            let content = if merge::uses_crlf(&mine) {
-                merge::to_crlf(&theirs)
-            } else {
-                theirs
-            };
-            shared::write(&disk, &content, theirs_entry)?;
+        if merge::same_text(&mine, &base) {
+            shared::write(
+                &disk,
+                &merge::with_line_ends_of(&mine, theirs),
+                theirs_entry,
+            )?;
             event(Event::Written);
             continue;
         }

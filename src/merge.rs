@@ -328,6 +328,20 @@ pub fn uses_crlf(content: &[u8]) -> bool {
     lines > 0 && crlf * 2 > lines
 }
 
+/// `true` if the two contents are the same when line ends do not count.
+pub fn same_text(a: &[u8], b: &[u8]) -> bool {
+    to_lf(a) == to_lf(b)
+}
+
+/// `content` with the line ends of `like` (the printer's file): CRLF if most of its line ends are CRLF.
+pub fn with_line_ends_of(like: &[u8], content: Vec<u8>) -> Vec<u8> {
+    if uses_crlf(like) {
+        to_crlf(&content)
+    } else {
+        content
+    }
+}
+
 /// The content with CRLF line ends changed to LF.
 pub fn to_lf(content: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(content.len());
@@ -504,6 +518,12 @@ mod tests {
             run(mine, base, shared),
             Merged::Clean(mine.as_bytes().to_vec())
         );
+    }
+
+    #[test]
+    fn to_lf_changes_crlf_only() {
+        assert_eq!(to_lf(b"a\r\nb\rc\r\n"), b"a\nb\rc\n");
+        assert!(same_text(b"a\r\nb\n", b"a\nb\r\n"));
     }
 
     #[test]

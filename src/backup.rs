@@ -59,7 +59,8 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
             Some(previous) => {
                 let new_content = std::fs::read(&file.disk)?;
                 let old_content = git.blob(&previous.oid)?;
-                if previous.oid != entry.oid && normalize(&new_content) == normalize(&old_content) {
+                if previous.oid != entry.oid && crate::merge::same_text(&new_content, &old_content)
+                {
                     // Only the line endings are different: keep the stored file.
                     entry.oid = previous.oid.clone();
                 }
@@ -149,7 +150,12 @@ pub fn commit(
             prepared.tree.len() - prepared.generated,
         ),
     };
-    let commit = git.commit(&tree, prepared.parent.as_deref(), &message, identity)?;
+    let commit = git.commit(
+        &tree,
+        prepared.parent.as_deref().as_slice(),
+        &message,
+        identity,
+    )?;
     git.update_ref(
         reference,
         &commit,
@@ -240,25 +246,12 @@ fn display(path: &[u8]) -> String {
     String::from_utf8_lossy(path).into_owned()
 }
 
-/// The content with CRLF line endings changed to LF.
-fn normalize(content: &[u8]) -> Vec<u8> {
-    let mut result = Vec::with_capacity(content.len());
-    let mut bytes = content.iter().peekable();
-    while let Some(&b) = bytes.next() {
-        if b == b'\r' && bytes.peek() == Some(&&b'\n') {
-            continue;
-        }
-        result.push(b);
-    }
-    result
-}
-
 /// The first line of the block that Klipper's SAVE_CONFIG writes at the end of printer.cfg.
 const SAVE_CONFIG_START: &[u8] = b"#*# <---------------------- SAVE_CONFIG ---------------------->";
 
 /// `true` if the files have a SAVE_CONFIG block and are equal above it.
 fn only_save_config_changed(old: &[u8], new: &[u8]) -> bool {
-    let (old, new) = (normalize(old), normalize(new));
+    let (old, new) = (crate::merge::to_lf(old), crate::merge::to_lf(new));
     match (before_save_config(&old), before_save_config(&new)) {
         (Some(old_body), Some(new_body)) => old_body == new_body,
         // SAVE_CONFIG added the block for the first time.
@@ -341,11 +334,6 @@ mod tests {
             Changes::default().message(true, 42),
             "First backup: 42 files"
         );
-    }
-
-    #[test]
-    fn normalize_changes_crlf_only() {
-        assert_eq!(normalize(b"a\r\nb\rc\r\n"), b"a\nb\rc\n");
     }
 
     const BODY: &str = "[printer]\nkinematics: corexy\n";
