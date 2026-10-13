@@ -208,7 +208,10 @@ printerkeep copy-to-shared macros/macros.cfg
 ```
 
 This makes the shared version equal to this printer's version, and this printer follows the file. Do the
-same later to send an improvement to the other printers.
+same later to send an improvement to the other printers. printerkeep first shows the changes that go to the
+other printers, and asks. Look for lines that are only for this printer: for example lines that you
+commented out because this printer does not have some hardware. If the file has such lines, answer no, and
+put only the improvement into the shared file in the web pages of the repository. (`--yes` does not ask.)
 
 On each other printer:
 

@@ -423,13 +423,14 @@ M5 status: the "done when" is met in tests. Not yet tried on real printers.
   them. The merge took the same lines out of the conflict, but then made a block for the next line. Now: if
   the rest of one side equals the base, the other side wins.
 
-**Open design question (found with real data):** `copy-to-shared` copies the whole file. Printer 4's real
+**Design question (found with real data), decided 2026-10-13:** `copy-to-shared` copies the whole file. Printer 4's real
 improvement (the retract in PRINT_END) is in the same file as its lines for missing hardware
 (`# STATUS_HEATING`, `# _RUNOUT_ON`, `# _AUTO_OFF_DISABLE` in gcode). Copying the file to shared would also
 comment out those lines on printers 2 and 3. Override marks do not help: they are for `option: value` lines
-only. Today the way is an edit of only the improvement in the web pages (tested). Options to decide: a
-begin/end override form for gcode lines (C6 "possible later"), `copy-to-shared` that shows the changes and
-asks first (C6 already says it shows them), or copying selected lines only.
+only. Today the way is an edit of only the improvement in the web pages (tested). Decided: `copy-to-shared` shows the
+changes that go to shared (a diff against the shared version) and the override lines that it keeps, and asks
+first. Without a terminal it needs `--yes`. A begin/end override form for gcode lines stays a possibility for
+later, if users need it.
 
 
 ### After 0.1: move from klipper-backup

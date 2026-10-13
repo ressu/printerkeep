@@ -155,7 +155,7 @@ printerkeep writes it.
 | `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |
 | `printerkeep follow <file>` | Starts to follow a shared file. |
 | `printerkeep stop-following <file>` | Stops following a shared file. The file stays on the printer. |
-| `printerkeep copy-to-shared <file>` | Makes the shared version equal to this printer's version, except override lines. |
+| `printerkeep copy-to-shared <file> [--yes]` | Makes the shared version equal to this printer's version, except override lines. Shows the changes and asks first; `--yes` does not ask. |
 | `printerkeep decide <file> --use-shared\|--keep-mine` | Finishes a needs-decision file without editing it. |
 
 Commands are verbs. `add-repository` replaces the earlier `repository`.

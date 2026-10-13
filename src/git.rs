@@ -185,6 +185,22 @@ impl Git {
         Ok(line(&stdout))
     }
 
+    /// The changes from blob `old` to blob `new`, as unified diff parts (from the first `@@` line).
+    pub fn diff_blobs(&self, old: &str, new: &str) -> Result<String, GitError> {
+        let output = output(
+            self.command()
+                .args(["diff", "--no-color", "--no-ext-diff", "-U2", old, new]),
+            None,
+        )?;
+        if !output.status.success() {
+            return Err(failed("diff", &output));
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        Ok(text
+            .find("@@")
+            .map_or(String::new(), |start| text[start..].to_string()))
+    }
+
     /// Stores `content` as a blob and returns its id.
     pub fn write_blob(&self, content: &[u8]) -> Result<String, GitError> {
         let stdout = run(

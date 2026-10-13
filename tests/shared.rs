@@ -117,7 +117,7 @@ fn copy_to_shared_and_follow_keep_local_changes() {
 
     // M8: printer 1's version becomes the shared version.
     printer1.write("macros/macros.cfg", MACROS);
-    let output = printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    let output = printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     assert!(
         output.contains("Copied macros/macros.cfg to shared. Other printers can now follow it."),
         "{output}"
@@ -156,7 +156,7 @@ fn copy_to_shared_and_follow_keep_local_changes() {
     // M1, M4: printer 1 improves PARK. Printer 2 gets it and keeps its temperature.
     let improved = MACROS.replace("G1 X10 Y10 F6000", "G1 X10 Y10 F9000");
     printer1.write("macros/macros.cfg", &improved);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let output = printer2.ok(&["backup"]);
     assert!(
         output
@@ -194,7 +194,7 @@ fn copy_to_shared_first_takes_the_changes_of_other_printers() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
 
     // Both change different lines. Printer 2 copies after printer 1: printer 1's change must stay.
@@ -202,9 +202,9 @@ fn copy_to_shared_first_takes_the_changes_of_other_printers() {
         "macros/macros.cfg",
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.write("macros/macros.cfg", &MACROS.replace("G90", "G90\n    G28"));
-    printer2.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer2.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let both = MACROS
         .replace("G1 E50 F300", "G1 E60 F300")
         .replace("G90", "G90\n    G28");
@@ -218,7 +218,7 @@ fn needs_decision_waits_for_the_user() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
 
     // M9: both change the same line.
@@ -230,7 +230,7 @@ fn needs_decision_waits_for_the_user() {
         "macros/macros.cfg",
         &MACROS.replace("variable_temp: 230", "variable_temp: 240"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let output = printer2.ok(&["backup"]);
     assert!(
         output.contains(
@@ -262,7 +262,7 @@ fn needs_decision_waits_for_the_user() {
     );
 
     // printerkeep does not copy a file with a block, and does not change the file again.
-    let error = printer2.fails(&["copy-to-shared", "macros/macros.cfg"]);
+    let error = printer2.fails(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     assert!(error.contains("needs decision"), "{error}");
     printer1.write(
         "macros/macros.cfg",
@@ -270,7 +270,7 @@ fn needs_decision_waits_for_the_user() {
             .replace("variable_temp: 230", "variable_temp: 240")
             .replace("G1 E50 F300", "G1 E60 F300"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let output = printer2.ok(&["backup"]);
     assert!(output.contains("needs decision"), "{output}");
     assert_eq!(printer2.read("macros/macros.cfg"), with_block);
@@ -310,7 +310,7 @@ fn line_endings_of_the_printer_stay() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let crlf = MACROS.replace('\n', "\r\n");
     printer2.write("macros/macros.cfg", &crlf);
     printer2.ok(&["follow", "macros/macros.cfg"]);
@@ -319,7 +319,7 @@ fn line_endings_of_the_printer_stay() {
         "macros/macros.cfg",
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["backup"]);
     assert_eq!(
         printer2.read("macros/macros.cfg"),
@@ -333,7 +333,7 @@ fn stop_following_keeps_the_file() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
 
     let output = printer2.ok(&["stop-following", "macros/macros.cfg"]);
@@ -353,7 +353,7 @@ fn stop_following_keeps_the_file() {
         "macros/macros.cfg",
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["backup"]);
     assert_eq!(printer2.read("macros/macros.cfg"), MACROS);
 
@@ -370,7 +370,7 @@ fn follow_in_the_settings_file_works_without_a_command() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
 
     // In Fluidd: add the file to the follow list in printerkeep.conf.
     let settings = printer2.read("printerkeep.conf");
@@ -401,14 +401,14 @@ fn shared_commands_need_a_repository_and_a_shared_file() {
         ),
         "{error}"
     );
-    let error = printer1.fails(&["copy-to-shared", "printerkeep.conf"]);
+    let error = printer1.fails(&["copy-to-shared", "--yes", "printerkeep.conf"]);
     assert!(
         error.contains("this file belongs to this printer only"),
         "{error}"
     );
-    let error = printer1.fails(&["copy-to-shared", "../moonraker.conf"]);
+    let error = printer1.fails(&["copy-to-shared", "--yes", "../moonraker.conf"]);
     assert!(error.contains("without '..'"), "{error}");
-    let error = printer1.fails(&["copy-to-shared", "nothing.cfg"]);
+    let error = printer1.fails(&["copy-to-shared", "--yes", "nothing.cfg"]);
     assert!(
         error.contains("nothing.cfg is not in the config folder."),
         "{error}"
@@ -443,7 +443,7 @@ fn override_lines_never_travel() {
 
     // C6: the pin of printer 1 does not go to shared.
     printer1.write("sensor.cfg", SENSOR);
-    let output = printer1.ok(&["copy-to-shared", "sensor.cfg"]);
+    let output = printer1.ok(&["copy-to-shared", "--yes", "sensor.cfg"]);
     assert!(
         output.contains(
             "Not copied: switch_pin in [filament_switch_sensor runout] (override). Shared has the value \
@@ -474,7 +474,7 @@ fn override_lines_never_travel() {
     // Printer 2 improves the runout macro. Only the macro goes to shared, and to the other printers.
     let improved = printer2_sensor.replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n");
     printer2.write("sensor.cfg", &improved);
-    let output = printer2.ok(&["copy-to-shared", "sensor.cfg"]);
+    let output = printer2.ok(&["copy-to-shared", "--yes", "sensor.cfg"]);
     assert!(
         output.contains(
             "Not copied: switch_pin in [filament_switch_sensor runout] (override). Shared keeps its own line."
@@ -515,8 +515,8 @@ fn decide_and_status_of_followed_files() {
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.write("other.cfg", "[gcode_macro OTHER]\ngcode:\n    M118 other\n");
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
-    printer1.ok(&["copy-to-shared", "other.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "other.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
     printer2.ok(&["follow", "other.cfg"]);
 
@@ -536,12 +536,12 @@ fn decide_and_status_of_followed_files() {
         "macros/macros.cfg",
         &MACROS.replace("variable_temp: 230", "variable_temp: 240"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer1.write(
         "other.cfg",
         "[gcode_macro OTHER]\ngcode:\n    M118 changed\n",
     );
-    printer1.ok(&["copy-to-shared", "other.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "other.cfg"]);
     // status uses printerkeep's last copy of shared: it does not know about the new changes yet.
     let status = printer2.ok(&["status"]);
     assert!(
@@ -588,7 +588,7 @@ fn decide_and_status_of_followed_files() {
             .replace("variable_temp: 230", "variable_temp: 240")
             .replace("G90", "G91"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["backup"]);
     assert_eq!(
         printer2.read("macros/macros.cfg"),
@@ -623,7 +623,7 @@ fn a_run_with_no_change_writes_nothing() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
     printer2.ok(&["backup"]);
 
@@ -641,7 +641,7 @@ fn check_repository_sets_how_often_printerkeep_checks() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
     let settings = printer2.read("printerkeep.conf");
     printer2.write(
@@ -671,7 +671,7 @@ fn check_repository_sets_how_often_printerkeep_checks() {
         "macros/macros.cfg",
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     let output = timer_run();
     assert!(!output.contains("macros/macros.cfg"), "{output}");
     assert_eq!(printer2.read("macros/macros.cfg"), MACROS);
@@ -751,7 +751,7 @@ fn shared_has_a_static_readme() {
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
 
     let readme = shared(&url, "README.md");
     assert!(
@@ -806,7 +806,7 @@ fn shared_has_a_static_readme() {
         "macros/macros.cfg",
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     assert_eq!(shared(&url, "README.md"), "# Our printers\n");
 
     // README.md on shared is not a file to follow.
@@ -821,7 +821,7 @@ fn a_printer_that_was_offline_gets_all_changes_in_one_merge() {
     let printer2 = Printer::new("printer-2", &url);
     let printer3 = Printer::new("printer-3", &url);
     printer1.write("macros/macros.cfg", MACROS);
-    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
     printer3.ok(&["follow", "macros/macros.cfg"]);
 
@@ -839,7 +839,7 @@ fn a_printer_that_was_offline_gets_all_changes_in_one_merge() {
         printer.ok(&["backup"]);
         version = version.replace(from, to);
         printer.write("macros/macros.cfg", &version);
-        printer.ok(&["copy-to-shared", "macros/macros.cfg"]);
+        printer.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     }
 
     let output = printer2.ok(&["backup"]);
@@ -851,5 +851,41 @@ fn a_printer_that_was_offline_gets_all_changes_in_one_merge() {
     assert_eq!(
         printer2.read("macros/macros.cfg"),
         version.replace("variable_temp: 230", "variable_temp: 250")
+    );
+}
+
+#[test]
+fn copy_to_shared_shows_the_changes_and_asks_first() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::new("printer-1", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    let output = printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
+    assert!(
+        output.contains("macros/macros.cfg is not in shared yet. It goes to shared with 10 lines."),
+        "{output}"
+    );
+
+    // Without a terminal and without --yes: nothing is copied.
+    printer1.write(
+        "macros/macros.cfg",
+        &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
+    );
+    let error = printer1.fails(&["copy-to-shared", "macros/macros.cfg"]);
+    assert!(
+        error.contains("Run it on a terminal, or add --yes"),
+        "{error}"
+    );
+    assert_eq!(shared(&url, "macros/macros.cfg"), MACROS);
+
+    let output = printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
+    assert!(
+        output.contains(
+            "These changes go to shared. Each printer that follows macros/macros.cfg gets them"
+        ),
+        "{output}"
+    );
+    assert!(
+        output.contains("-    G1 E50 F300\n+    G1 E60 F300\n"),
+        "{output}"
     );
 }

@@ -127,9 +127,11 @@ switch_pin: ^PG12   # printerkeep: override
 - An override is a normal Klipper comment. Files that do not need it never see it. It is optional, not a
   required structure.
 - Local changes without an override mark can go to shared. `printerkeep copy-to-shared` shows the changes
-  that it will send and lists the override lines that it does not send.
-- Decided: an override marks one line. A begin/end form for more lines is possible later, if real
-  configurations need it.
+  that it will send (a diff against the shared version), lists the override lines that it does not send, and
+  asks first (`--yes` without a terminal). Real data showed why: a printer's improvement can be in the same
+  file as lines for its missing hardware, commented out in gcode, where an override mark cannot be used.
+- Decided: an override marks one line. A begin/end form for more lines (also for gcode lines) is possible
+  later, if users need more than the question of `copy-to-shared` (2026-10-13).
 - Later idea: printerkeep can suggest an override when the same line is different on most printers that
   follow the file.
 

@@ -66,9 +66,14 @@ enum Command {
     /// Make the shared version of a file equal to the version on this printer, and follow the file.
     ///
     /// Other printers that follow the file get the changes at their next backup.
+    ///
+    /// printerkeep shows the changes that go to shared, and asks first.
     CopyToShared {
         /// The path in the config folder.
         file: String,
+        /// Do not ask. Necessary when printerkeep does not run on a terminal.
+        #[arg(long)]
+        yes: bool,
     },
     /// Finish a file that needs decision, without editing it.
     ///
@@ -144,7 +149,10 @@ fn main() -> ExitCode {
         Command::ChangeToken => app::change_token(&paths, &read_token),
         Command::Follow { file } => app::follow(&paths, file),
         Command::StopFollowing { file } => app::stop_following(&paths, file),
-        Command::CopyToShared { file } => app::copy_to_shared(&paths, file),
+        Command::CopyToShared { file, yes } => {
+            let confirm = |preview: &str| confirm_copy(preview, *yes);
+            app::copy_to_shared(&paths, file, &confirm)
+        }
         Command::Decide {
             file, use_shared, ..
         } => app::decide(&paths, file, *use_shared),
@@ -185,6 +193,27 @@ fn log_lines(paths: &Paths, lines: &[String]) {
             paths.log.display()
         );
     }
+}
+
+/// Shows the changes of a copy to shared, and asks on a terminal.
+fn confirm_copy(preview: &str, yes: bool) -> std::io::Result<bool> {
+    print!("{preview}");
+    if !preview.ends_with('\n') {
+        println!();
+    }
+    if yes {
+        return Ok(true);
+    }
+    let stdin = std::io::stdin();
+    if !stdin.is_terminal() {
+        return Err(std::io::Error::other(
+            "copy-to-shared asks before it copies. Run it on a terminal, or add --yes",
+        ));
+    }
+    eprint!("Copy to shared? [y/N] ");
+    let mut answer = String::new();
+    stdin.lock().read_line(&mut answer)?;
+    Ok(matches!(answer.trim(), "y" | "Y" | "yes"))
 }
 
 /// Reads a personal access token. On a terminal, asks for it and does not show it.

@@ -174,7 +174,7 @@ fn line_ends_and_unrelated_files_with_the_same_path() {
         unreachable!()
     };
     let path = "macros/temperature.cfg";
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     for printer in [p3, p4] {
         printer.ok(&["follow", path]);
         assert_eq!(printer.status_of(path), "up to date");
@@ -184,7 +184,7 @@ fn line_ends_and_unrelated_files_with_the_same_path() {
     // A change from shared: printers 3 and 4 get it, and keep CRLF.
     let changed = fixture(2, path).replace("MAXIMUM={s+1}", "MAXIMUM={s+2}");
     p2.write(path, &changed);
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     for printer in [p3, p4] {
         printer.ok(&["backup"]);
         assert_eq!(printer.read(path), changed.replace('\n', "\r\n"));
@@ -202,7 +202,7 @@ fn identical_files_are_up_to_date() {
     let (_dir, url) = repository();
     let printers: Vec<Printer> = (1..=3).map(|n| Printer::new(n, &url)).collect();
     let path = "macros/reset.cfg";
-    printers[0].ok(&["copy-to-shared", path]);
+    printers[0].ok(&["copy-to-shared", "--yes", path]);
     for printer in &printers[1..] {
         printer.ok(&["follow", path]);
         assert_eq!(printer.status_of(path), "up to date");
@@ -218,7 +218,7 @@ fn kamp_values_stay_on_each_printer() {
         unreachable!()
     };
     let path = "KAMP_Settings.cfg";
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     for printer in [p1, p3, p4] {
         printer.ok(&["follow", path]);
         assert_eq!(printer.status_of(path), "local changes");
@@ -227,7 +227,7 @@ fn kamp_values_stay_on_each_printer() {
     // A shared change on a line that no printer changed. Printer 4's tip_distance is on the line next to it.
     let shared = fixture(2, path).replace("purge_height: 0.8", "purge_height: 0.6");
     p2.write(path, &shared);
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     for (n, printer) in [(1, p1), (3, p3), (4, p4)] {
         printer.ok(&["backup"]);
         assert_eq!(
@@ -249,7 +249,7 @@ fn kamp_values_stay_on_each_printer() {
         path,
         &shared.replace("purge_margin: 15", "purge_margin: 12"),
     );
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     p1.ok(&["backup"]);
     assert_eq!(p1.read(path), p1_marked);
     for printer in [p3, p4] {
@@ -276,7 +276,7 @@ fn commented_out_lines_for_missing_hardware_stay() {
         unreachable!()
     };
     let path = "macros/ui-helpers.cfg";
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     p3.ok(&["follow", path]);
     p4.ok(&["follow", path]);
 
@@ -288,7 +288,7 @@ fn commented_out_lines_for_missing_hardware_stay() {
         )
     };
     p2.write(path, &improved(&fixture(2, path)));
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     for (n, printer) in [(3, p3), (4, p4)] {
         printer.ok(&["backup"]);
         let expected = improved(&fixture(n, path)).replace('\n', "\r\n");
@@ -308,7 +308,7 @@ fn an_improvement_reaches_the_other_printers() {
         unreachable!()
     };
     let path = "macros/macros.cfg";
-    p2.ok(&["copy-to-shared", path]);
+    p2.ok(&["copy-to-shared", "--yes", path]);
     p3.ok(&["follow", path]);
     p4.ok(&["follow", path]);
 

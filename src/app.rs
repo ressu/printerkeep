@@ -1000,7 +1000,12 @@ pub fn stop_following(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
 }
 
 /// Makes the shared version of a file equal to this printer's version, and follows the file.
-pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
+/// Shows the changes that a copy to shared sends (the text), and returns `true` if the user wants them sent.
+pub type Confirm<'a> = &'a dyn Fn(&str) -> std::io::Result<bool>;
+
+/// Makes the shared version of a file equal to this printer's version, and follows the file. `confirm` gets
+/// the changes that go to the other printers first.
+pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec<String>, Error> {
     let (settings, printer_name, remote) = shared_setup(paths)?;
     let path = config_path(paths, file)?;
     let disk = paths.config.join(&path);
@@ -1062,6 +1067,26 @@ pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
             mode: if executable { "100755" } else { "100644" }.to_string(),
             oid: git.write_blob(&for_shared.content)?,
         };
+        // The changes that go to the other printers: the user sees them before they are sent (C6).
+        let old_oid = match &tip {
+            Some(tip) => git
+                .read_tree(tip)?
+                .get(path.as_bytes())
+                .map(|e| e.oid.clone()),
+            None => None,
+        };
+        if attempts == 1 && old_oid.as_deref() != Some(entry.oid.as_str()) {
+            let preview = copy_preview(&git, &path, old_oid.as_deref(), &entry.oid, &for_shared)?;
+            let yes = confirm(&preview).map_err(|source| Error::Io {
+                context: "Cannot copy to shared".into(),
+                source,
+            })?;
+            if !yes {
+                return Ok(vec![format!(
+                    "Nothing copied. {path} in shared did not change."
+                )]);
+            }
+        }
         not_copied = for_shared;
         let mut files = vec![(path.as_str(), entry)];
         // The README of shared: when shared has none, or printerkeep's README is not up to date.
@@ -1187,6 +1212,39 @@ pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>
     let mut lines = vec![format!("{path}: {which}.")];
     lines.extend(backup_and_send(paths, &settings, &printer_name, COMMAND)?.lines());
     Ok(lines)
+}
+
+/// The text that `copy-to-shared` shows before it sends: the changes in shared, and the override lines that
+/// stay on this printer.
+fn copy_preview(
+    git: &Git,
+    path: &str,
+    old: Option<&str>,
+    new: &str,
+    for_shared: &overrides::ForShared,
+) -> Result<String, Error> {
+    let mut text = match old {
+        Some(old) => format!(
+            "These changes go to shared. Each printer that follows {path} gets them at its next run:\n\n{}",
+            git.diff_blobs(old, new)?
+        ),
+        None => {
+            let lines = git.blob(new)?.iter().filter(|&&b| b == b'\n').count();
+            format!("{path} is not in shared yet. It goes to shared with {lines} lines.\n")
+        }
+    };
+    for key in &for_shared.kept {
+        text.push_str(&format!(
+            "Not copied: {key} (override). Shared keeps its own line.\n"
+        ));
+    }
+    for key in &for_shared.placeholders {
+        text.push_str(&format!(
+            "Not copied: {key} (override). Shared gets the value {}.\n",
+            overrides::PLACEHOLDER
+        ));
+    }
+    Ok(text)
 }
 
 /// The state of the printer, for `printerkeep status`.
