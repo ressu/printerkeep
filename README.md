@@ -52,7 +52,7 @@ damaged download. It does not prove that the program is genuine.
 
 | Variable | Default | Description |
 |---|---|---|
-| `VERSION` | latest | Install a specific release, for example `v0.1` |
+| `VERSION` | latest | Install a specific release, for example `v0.2.0` |
 | `BINARY_SHA256` | none | The checksum of the program. The script then does not download the checksum file. |
 | `PRINTER_DATA` | `~/printer_data` | The printer_data folder |
 | `PRINTER_NAME` | `main` | The printer name, which is also its branch name in the repository. Give each printer its own name if several printers use the same repository. |
@@ -60,9 +60,9 @@ damaged download. It does not prove that the program is genuine.
 ### 2. The install script, read and checked first
 
 ```sh
-curl -fsSL https://github.com/ressu/printerkeep/releases/download/v0.1/install.sh -o install.sh
+curl -fsSL https://github.com/ressu/printerkeep/releases/download/v0.2.0/install.sh -o install.sh
 less install.sh
-VERSION=v0.1 BINARY_SHA256="sha256:<checksum>" sh install.sh
+VERSION=v0.2.0 BINARY_SHA256="sha256:<checksum>" sh install.sh
 ```
 
 Copy the checksum of the program for your CPU from the [release page](https://github.com/ressu/printerkeep/releases)
@@ -81,7 +81,7 @@ Find the file for your CPU (`uname -m` shows it):
 | `x86_64` | `printerkeep-linux-x86_64` |
 
 ```sh
-curl -fsSLO https://github.com/ressu/printerkeep/releases/download/v0.1/printerkeep-linux-aarch64
+curl -fsSLO https://github.com/ressu/printerkeep/releases/download/v0.2.0/printerkeep-linux-aarch64
 sha256sum printerkeep-linux-aarch64      # compare with the checksum on the release page
 chmod +x printerkeep-linux-aarch64
 ./printerkeep-linux-aarch64 install      # copies itself to ~/printerkeep
