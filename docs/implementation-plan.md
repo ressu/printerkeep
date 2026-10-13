@@ -386,6 +386,23 @@ printer; then simplified (decided with the user): the status is too complex for 
   default branch on the git host.
 - Low priority: a status column in the printer README's list of followed files.
 
+Part 8 (2026-10-13): property tests (`tests/merge_properties.rs`, proptest, a development dependency only).
+
+- Random `option: value` files; each side changes some values. Checked with the real `git merge-file`:
+  - the three-way rule per line: the side that changed a line wins; lines changed on both sides to
+    different values need decision, and `decide` gives exactly the expected file for both choices;
+  - a file that needs decision is, for Klipper, the same configuration as the printer's version (comments
+    only; the Klipper view deletes text from the first `#`, as the parser spike showed);
+  - an override line never changes, also when shared has its own override line;
+  - lines added at different places merge (also with only one line between them);
+  - CRLF files stay CRLF.
+- A test of the tests: a merge that is broken on purpose fails the first property at once.
+- M1–M9 in integration tests (`tests/shared.rs`, `tests/repository.rs`): M1, M4 changes from shared with
+  local changes; M2, M9 needs decision; M3 copy-to-shared; M5 status; M6 changes in the repository;
+  M7 one merge after three changes in shared; M8 follow a file that is different on the printer.
+
+M5 status: the "done when" is met in tests. Not yet tried on real printers.
+
 ### M6. Real-data tests (0.2)
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).

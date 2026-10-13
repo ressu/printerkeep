@@ -813,3 +813,43 @@ fn shared_has_a_static_readme() {
     let error = printer2.fails(&["follow", "README.md"]);
     assert!(error.contains("README.md on the shared branch"), "{error}");
 }
+
+#[test]
+fn a_printer_that_was_offline_gets_all_changes_in_one_merge() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::new("printer-1", &url);
+    let printer2 = Printer::new("printer-2", &url);
+    let printer3 = Printer::new("printer-3", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+    printer3.ok(&["follow", "macros/macros.cfg"]);
+
+    // M7: printer 2 is offline, with a local change. Printers 1 and 3 change shared three times.
+    printer2.write(
+        "macros/macros.cfg",
+        &MACROS.replace("variable_temp: 230", "variable_temp: 250"),
+    );
+    let mut version = MACROS.to_string();
+    for (printer, from, to) in [
+        (&printer1, "G90", "G91"),
+        (&printer3, "G1 E50 F300", "G1 E60 F300"),
+        (&printer1, "G1 X10 Y10 F6000", "G1 X20 Y20 F6000"),
+    ] {
+        printer.ok(&["backup"]);
+        version = version.replace(from, to);
+        printer.write("macros/macros.cfg", &version);
+        printer.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    }
+
+    let output = printer2.ok(&["backup"]);
+    assert!(
+        output
+            .contains("macros/macros.cfg: wrote the changes from shared. The local changes stay."),
+        "{output}"
+    );
+    assert_eq!(
+        printer2.read("macros/macros.cfg"),
+        version.replace("variable_temp: 230", "variable_temp: 250")
+    );
+}
