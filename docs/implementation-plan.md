@@ -42,21 +42,28 @@ No async, no HTTP client, no git library, no crypto. printerkeep runs `git` for 
 
 ```
 src/
-  main.rs        command line (clap): backup, status, restore, add-repository, follow, stop-following,
-                 copy-to-shared, decide
-  settings.rs    printerkeep.conf: strict Moonraker-style subset (C3)
-  paths.rs       config folder, printer_data, git data, log file
-  git.rs         thin wrapper around the git command (GIT_DIR, GIT_INDEX_FILE, GIT_SSH_COMMAND)
-  snapshot.rs    read the config folder into a git tree: ignore rules, no symlinks, line endings (C2)
-  backup.rs      commit only on change, commit messages, push (C2)
-  repository.rs  add-repository, keys, existing branches, restore (C8)
-  log.rs         printer_data/logs/printerkeep.log and the status text (C7)
-  -- 0.2 --
-  state.rs       .printerkeep-state.json: base per followed file (C3)
-  merge.rs       three-way merge per file, needs-decision block (C4, C5)
-  overrides.rs   override lines (C6)
-  shared.rs      follow, stop-following, copy-to-shared, changes from shared
-  readme.rs      README.md on each printer branch and on shared
+  main.rs               command line (clap), token and confirm prompts, log lines
+  app/                  the commands: errors, settings, printer name, lock (mod.rs)
+    run.rs              the backup run: backup, changes from shared and the repository, send
+    connection.rs       add-repository, change-token, restore, rename
+    shared_files.rs     follow, stop-following, copy-to-shared, decide
+    status.rs           printerkeep status
+  settings.rs           printerkeep.conf: strict Moonraker-style subset (C3)
+  paths.rs              config folder, printer_data, git data, log file
+  files.rs              write a file in one step (temporary file, rename)
+  git.rs                thin wrapper around the git command (GIT_DIR, GIT_INDEX_FILE, GIT_SSH_COMMAND)
+  ignore.rs             default and user ignore rules
+  snapshot.rs           read the config folder: ignore rules, no symlinks (C2)
+  backup.rs             commit only on change, commit messages (C2)
+  repository.rs         URLs, tokens, keys, send, continue a history, restore (C8)
+  repository_changes.rs changes on the printer's own branch in the repository (M6)
+  readme.rs             README.md on each printer branch and on shared
+  log.rs                printer_data/logs/printerkeep.log
+  install.rs            install and uninstall (systemd user units, update_manager)
+  state.rs              .printerkeep-state.json: base per followed file (C3)
+  merge.rs              three-way merge per file, needs-decision block (C4, C5)
+  overrides.rs          override lines (C6)
+  shared.rs             the shared branch, changes from shared, status of followed files
 ```
 
 ### Git commands that printerkeep uses

@@ -162,7 +162,7 @@ Moonraker notification is possible later. See the open questions.
   `printer_data/printerkeep/credentials` (mode 600), outside the config folder. **A token or key never goes in
   `printerkeep.conf`**: that file is in the config folder, so the repository would get it. When
   authentication fails (for example, an expired token), the status says so and tells the user to run
-  `add-repository` again.
+  `change-token` (with a key: `add-repository` again).
 - **S3 Restore:** install printerkeep, then `printerkeep restore <url> [<printer name>]`. This needs a token or
   a key, the same as S2.
 - **S4 Update printerkeep:** an update_manager entry. How depends on the language (git repository or compiled
