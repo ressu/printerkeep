@@ -138,7 +138,8 @@ ignore:
 check_repository: 1h
 ```
 
-`printer_name` is optional. The default is the host name. A user with one printer and no repository does not
+`printer_name` is optional. The default is `main` (decided 2026-10-13: never the host name, which is often an
+image default such as `mainsail` or `raspberrypi`, or set by DHCP). A user with one printer and no repository does not
 need this file. When the user runs `add-repository`,
 printerkeep writes it.
 
@@ -151,10 +152,11 @@ printerkeep writes it.
 | `printerkeep restore <url> [<printer name>]` | Restores a printer from the repository. |
 | `printerkeep add-repository <url>` | Connects the printer to a repository. With an `https://` URL it uses the stored token, or asks for a personal access token if there is none or the repository does not accept it. With an SSH URL it makes an SSH key and shows the public key. |
 | `printerkeep change-token` | Replaces the token of the repository, for example when it expired. The new token replaces the old one only if the repository accepts it. |
-| `printerkeep install` | Installs printerkeep for this user, or updates the installation. No root access. |
+| `printerkeep install [--name <name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--name` sets the printer name. |
 | `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |
 | `printerkeep follow <file>` | Starts to follow a shared file. |
 | `printerkeep stop-following <file>` | Stops following a shared file. The file stays on the printer. |
+| `printerkeep rename <name>` | Gives the printer a new name. The history moves to the new branch; the repository keeps the old branch. |
 | `printerkeep copy-to-shared <file> [--yes]` | Makes the shared version equal to this printer's version, except override lines. Shows the changes and asks first; `--yes` does not ask. |
 | `printerkeep decide <file> --use-shared\|--keep-mine` | Finishes a needs-decision file without editing it. |
 
@@ -164,7 +166,7 @@ Commands are verbs. `add-repository` replaces the earlier `repository`.
 
 | Item | Name |
 |---|---|
-| Printer branch | The printer name. Default: the host name. A printer cannot be named `shared`. |
+| Printer branch | The printer name. Default: `main`. A printer cannot be named `shared`. |
 | Shared branch | `shared` |
 | Printer README | `README.md` at the top of each printer branch: what the branch is and how to restore the printer. Not in the config folder; its first line is the marker `<!-- printerkeep: … -->`. |
 | README of shared | `README.md` on the `shared` branch: what the repository is, how to restore a printer. Static; printerkeep writes it with a copy to shared when it is missing or out of date (a new URL). Without its marker line, printerkeep never changes it. |

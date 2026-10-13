@@ -152,47 +152,106 @@ fn backups_are_sent_and_no_change_sends_nothing() {
 }
 
 #[test]
-fn existing_history_in_the_repository_continues() {
+fn a_printer_never_takes_over_the_branch_of_another_printer() {
     let (_dir, url) = repository();
     let first = Printer::new("printer-1");
     first.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     first.ok(&["add-repository", &url]);
     let history = remote_tip(&url, "printer-1");
 
-    // A second install with the same printer name and its own local backups (the migration case).
+    // A second printer (or a new install) with the same name and its own backups.
     let second = Printer::new("printer-1");
     second.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
     second.ok(&["backup"]);
-    let local_only = second.tip("printer-1");
-
-    let output = second.ok(&["add-repository", &url]);
+    let error = second
+        .command(&["add-repository", &url])
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let error = String::from_utf8(error).unwrap();
     assert!(
-        output.contains(
-            "The repository has backups of printer-1. printerkeep continues that history."
-        )
+        error.contains("The repository already has a printer named 'printer-1'"),
+        "{error}"
     );
-    assert!(output.contains("They stay on this printer as refs/printerkeep/kept/printer-1-"));
     assert!(
-        output.contains("Backup made: Changed printer.cfg"),
+        error.contains(&format!("printerkeep restore {url} printer-1")),
+        "{error}"
+    );
+    assert!(error.contains("printerkeep rename <name>"), "{error}");
+    assert_eq!(remote_tip(&url, "printer-1"), history);
+
+    // A different printer: rename it, then add the repository.
+    let output = second.ok(&["rename", "printer-2"]);
+    assert!(
+        output.contains("Renamed the printer from printer-1 to printer-2."),
         "{output}"
     );
+    second.ok(&["add-repository", &url]);
+    assert_eq!(remote_tip(&url, "printer-1"), history);
+    assert_eq!(
+        git(Path::new(&url), &["show", "printer-2:printer.cfg"]),
+        "[printer]\nkinematics: cartesian"
+    );
+}
 
-    // The repository's history is kept, and the new backup is on top of it.
-    let tip = remote_tip(&url, "printer-1");
+#[test]
+fn a_new_repository_with_a_readme_is_joined() {
+    let (dir, url) = repository();
+    // As GitHub makes it with "Add a README file": one commit on main, no configuration.
+    let work = dir.path().join("work");
+    let cloned = std::process::Command::new("git")
+        .args(["clone", "--quiet", &url, work.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(cloned.success());
+    fs::write(work.join("README.md"), "# printers\n").unwrap();
+    for args in [
+        &["checkout", "--quiet", "-b", "main"][..],
+        &["add", "-A"],
+        &[
+            "-c",
+            "user.name=web",
+            "-c",
+            "user.email=web@example.com",
+            "commit",
+            "--quiet",
+            "-m",
+            "Initial commit",
+        ],
+        &["push", "--quiet", "origin", "main"],
+    ] {
+        assert!(
+            std::process::Command::new("git")
+                .current_dir(&work)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let readme_commit = remote_tip(&url, "main");
+
+    // No printer_name: the printer is "main".
+    let printer = Printer::empty();
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["backup"]);
+    let output = printer.ok(&["add-repository", &url]);
+    assert!(
+        output.contains("printerkeep joined its history"),
+        "{output}"
+    );
+    let tip = remote_tip(&url, "main");
     git(
         Path::new(&url),
-        &["merge-base", "--is-ancestor", &history, &tip],
+        &["merge-base", "--is-ancestor", &readme_commit, &tip],
     );
-    // The local-only backup is kept on the printer, not sent.
-    let kept = git(
-        &second.dir.path().join("printerkeep/repo.git"),
-        &[
-            "for-each-ref",
-            "--format=%(objectname)",
-            "refs/printerkeep/kept/",
-        ],
+    assert_eq!(
+        git(Path::new(&url), &["show", "main:printer.cfg"]),
+        "[printer]"
     );
-    assert_eq!(kept, local_only);
+    assert!(printer.ok(&["status"]).contains("Printer name: main\n"));
 }
 
 #[test]
@@ -202,10 +261,11 @@ fn repository_with_newer_changes_is_never_overwritten() {
     first.write("printer.cfg", "[printer]\n");
     first.ok(&["add-repository", &url]);
 
-    // Another install of printer-1 sends a newer backup.
-    let other = Printer::new("printer-1");
+    // Another install of printer-1 (restored from the repository) sends a newer backup.
+    let other = Printer::empty();
+    other.ok(&["restore", &url, "printer-1"]);
     other.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
-    other.ok(&["add-repository", &url]);
+    other.ok(&["backup"]);
     let newer = remote_tip(&url, "printer-1");
 
     // Both changed the same line: the file needs decision (M6). The newer backup stays in the history.
@@ -531,5 +591,61 @@ fn readme_is_in_the_repository_but_not_in_the_config_folder() {
     assert_eq!(
         git(Path::new(&url), &["show", "printer-1:README.md"]),
         "# My printer notes"
+    );
+}
+
+#[test]
+fn rename_moves_the_history_to_a_new_branch() {
+    let (_dir, url) = repository();
+    let printer = Printer::empty();
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["add-repository", &url]);
+    printer.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
+    printer.ok(&["backup"]);
+    let old_tip = remote_tip(&url, "main");
+
+    let output = printer.ok(&["rename", "printer-1"]);
+    assert!(
+        output.contains("Renamed the printer from main to printer-1."),
+        "{output}"
+    );
+    assert!(
+        output.contains("The repository keeps the branch main."),
+        "{output}"
+    );
+    // The whole history is on the new branch; the README there has the new name.
+    let new_tip = remote_tip(&url, "printer-1");
+    git(
+        Path::new(&url),
+        &["merge-base", "--is-ancestor", &old_tip, &new_tip],
+    );
+    assert_eq!(remote_tip(&url, "main"), old_tip);
+    assert!(git(Path::new(&url), &["show", "printer-1:README.md"]).contains("# printer-1"));
+    let status = printer.ok(&["status"]);
+    assert!(status.contains("Printer name: printer-1\n"), "{status}");
+    assert!(
+        status.contains("All backups are in the repository."),
+        "{status}"
+    );
+
+    // A name that the repository has already is refused.
+    let other = Printer::empty();
+    other.write("printer.cfg", "[printer]\n");
+    other.write(
+        "printerkeep.conf",
+        &format!("[printerkeep]\nprinter_name: printer-3\nrepository: {url}\n"),
+    );
+    other.ok(&["backup"]);
+    let error = other
+        .command(&["rename", "printer-1"])
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    assert!(
+        String::from_utf8(error)
+            .unwrap()
+            .contains("already has a branch named 'printer-1'")
     );
 }

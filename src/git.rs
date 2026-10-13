@@ -345,6 +345,23 @@ impl Git {
         Ok(())
     }
 
+    /// Removes `reference`.
+    pub fn delete_ref(&self, reference: &str) -> Result<(), GitError> {
+        run(self.command().args(["update-ref", "-d", reference]), None)?;
+        Ok(())
+    }
+
+    /// Points HEAD to `branch`.
+    pub fn set_head(&self, branch: &str) -> Result<(), GitError> {
+        run(
+            self.command()
+                .args(["symbolic-ref", "HEAD"])
+                .arg(format!("refs/heads/{branch}")),
+            None,
+        )?;
+        Ok(())
+    }
+
     /// Moves `reference` to `new`, whatever it points to now. For printerkeep's own references only.
     pub fn set_ref(&self, reference: &str, new: &str, reason: &str) -> Result<(), GitError> {
         run(

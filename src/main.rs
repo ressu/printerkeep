@@ -98,7 +98,20 @@ enum Command {
     /// Puts the program in ~/printerkeep (for Moonraker's update manager), links ~/.local/bin/printerkeep,
     /// makes a backup every 5 minutes with a systemd user timer, and adds [update_manager printerkeep] to
     /// moonraker.conf.
-    Install,
+    Install {
+        /// The printer name: the name of its branch in the repository. Without it: main. Give each printer
+        /// its own name when more printers use the same repository.
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Give the printer a new name. Its history moves to the branch with the new name.
+    ///
+    /// In the repository, the old branch stays. Remove it in the web pages of the repository if you do not
+    /// need it.
+    Rename {
+        /// The new printer name, for example printer-2.
+        name: String,
+    },
     /// Remove what install made. Keeps the history, the login for the repository and printerkeep.conf.
     Uninstall,
 }
@@ -156,8 +169,9 @@ fn main() -> ExitCode {
         Command::Decide {
             file, use_shared, ..
         } => app::decide(&paths, file, *use_shared),
-        Command::Install => install::Locations::from_env()
-            .and_then(|at| install::install(&paths, &at))
+        Command::Rename { name } => app::rename(&paths, name),
+        Command::Install { name } => install::Locations::from_env()
+            .and_then(|at| install::install(&paths, &at, name.as_deref()))
             .map_err(app::Error::from),
         Command::Uninstall => install::Locations::from_env()
             .and_then(|at| install::uninstall(&paths, &at))

@@ -96,6 +96,15 @@ pub enum Error {
          Then run this command again."
     )]
     DeployKeyNeeded { public_key: String },
+    #[error(
+        "The repository already has a printer named '{name}', with backups that are not from this printer. \
+         printerkeep does not continue them. If this is the same printer after a new install, restore it: \
+         printerkeep restore {url} {name}. If it is a different printer, give this printer its own name, \
+         then add the repository again: printerkeep rename <name>"
+    )]
+    NameInUse { name: String, url: String },
+    #[error("The repository already has a branch named '{0}'. Select a different name.")]
+    NameTaken(String),
     #[error("The repository has no backups.")]
     NothingToRestore,
     #[error(
@@ -599,6 +608,10 @@ impl AddReport {
                 self.printer_name
             )),
             History::Same => {}
+            History::Joined => lines.push(format!(
+                "The repository has no configuration on the branch {}. printerkeep joined its history.",
+                self.printer_name
+            )),
             History::Continued { kept } => {
                 lines.push(format!(
                     "The repository has backups of {}. printerkeep continues that history.",
@@ -664,11 +677,29 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
             git.fetch(&remote, &printer_name, &fetched)
                 .map_err(|e| repository::classify(e, url))?;
             let commit = git.resolve(&fetched)?.unwrap_or_default();
-            repository::continue_history(&git, &printer_name, &commit)?
+            let local = git.resolve(&branch(&printer_name))?;
+            let related = match &local {
+                Some(local) => git.merge_base(local, &commit)?.is_some(),
+                None => false,
+            };
+            if related {
+                repository::continue_history(&git, &printer_name, &commit)?
+            } else if has_configuration(&git, &commit)? {
+                // Another printer with the same name, a new install of this printer, or a klipper-backup
+                // branch. printerkeep never takes over that history by itself.
+                return Err(Error::NameInUse {
+                    name: printer_name,
+                    url: url.to_string(),
+                });
+            } else {
+                // A new repository with only a README or a license (for example made on GitHub with
+                // "Add a README file"): join it.
+                join_history(&git, paths, &printer_name, &commit)?
+            }
         }
     };
 
-    // The URL only: never a token. The printer name, so that a new host name does not start a new history.
+    // The URL only: never a token. The printer name, so that it stays the same.
     settings::set_options(
         &paths.settings(),
         &[("printer_name", &printer_name), ("repository", url)],
@@ -682,6 +713,48 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
         history,
         backup,
     })
+}
+
+/// `true` if the commit has configuration files (`.cfg`), anywhere in the tree.
+fn has_configuration(git: &Git, commit: &str) -> Result<bool, Error> {
+    Ok(git
+        .read_tree(commit)?
+        .keys()
+        .any(|path| path.ends_with(b".cfg")))
+}
+
+/// Joins the history of a branch without configuration (a new repository's README or license) with the
+/// printer's history: a merge commit with the printer's files. The other files are not in the config folder,
+/// so they are not in the backups.
+fn join_history(
+    git: &Git,
+    paths: &Paths,
+    printer_name: &str,
+    remote: &str,
+) -> Result<History, Error> {
+    let reference = branch(printer_name);
+    match git.resolve(&reference)? {
+        Some(local) => {
+            let tree = git.read_tree(&local)?;
+            let tree = git.write_tree(&tree, &paths.index())?;
+            let commit = git.commit_with_parents(
+                &tree,
+                &[&local, remote],
+                "Joined the history of the repository\n",
+                &identity(printer_name),
+            )?;
+            git.update_ref(&reference, &commit, Some(&local), "printerkeep: join")?;
+        }
+        None => {
+            git.update_ref(&reference, remote, None, "printerkeep: join")?;
+        }
+    }
+    git.set_ref(
+        &repository::sent_ref(printer_name),
+        remote,
+        "printerkeep: in the repository",
+    )?;
+    Ok(History::Joined)
 }
 
 /// A working connection to the repository.
@@ -871,7 +944,7 @@ pub fn restore(
 ) -> Result<RestoreReport, Error> {
     let kind = repository::url_kind(url)?;
     let _lock = lock(paths)?;
-    let key_name = printer.map_or_else(host_name, str::to_string);
+    let key_name = printer.unwrap_or(DEFAULT_NAME).to_string();
 
     let git = Git::new(&paths.git_dir);
     if !git.exists() {
@@ -1178,6 +1251,55 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
     Ok(lines)
 }
 
+/// Gives the printer a new name. Its history moves to the branch with the new name. In the repository, the
+/// old branch stays.
+pub fn rename(paths: &Paths, new: &str) -> Result<Vec<String>, Error> {
+    let settings = settings::load(&paths.settings())?;
+    let old = printer_name(&settings)?;
+    check_name(new)?;
+    if new == old {
+        return Ok(vec![format!("The printer name is already {new}.")]);
+    }
+    let _lock = lock(paths)?;
+    let git = Git::new(&paths.git_dir);
+    if git.exists() {
+        if let Some(url) = &settings.repository {
+            let remote = repository::remote(url, paths)?;
+            if git
+                .remote_branch(&remote, new)
+                .map_err(|e| repository::classify(e, url))?
+                .is_some()
+            {
+                return Err(Error::NameTaken(new.to_string()));
+            }
+        }
+        for (from, to) in [
+            (branch(&old), branch(new)),
+            (repository::sent_ref(&old), repository::sent_ref(new)),
+            (repository::fetched_ref(&old), repository::fetched_ref(new)),
+        ] {
+            if let Some(commit) = git.resolve(&from)? {
+                git.set_ref(&to, &commit, "printerkeep: rename")?;
+                git.delete_ref(&from)?;
+            }
+        }
+        git.set_head(new)?;
+    }
+    settings::set_options(&paths.settings(), &[("printer_name", new)])?;
+    let mut lines = vec![format!("Renamed the printer from {old} to {new}.")];
+    if settings.repository.is_some() {
+        lines.push(format!(
+            "The repository keeps the branch {old}. If you do not need it, remove it in the web pages of the \
+             repository."
+        ));
+        // The repository does not have the new branch yet: send all backups.
+        let _ = git.delete_ref(&repository::sent_ref(new));
+    }
+    let settings = settings::load(&paths.settings())?;
+    lines.extend(backup_and_send(paths, &settings, new, COMMAND)?.lines());
+    Ok(lines)
+}
+
 /// Finishes a needs-decision file without editing it: keeps this printer's lines, or uses the shared lines.
 pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>, Error> {
     let settings = settings::load(&paths.settings())?;
@@ -1425,28 +1547,28 @@ impl fmt::Display for Status {
     }
 }
 
-/// The printer name: `printer_name` in the settings file, or the host name.
+/// The printer name when `printer_name` is not set: the usual name of the first branch of a repository. It
+/// never comes from the host name, which is often an image default (`mainsail`, `raspberrypi`) or set by DHCP.
+pub const DEFAULT_NAME: &str = "main";
+
+/// The printer name: `printer_name` in the settings file, or `main`.
 fn printer_name(settings: &Settings) -> Result<String, Error> {
-    let name = match &settings.printer_name {
-        Some(name) => name.clone(),
-        None => host_name(),
-    };
-    if name == SHARED_BRANCH {
-        return Err(Error::ReservedPrinterName);
-    }
-    if !git::is_valid_branch_name(&name)? {
-        return Err(Error::InvalidPrinterName(name));
-    }
+    let name = settings
+        .printer_name
+        .clone()
+        .unwrap_or_else(|| DEFAULT_NAME.to_string());
+    check_name(&name)?;
     Ok(name)
 }
 
-fn host_name() -> String {
-    ["/proc/sys/kernel/hostname", "/etc/hostname"]
-        .iter()
-        .filter_map(|file| std::fs::read_to_string(file).ok())
-        .map(|name| name.trim().to_string())
-        .find(|name| !name.is_empty())
-        .unwrap_or_else(|| "printer".to_string())
+fn check_name(name: &str) -> Result<(), Error> {
+    if name == SHARED_BRANCH {
+        return Err(Error::ReservedPrinterName);
+    }
+    if !git::is_valid_branch_name(name)? {
+        return Err(Error::InvalidPrinterName(name.to_string()));
+    }
+    Ok(())
 }
 
 fn branch(printer_name: &str) -> String {

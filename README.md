@@ -52,6 +52,7 @@ only a damaged download. It does not prove that the program is the correct one.
 | `PRERELEASE` | `0` | `1` installs the latest pre-release |
 | `BINARY_SHA256` | none | The checksum of the program. The script then does not download the checksum file. |
 | `PRINTER_DATA` | `~/printer_data` | The printer_data folder |
+| `PRINTER_NAME` | `main` | The printer name: the name of its branch in the repository. Give each printer its own name when more printers use the same repository. |
 
 ### 2. The install script, read and checked first
 
@@ -123,8 +124,10 @@ repository. Permissions: "Contents", "Read and write".
 
 - Do not put the token in the URL. printerkeep keeps it in `printer_data/printerkeep/credentials`, which only
   your user can read. `printerkeep.conf` gets the URL only.
-- After each backup, printerkeep sends new backups to the repository, on a branch with the name of the
-  printer. It never overwrites changes in the repository.
+- After each backup, printerkeep sends new backups to the repository, on a branch with the printer name
+  (`main` if you did not give one). It never overwrites changes in the repository.
+- A new repository with only a README or a license (as GitHub makes it with "Add a README file") is fine:
+  printerkeep joins its history.
 - The branch has a `README.md` that tells what it is and how to restore the printer. printerkeep writes it.
   It is not in the config folder. If your config folder has its own `README.md`, printerkeep backs up your
   file and adds none.
@@ -152,7 +155,8 @@ printerkeep needs no settings. `printer_data/config/printerkeep.conf` is optiona
 
 ```
 [printerkeep]
-# The name of the branch in the repository. The default is the host name.
+# The printer name: the name of its branch in the repository. The default is main.
+# To change it: printerkeep rename <name> (not here: the history must move too).
 printer_name: printer-1
 # Written by add-repository and restore.
 repository: https://github.com/<user>/<repository>.git
@@ -168,8 +172,6 @@ check_repository: 1h
 A run with no changes writes nothing to the SD card: no backup, no log line. The time of the last check is in
 memory (`/run/user/<id>`), not on the SD card.
 
-Change `printer_name` only before the first backup that you send. A different name starts a different
-history.
 
 ### Files that are not backed up
 
@@ -195,7 +197,12 @@ tells you, and you remove it on the printer.
 
 ## More printers
 
-Each printer keeps its own branch. Files that more printers use can be **shared**: a printer that
+Each printer keeps its own branch, with the printer name. Give each printer its own name: install with
+`--name printer-2` (or `PRINTER_NAME=printer-2` for the install script), or later `printerkeep rename
+printer-2`. A printer with the default name `main` can stay so. printerkeep never takes over the branch of
+another printer with the same name: `add-repository` stops and tells you what to do.
+
+Files that more printers use can be **shared**: a printer that
 **follows** a shared file gets the changes to it, and keeps its own changes to the file (its **local
 changes**). Each printer follows only the files that it needs. All printers must use the same repository.
 

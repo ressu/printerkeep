@@ -310,3 +310,26 @@ fn uninstall_removes_the_installation_and_keeps_the_history() {
         .stdout(contains("printerkeep is removed."))
         .stdout(contains("Removed").not());
 }
+
+#[test]
+fn install_with_a_name_sets_the_printer_name() {
+    let host = Host::new();
+    host.run(&["install", "--name", "printer-2"])
+        .assert()
+        .success()
+        .stdout(contains("Renamed the printer from main to printer-2."))
+        .stdout(contains("printerkeep is installed."));
+    host.run(&["status"])
+        .assert()
+        .success()
+        .stdout(contains("Printer name: printer-2\n"));
+
+    // A name that cannot be a branch stops the install before it changes anything.
+    let other = Host::new();
+    other
+        .run(&["install", "--name", "two words"])
+        .assert()
+        .failure()
+        .stderr(contains("Cannot use the printer name"));
+    assert!(!other.program_dir().exists());
+}

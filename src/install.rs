@@ -32,6 +32,8 @@ pub enum InstallError {
         "The config folder {0} does not exist. Use --printer-data to select the printer_data folder."
     )]
     NoConfigFolder(PathBuf),
+    #[error("Cannot use the printer name: {0}")]
+    Name(String),
     #[error("The HOME variable is not set.")]
     NoHome,
     #[error(
@@ -115,12 +117,23 @@ impl Locations {
 }
 
 /// Installs or updates printerkeep for this user. Returns the lines to show.
-pub fn install(paths: &Paths, at: &Locations) -> Result<Vec<String>, InstallError> {
+/// `name`: the printer name (`--name`). Without it, the name stays as it is (`main` by default).
+pub fn install(
+    paths: &Paths,
+    at: &Locations,
+    name: Option<&str>,
+) -> Result<Vec<String>, InstallError> {
     refuse_root()?;
     let asset = asset().ok_or_else(|| InstallError::UnknownTarget(TARGET.to_string()))?;
     if !paths.config.is_dir() {
         return Err(InstallError::NoConfigFolder(paths.config.clone()));
     }
+    // The name first: a wrong name stops the install before it changes anything.
+    let renamed = match name {
+        Some(name) => crate::app::rename(paths, name)
+            .map_err(|error| InstallError::Name(error.to_string()))?,
+        None => Vec::new(),
+    };
     let printer_data = std::path::absolute(&paths.printer_data)
         .map_err(io_error("Cannot find the printer_data folder"))?;
     let mut lines = vec![format!(
@@ -178,6 +191,11 @@ pub fn install(paths: &Paths, at: &Locations) -> Result<Vec<String>, InstallErro
 
     // The first backup.
     lines.push(String::new());
+    lines.extend(
+        renamed
+            .into_iter()
+            .filter(|l| !l.starts_with("No files changed")),
+    );
     match crate::app::backup(paths, true) {
         Ok(report) => lines.extend(report.lines()),
         Err(error) => lines.push(format!("The first backup did not work: {error}")),

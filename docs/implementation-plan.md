@@ -122,7 +122,8 @@ Each milestone ends with working, tested software.
 - `restore <url> [<printer name>]`: fetch the branch and write its files into the config folder. If the
   folder has files that are different from the branch, printerkeep stops and lists them, unless the user
   adds `--overwrite`. After a restore, printerkeep tells the user to restart Moonraker and Klipper.
-- Printer name: `printer_name:` in the settings file, default the host name. Not `shared`.
+- Printer name: `printer_name:` in the settings file, default the host name. Not `shared`. (Changed
+  2026-10-13: default `main`, see "Printer names" below M6.)
 - **Done when:** integration tests with a local bare repository cover: first push, continued history on an
   existing branch, no force-push when the repository is ahead, restore to an empty folder, refusal and
   `--overwrite` on a non-empty folder.
@@ -432,6 +433,30 @@ changes that go to shared (a diff against the shared version) and the override l
 first. Without a terminal it needs `--yes`. A begin/end override form for gcode lines stays a possibility for
 later, if users need it.
 
+
+### Printer names (2026-10-13)
+
+The host name was the default printer name. That is a poor choice: image defaults (`mainsail`,
+`raspberrypi`, `fluiddpi`) are common, DHCP can change the name, and the name was fixed only by
+`add-repository`. Worst case: two printers with the same name, and the second `add-repository` continued the
+first printer's history (it kept its own backups only as a local reference).
+
+- The default name is `main`, the usual name of a repository's first branch. An empty `printer_name` means
+  `main`. The name never comes from the system.
+- `printerkeep install --name <name>` (install.sh: `PRINTER_NAME`) sets the name before the first backup. A
+  name that cannot be a branch stops the install before it changes anything.
+- `printerkeep rename <name>` moves the local history (the branch, and the sent and fetched references) to
+  the new name and sends it. The repository keeps the old branch (the output says so). It refuses a name that
+  the repository has already. The "change the name only before the first send" warning is gone.
+- `add-repository` with a branch of the same name in the repository:
+  - common history: continue it (as before);
+  - no common history, and the branch has `.cfg` files: stop. It is another printer, a new install of this
+    printer (use `restore`), or a klipper-backup branch. printerkeep never takes over that history by itself;
+  - no common history and no `.cfg` files (a new repository with a README or a license): join both histories
+    with a merge commit. The README and the license are not in the config folder, so they are not in the
+    backups after that.
+- The migration notes ("After 0.1") assumed the host name and "continue the history". Revisit them with
+  this rule.
 
 ### After 0.1: move from klipper-backup
 

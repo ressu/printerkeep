@@ -8,6 +8,8 @@
 #   BINARY_SHA256  the SHA-256 checksum of the program, from the release page on GitHub. The installer then
 #                  does not download the checksum file. "sha256:<hex>" and "<hex>" are both accepted.
 #   PRINTER_DATA   the printer_data folder (default: ~/printer_data)
+#   PRINTER_NAME   the printer name, the name of its branch in the repository (default: main). Give each
+#                  printer its own name when more printers use the same repository.
 #
 # "printerkeep install" does the rest, in the home folder of the user. See README.md.
 set -eu
@@ -65,8 +67,12 @@ else
 fi
 chmod 755 "$ASSET"
 
+set -- install
+if [ -n "${PRINTER_NAME:-}" ]; then
+  set -- install --name "$PRINTER_NAME"
+fi
 if [ -n "$PRINTER_DATA" ]; then
-  "./$ASSET" --printer-data "$PRINTER_DATA" install
+  "./$ASSET" --printer-data "$PRINTER_DATA" "$@"
 else
-  "./$ASSET" install
+  "./$ASSET" "$@"
 fi

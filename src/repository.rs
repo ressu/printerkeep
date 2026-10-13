@@ -348,6 +348,8 @@ pub enum History {
     /// printerkeep continues the repository's history. Backups that were only on this printer are
     /// kept in `kept` (a local reference), if there were any.
     Continued { kept: Option<String> },
+    /// The repository's branch had no configuration (only a README or a license). Both histories are joined.
+    Joined,
 }
 
 /// Makes the printer's branch continue the repository's branch `remote_commit` (already fetched).
