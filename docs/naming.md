@@ -108,7 +108,7 @@ platforms). The data paths are per `printer_data` folder, so more instances per 
 | Installer | `install.sh`, a release asset. It downloads and checks the program, then runs `printerkeep install`. |
 | update_manager entry | `[update_manager printerkeep]` with `type: executable` |
 | systemd units | systemd user units in `~/.config/systemd/user/`: `printerkeep.service` (`Type=oneshot`, runs `printerkeep backup`) and `printerkeep.timer`. layerlock connects with `ExecCondition=` in the service. |
-| Klipper macro (optional, not in 0.1) | `PRINTERKEEP_BACKUP`. In 0.1, the manual start is `printerkeep backup`. |
+| Klipper macro (optional, not yet) | `PRINTERKEEP_BACKUP`. For now, the manual start is `printerkeep backup`. |
 
 ### Files on the printer
 

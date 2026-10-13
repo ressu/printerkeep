@@ -20,5 +20,10 @@ pub mod shared;
 pub mod snapshot;
 pub mod state;
 
-/// The printerkeep version, from `Cargo.toml`.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The printerkeep version: major.minor from `Cargo.toml` (whose patch number is always 0). Releases are
+/// tagged `v<major>.<minor>`.
+pub const VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION_MAJOR"),
+    ".",
+    env!("CARGO_PKG_VERSION_MINOR")
+);

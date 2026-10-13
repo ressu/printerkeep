@@ -1,6 +1,6 @@
 [package]
 name = "printerkeep"
-version = "0.1.0-dev"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Keeps Klipper printer configuration safe in git, and keeps printers in step"

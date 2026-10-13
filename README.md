@@ -5,9 +5,10 @@ printers can follow shared files and still keep their own changes.
 
 printerkeep works with Klipper and with firmware derived from it, such as Kalico.
 
-> **Status: in development, not released yet.** Release 0.1 replaces
-> [klipper-backup](https://github.com/Staubgeborener/klipper-backup) for one printer, and continues its history
-> (see [Send backups to a repository](#send-backups-to-a-repository)).
+> **Status: in development, not released yet.**
+
+printerkeep replaces [klipper-backup](https://github.com/Staubgeborener/klipper-backup), and continues its
+history (see [Send backups to a repository](#send-backups-to-a-repository)).
 
 ## What printerkeep does
 
@@ -16,7 +17,8 @@ printerkeep works with Klipper and with firmware derived from it, such as Kalico
 - Restores a printer from the repository.
 - Updates itself through Moonraker's update manager.
 - Gets changes that you make in the repository (for example in the web pages of GitHub) to the printer.
-- From release 0.2: shared files for more printers, with local changes on each printer.
+- Keeps more printers in step: shared files, with local changes on each printer (see
+  [More printers](#more-printers)).
 
 ## Install
 
@@ -49,8 +51,7 @@ only a damaged download. It does not prove that the program is the correct one.
 
 | Variable | Default | Description |
 |---|---|---|
-| `VERSION` | latest | Install a specific release, for example `v0.1.0` |
-| `PRERELEASE` | `0` | `1` installs the latest pre-release |
+| `VERSION` | latest | Install a specific release, for example `v0.1` |
 | `BINARY_SHA256` | none | The checksum of the program. The script then does not download the checksum file. |
 | `PRINTER_DATA` | `~/printer_data` | The printer_data folder |
 | `PRINTER_NAME` | `main` | The printer name: the name of its branch in the repository. Give each printer its own name when more printers use the same repository. |
@@ -58,9 +59,9 @@ only a damaged download. It does not prove that the program is the correct one.
 ### 2. The install script, read and checked first
 
 ```sh
-curl -fsSL https://github.com/ressu/printerkeep/releases/download/v0.1.0/install.sh -o install.sh
+curl -fsSL https://github.com/ressu/printerkeep/releases/download/v0.1/install.sh -o install.sh
 less install.sh
-VERSION=v0.1.0 BINARY_SHA256="sha256:<checksum>" sh install.sh
+VERSION=v0.1 BINARY_SHA256="sha256:<checksum>" sh install.sh
 ```
 
 Copy the checksum of the program for your CPU from the [release page](https://github.com/ressu/printerkeep/releases)
@@ -79,7 +80,7 @@ Select the file for your CPU (`uname -m` shows it):
 | `x86_64` | `printerkeep-linux-x86_64` |
 
 ```sh
-curl -fsSLO https://github.com/ressu/printerkeep/releases/download/v0.1.0/printerkeep-linux-aarch64
+curl -fsSLO https://github.com/ressu/printerkeep/releases/download/v0.1/printerkeep-linux-aarch64
 sha256sum printerkeep-linux-aarch64      # compare with the checksum on the release page
 chmod +x printerkeep-linux-aarch64
 ./printerkeep-linux-aarch64 install      # copies itself to ~/printerkeep

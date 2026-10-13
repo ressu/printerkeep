@@ -1,6 +1,6 @@
 name: Release
 
-# A tag "v*" builds and publishes a release. A tag with a "-" (for example v0.1.0-rc.1) is a pre-release.
+# A tag "v<major>.<minor>" (for example v0.2) builds and publishes a release. No pre-releases.
 # "Run workflow" builds and tests the binaries without a release.
 on:
   push:
@@ -39,8 +39,12 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          if [ "$TAG" != "v$version" ]; then
-            echo "The tag $TAG is not v$version (the version in Cargo.toml)." >&2
+          case "$version" in
+            *.*.0) ;;
+            *) echo "The version in Cargo.toml must be <major>.<minor>.0, not $version." >&2; exit 1 ;;
+          esac
+          if [ "$TAG" != "v${version%.0}" ]; then
+            echo "The tag $TAG is not v${version%.0} (the version in Cargo.toml)." >&2
             exit 1
           fi
 
@@ -97,8 +101,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          prerelease=""
-          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
           cp install.sh dist/
           # update_manager compares the release title with the version in release_info.json (the tag).
-          gh release create "$TAG" dist/* --repo "${{ github.repository }}" --title "$TAG" --generate-notes $prerelease
+          gh release create "$TAG" dist/* --repo "${{ github.repository }}" --title "$TAG" --generate-notes

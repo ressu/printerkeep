@@ -24,8 +24,8 @@ separate index. It writes a file into the config folder only when it has a final
 
 1. Read the config folder into a git tree. Apply the ignore rules (the defaults, plus optional rules in the
    settings file). Ignore symlinks. Ignore line-ending differences.
-2. If the tree is the same as in the last backup: stop. No commit, no push, and no write to the SD card. From
-   0.2, a run checks the repository for changes with `git ls-remote` (no write), at most as often as
+2. If the tree is the same as in the last backup: stop. No commit, no push, and no write to the SD card. A
+   run also checks the repository for changes with `git ls-remote` (no write), at most as often as
    `check_repository` says (default: each run). See M5 in implementation-plan.md.
 3. If not: make a commit. The message lists the changed files, for example
    `printer.cfg, macros/macros.cfg changed`. If only the `SAVE_CONFIG` block changed, the message says so.

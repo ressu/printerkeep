@@ -7,5 +7,9 @@ fn version_flag_prints_name_and_version() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(format!("printerkeep {}\n", env!("CARGO_PKG_VERSION")));
+        .stdout(format!(
+            "printerkeep {}.{}\n",
+            env!("CARGO_PKG_VERSION_MAJOR"),
+            env!("CARGO_PKG_VERSION_MINOR")
+        ));
 }

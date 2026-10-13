@@ -3,8 +3,7 @@
 # Run it as the printer's user. It does not use sudo.
 #
 # Variables:
-#   VERSION        the release to install, for example v0.1.0 (default: the latest release)
-#   PRERELEASE=1   install the latest pre-release
+#   VERSION        the release to install, for example v0.1 (default: the latest release)
 #   BINARY_SHA256  the SHA-256 checksum of the program, from the release page on GitHub. The installer then
 #                  does not download the checksum file. "sha256:<hex>" and "<hex>" are both accepted.
 #   PRINTER_DATA   the printer_data folder (default: ~/printer_data)
@@ -16,7 +15,6 @@ set -eu
 
 REPO="ressu/printerkeep"
 VERSION="${VERSION:-}"
-PRERELEASE="${PRERELEASE:-0}"
 BINARY_SHA256="${BINARY_SHA256:-}"
 PRINTER_DATA="${PRINTER_DATA:-}"
 
@@ -38,13 +36,9 @@ case "$(uname -m)" in
 esac
 
 if [ -z "$VERSION" ]; then
-  if [ "$PRERELEASE" = 1 ]; then
-    api="https://api.github.com/repos/$REPO/releases?per_page=1"
-  else
-    api="https://api.github.com/repos/$REPO/releases/latest"
-  fi
+  api="https://api.github.com/repos/$REPO/releases/latest"
   VERSION=$(curl -fsSL "$api" | grep '"tag_name"' | head -n 1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-  [ -n "$VERSION" ] || fail "cannot find the latest release. Set VERSION, for example VERSION=v0.1.0."
+  [ -n "$VERSION" ] || fail "cannot find the latest release. Set VERSION, for example VERSION=v0.1."
 fi
 
 TMP_DIR=$(mktemp -d)

@@ -74,15 +74,6 @@ fn asset_for(target: &str) -> Option<&'static str> {
     }
 }
 
-/// The update channel: a pre-release (a version with "-") gets pre-releases.
-fn channel() -> &'static str {
-    if crate::VERSION.contains('-') {
-        "beta"
-    } else {
-        "stable"
-    }
-}
-
 /// Where the installed files go, in the home folder of the user.
 #[derive(Debug, Clone)]
 pub struct Locations {
@@ -499,12 +490,11 @@ fn update_manager_section() -> String {
     format!(
         "{SECTION}\n\
          type: executable\n\
-         channel: {}\n\
+         channel: stable\n\
          repo: {PROJECT}\n\
          path: ~/printerkeep\n\
          # printerkeep runs from a timer. An update does not need to restart a service.\n\
-         is_system_service: False\n",
-        channel()
+         is_system_service: False\n"
     )
 }
 

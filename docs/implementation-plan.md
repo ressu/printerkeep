@@ -3,15 +3,24 @@
 Status: draft (2026-10-11). Based on [problem.md](problem.md), [solution-options.md](solution-options.md),
 [naming.md](naming.md) and [language.md](language.md).
 
-## Releases
+## Main milestones
 
-| Release | Content | Goal |
-|---|---|---|
-| **0.1** | One printer: local history, repository, restore, installer, update_manager. | A replacement for klipper-backup. The authors move their own printers to printerkeep. |
-| **0.2** | More printers: follow, changes from shared, needs decision, override, copy to shared, status. Changes in the repository get to the printer (M6). | The full design. |
+| Milestone | Content |
+|---|---|
+| **One printer** | Local history, repository, restore, installer, update_manager, klipper-backup history. A replacement for klipper-backup; the authors move their own printers to printerkeep. |
+| **More printers** | Follow, changes from shared, needs decision, override, copy to shared, status. Changes in the repository get to the printer (M6). |
 
-0.1 already uses the 0.2 repository format (one branch per printer, files at the top). Thus, 0.2 needs no
-migration.
+Both use the same repository format (one branch per printer, files at the top), so the second needs no
+migration. Release numbers are not planned ahead: a release happens when its work is ready (see
+"Versions").
+
+## Versions
+
+Decided 2026-10-13: `major.minor`, tagged `v<major>.<minor>` (for example `v0.2`). A bug fix is the next
+minor release. No patch numbers and no pre-releases: printerkeep is a program, not a library, and
+update_manager only checks if the installed version is the same as the release title. `Cargo.toml` needs
+three numbers, so it has `<major>.<minor>.0`; printerkeep shows `<major>.<minor>`, and the release workflow
+refuses a tag that does not match.
 
 ## Project setup
 
@@ -72,7 +81,7 @@ All are old, stable commands: `hash-object -w`, `update-index` (with a separate 
 `write-tree`, `commit-tree`, `update-ref`, `rev-parse`, `cat-file`, `ls-tree`, `fetch`, `push`,
 `merge-file`. printerkeep never runs `git merge`, `git pull` or `git checkout` in the config folder (C1).
 
-### Merge engine (0.2)
+### Merge engine
 
 1. Apply the override rule: for each override line in the printer's file, find the line with the same
    `[section]` and option name in the base and the shared version, and replace it with the printer's line.
@@ -93,7 +102,7 @@ Each milestone ends with working, tested software.
 - Cargo project, license, `rust-toolchain.toml`, `flake.nix`, CLAUDE.md, README stub.
 - CI: `cargo fmt --check`, `clippy -D warnings`, tests.
 - Release workflow on a tag: build the four musl targets with `cargo-zigbuild`, publish
-  `printerkeep-linux-{aarch64,armv7,armv6,x86_64}` and a SHA-256 checksum file. Pre-releases for tests.
+  `printerkeep-linux-{aarch64,armv7,armv6,x86_64}` and a SHA-256 checksum file. (Pre-releases were removed later, see "Versions".)
 - **Done when:** a tag makes a release with five files, and each binary runs `printerkeep --version` (CI runs
   the ARM binaries with qemu-user).
 
@@ -125,7 +134,7 @@ Each milestone ends with working, tested software.
   The next backup is a child of the branch's last commit. This is needed to move from klipper-backup.
 - Push after each backup. If the repository has commits that the printer does not have, printerkeep does
   **not** force-push. It keeps its backups locally and writes a clear status ("the repository has changes
-  that this printer does not have"). 0.2 merges them (M6).
+  that this printer does not have"). M6 merges them.
 - `restore <url> [<printer name>]`: fetch the branch and write its files into the config folder. If the
   folder has files that are different from the branch, printerkeep stops and lists them, unless the user
   adds `--overwrite`. After a restore, printerkeep tells the user to restart Moonraker and Klipper.
@@ -175,11 +184,11 @@ Each milestone ends with working, tested software.
 - `printerkeep uninstall`: remove units, link, program folder and update_manager entry. Keep the git data,
   the login and `printerkeep.conf`.
 - `install.sh`, based on layerlock's installer: map `uname -m` to the asset (with a separate armv6 asset),
-  check the SHA-256 checksum (`BINARY_SHA256` or the checksum file), `VERSION` and `PRERELEASE` variables,
+  check the SHA-256 checksum (`BINARY_SHA256` or the checksum file), the `VERSION` variable,
   then run `printerkeep install`. The README shows three ways to install: the script in one command, the
   script read and checked against the release page, and no script.
 - **Done when:** on a real printer, one command installs printerkeep, the timer makes backups, and Fluidd's
-  update panel updates printerkeep from one pre-release to the next.
+  update panel updates printerkeep from one release to the next.
 
 **Spike results (2026-10-11, from the Moonraker source, update_manager `net_deploy.py` and `app_deploy.py`):**
 
@@ -204,7 +213,7 @@ Each milestone ends with working, tested software.
     user units can need it. It tells the user if printerkeep turned it on.
   - Moonraker manages system services only. Thus, printerkeep is not in the services menu of Fluidd and
     Mainsail, and the installer does not change `moonraker.asvc`. The manual start is `printerkeep backup`.
-    The `PRINTERKEEP_BACKUP` macro is not in 0.1 (Klipper has no standard way to run a command).
+    The `PRINTERKEEP_BACKUP` macro is not built yet (Klipper has no standard way to run a command).
   - printerkeep does not restart Moonraker. It tells the user to restart Moonraker, so that the update panel
     shows printerkeep.
 - **The install steps are in the program**, not in the script: they have tests, and the way without a script
@@ -223,14 +232,15 @@ Each milestone ends with working, tested software.
   `status` tells the user when the service uses a layerlock that does not exist, or when layerlock is installed
   but the service does not use it. In both cases, `printerkeep install` fixes the service.
 - The update channel follows the installed version: a pre-release (`0.1.0-rc.1`) gets `channel: beta`.
+  (Removed later: no pre-releases, always `channel: stable`. See "Versions".)
 - `install` makes the first backup, after it changed `moonraker.conf`.
 
-### M4. Release 0.1
+### M4. First release
 
 - User README: install, first backup, add a repository, restore.
 - People who move from klipper-backup use the same repository: `add-repository` continues the
   klipper-backup history (see "Move from klipper-backup").
-- **Done when:** the authors' printers run 0.1.
+- **Done when:** the authors' printers run the first release.
 
 **Decisions made in M4 (2026-10-12):**
 
@@ -240,7 +250,7 @@ Each milestone ends with working, tested software.
 - No README in the printer branch, as klipper-backup has: a printer branch is the config folder, and restore
   writes all its files. (Changed in M5 part 6: a README.md that is not in the config folder.)
 
-### M5. More printers (0.2)
+### M5. More printers
 
 - Spike first: a CI job that loads test configurations with Klipper's own parser (`klippy/configfile.py`, a
   pinned Klipper checkout, Python 3). It proves that `#### printerkeep` blocks, commented-out lines and
@@ -411,7 +421,7 @@ Part 8 (2026-10-13): property tests (`tests/merge_properties.rs`, proptest, a de
 
 M5 status: the "done when" is met in tests. Not yet tried on real printers.
 
-### M6. Real-data tests (0.2)
+### M6. Real-data tests
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).
   The fixtures test the cases in "Real differences, checked" in solution-options.md.
@@ -500,7 +510,7 @@ script):
 
 | Question | Milestone |
 |---|---|
-| Notifications in Fluidd/Mainsail through Moonraker | after 0.2; the log file is enough until then |
+| Notifications in Fluidd/Mainsail through Moonraker | later; the log file is enough until then |
 | Klipper parser and markers | M5 spike (done, see M5) |
 | Default ignore rules | M1 |
 | `executable` type details | M3 spike (done, see M3) |
