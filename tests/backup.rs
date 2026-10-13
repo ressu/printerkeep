@@ -164,6 +164,34 @@ fn ignored_files_and_symlinks_are_not_backed_up() {
     );
 }
 
+#[test]
+fn skipped_symlinks_go_to_the_log_only_when_the_list_changes() {
+    let printer = Printer::new();
+    printer.write("printer.cfg", "[printer]\n");
+    std::os::unix::fs::symlink("/home/pi/KAMP", printer.config().join("KAMP")).unwrap();
+    printer.backup();
+
+    // The same links at the next backup: the terminal shows them, the log does not get them again.
+    printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
+    assert!(
+        printer
+            .backup()
+            .contains("Not backed up (symlinks): KAMP\n")
+    );
+    assert_eq!(printer.log().matches("Not backed up (symlinks)").count(), 1);
+
+    // A new link: the log gets the new list.
+    std::os::unix::fs::symlink("/home/pi/ShakeTune", printer.config().join("K-ShakeTune")).unwrap();
+    printer.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
+    printer.backup();
+    assert!(
+        printer
+            .log()
+            .contains("Not backed up (symlinks): K-ShakeTune, KAMP\n")
+    );
+    assert_eq!(printer.log().matches("Not backed up (symlinks)").count(), 2);
+}
+
 const SAVE_CONFIG: &str = "#*# <---------------------- SAVE_CONFIG ---------------------->\n\
                            #*# DO NOT EDIT THIS BLOCK OR BELOW. The contents are auto-generated.\n\
                            #*#\n";

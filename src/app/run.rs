@@ -19,6 +19,8 @@ pub struct BackupReport {
     pub problems: Vec<String>,
     /// The problems are not the same as at the last run.
     pub problem_changed: bool,
+    /// The skipped symlinks are not the same as at the last backup.
+    pub skipped_changed: bool,
     /// The last run had a problem, and this run has none.
     pub solved: bool,
     /// Nothing happened: no backup, no change, nothing sent, no problem. The log does not get this run, so
@@ -38,6 +40,9 @@ pub enum Outcome {
     NoFiles,
 }
 
+/// The start of the line with the skipped symlinks.
+const SKIPPED: &str = "Not backed up (symlinks): ";
+
 impl BackupReport {
     /// The lines for the log: the same, but a problem only when it is new or changed, and nothing for a
     /// run in which nothing happened.
@@ -49,6 +54,9 @@ impl BackupReport {
         if !self.problem_changed {
             lines.retain(|line| !self.problems.contains(line));
         }
+        if !self.skipped_changed {
+            lines.retain(|line| !line.starts_with(SKIPPED));
+        }
         lines
     }
 
@@ -58,10 +66,7 @@ impl BackupReport {
             Outcome::Made { summary, .. } => {
                 let mut lines = vec![format!("Backup made: {summary}")];
                 if !self.skipped.is_empty() {
-                    lines.push(format!(
-                        "Not backed up (symlinks): {}",
-                        self.skipped.join(", ")
-                    ));
+                    lines.push(format!("{SKIPPED}{}", self.skipped.join(", ")));
                 }
                 lines
             }
@@ -235,6 +240,20 @@ pub(super) fn backup_and_send(
         };
     }
     let solved = previous.is_some() && problem.is_none();
+    // The same for the skipped symlinks: they are the same at almost each backup.
+    let skipped_text = skipped.join("\n");
+    let skipped_changed = matches!(outcome, Outcome::Made { .. })
+        && std::fs::read_to_string(paths.skipped())
+            .unwrap_or_default()
+            .trim_end()
+            != skipped_text;
+    if skipped_changed {
+        let _ = if skipped.is_empty() {
+            std::fs::remove_file(paths.skipped())
+        } else {
+            std::fs::write(paths.skipped(), format!("{skipped_text}\n"))
+        };
+    }
     let quiet = outcome == Outcome::NoChange
         && !shared_news
         && from_repository.is_empty()
@@ -249,6 +268,7 @@ pub(super) fn backup_and_send(
         sent,
         problems,
         problem_changed,
+        skipped_changed,
         solved,
         quiet,
     })

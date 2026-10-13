@@ -48,6 +48,11 @@ impl Paths {
         self.data.join("send-problem")
     }
 
+    /// The symlinks that the last backup skipped. The log gets the list only when it changes.
+    pub fn skipped(&self) -> PathBuf {
+        self.data.join("skipped")
+    }
+
     /// A temporary git index, used to build trees. Never in the config folder.
     pub fn index(&self) -> PathBuf {
         self.data.join("index")
