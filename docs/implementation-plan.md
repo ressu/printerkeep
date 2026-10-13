@@ -16,11 +16,16 @@ migration. Release numbers are not planned ahead: a release happens when its wor
 
 ## Versions
 
-Decided 2026-10-13: `major.minor`, tagged `v<major>.<minor>` (for example `v0.2`). A bug fix is the next
-minor release. No patch numbers and no pre-releases: printerkeep is a program, not a library, and
-update_manager only checks if the installed version is the same as the release title. `Cargo.toml` needs
-three numbers, so it has `<major>.<minor>.0`; printerkeep shows `<major>.<minor>`, and the release workflow
-refuses a tag that does not match.
+Three numbers, `<major>.<minor>.<patch>`, tagged `v<version>` (for example `v0.2.0`). No pre-releases.
+Release numbers are not planned ahead.
+
+History: on 2026-10-13 we chose `major.minor` (`v0.1`), because Moonraker's update_manager only checks if the
+installed version is the same as the release title. v0.1 was released that way. Then Fluidd did not offer
+the update: Fluidd and Mainsail offer an update only when the installed version and the release title are
+both valid semantic versions (`semver.valid(…, { loose: true })`, which needs three numbers) and the release
+is greater. Thus, from the release after v0.1, versions have three numbers again. The release workflow
+refuses a version that is not three numbers, and a tag that does not match. A printer with v0.1 must be
+updated by hand once (its installed version is not a semantic version).
 
 ## Project setup
 

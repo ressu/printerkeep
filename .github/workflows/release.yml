@@ -1,6 +1,6 @@
 name: Release
 
-# A tag "v<major>.<minor>" (for example v0.2) builds and publishes a release. No pre-releases.
+# A tag "v<major>.<minor>.<patch>" (for example v0.2.0) builds and publishes a release. No pre-releases.
 # "Run workflow" builds and tests the binaries without a release.
 on:
   push:
@@ -32,19 +32,20 @@ jobs:
       - uses: actions/checkout@v7
 
       # printerkeep install writes "v<version>" to release_info.json, and update_manager compares it with
-      # the release title (the tag). They must be the same.
+      # the release title (the tag). They must be the same. Fluidd and Mainsail offer an update only when both
+      # are valid semantic versions: three numbers, no pre-release part.
       - name: Tag matches the version
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           TAG: ${{ github.ref_name }}
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          case "$version" in
-            *.*.0) ;;
-            *) echo "The version in Cargo.toml must be <major>.<minor>.0, not $version." >&2; exit 1 ;;
-          esac
-          if [ "$TAG" != "v${version%.0}" ]; then
-            echo "The tag $TAG is not v${version%.0} (the version in Cargo.toml)." >&2
+          if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "The version in Cargo.toml must be <major>.<minor>.<patch>, not $version." >&2
+            exit 1
+          fi
+          if [ "$TAG" != "v$version" ]; then
+            echo "The tag $TAG is not v$version (the version in Cargo.toml)." >&2
             exit 1
           fi
 
