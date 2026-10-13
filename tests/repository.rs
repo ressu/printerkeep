@@ -79,7 +79,9 @@ fn a_printer_never_takes_over_the_branch_of_another_printer() {
         "{error}"
     );
     assert!(
-        error.contains(&format!("printerkeep restore {url} printer-1")),
+        error.contains(&format!(
+            "printerkeep restore {url} --printer-name printer-1"
+        )),
         "{error}"
     );
     assert!(error.contains("printerkeep rename <name>"), "{error}");
@@ -138,7 +140,7 @@ fn repository_with_newer_changes_is_never_overwritten() {
 
     // Another install of printer-1 (restored from the repository) sends a newer backup.
     let other = Printer::empty();
-    other.ok(&["restore", &url, "printer-1"]);
+    other.ok(&["restore", &url, "--printer-name", "printer-1"]);
     other.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
     other.ok(&["backup"]);
     let newer = remote_tip(&url, "printer-1");
@@ -344,11 +346,11 @@ fn restore_asks_which_printer_when_there_are_more() {
         .stderr(contains(
             "backups of more printers: printer-1, printer-2. Select one",
         ));
-    new.command(&["restore", &url, "printer-3"])
+    new.command(&["restore", &url, "--printer-name", "printer-3"])
         .assert()
         .failure()
         .stderr(contains("no printer named 'printer-3'"));
-    new.ok(&["restore", &url, "printer-2"]);
+    new.ok(&["restore", &url, "--printer-name", "printer-2"]);
     assert_eq!(new.read("printer.cfg"), "# printer-2\n");
     assert!(
         new.read("printerkeep.conf")
@@ -414,7 +416,9 @@ fn readme_is_in_the_repository_but_not_in_the_config_folder() {
     let readme = git(Path::new(&url), &["show", "printer-1:README.md"]);
     assert!(readme.starts_with("<!-- printerkeep:"), "{readme}");
     assert!(
-        readme.contains(&format!("printerkeep restore {url} printer-1")),
+        readme.contains(&format!(
+            "printerkeep restore {url} --printer-name printer-1"
+        )),
         "{readme}"
     );
     assert!(!printer.config().join("README.md").exists());

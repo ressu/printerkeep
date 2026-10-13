@@ -108,7 +108,7 @@ impl Locations {
 }
 
 /// Installs or updates printerkeep for this user. Returns the lines to show.
-/// `name`: the printer name (`--name`). Without it, the name stays as it is (`main` by default).
+/// `name`: the printer name (`--printer-name`). Without it, the name stays as it is (`main` by default).
 pub fn install(
     paths: &Paths,
     at: &Locations,

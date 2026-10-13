@@ -141,7 +141,7 @@ Each milestone ends with working, tested software.
 - Push after each backup. If the repository has commits that the printer does not have, printerkeep does
   **not** force-push. It keeps its backups locally and writes a clear status ("the repository has changes
   that this printer does not have"). M6 merges them.
-- `restore <url> [<printer name>]`: fetch the branch and write its files into the config folder. If the
+- `restore <url> [--printer-name <name>]`: fetch the branch and write its files into the config folder. If the
   folder has files that are different from the branch, printerkeep stops and lists them, unless the user
   adds `--overwrite`. After a restore, printerkeep tells the user to restart Moonraker and Klipper.
 - Printer name: `printer_name:` in the settings file, default the host name. Not `shared`. (Changed
@@ -466,7 +466,7 @@ first printer's history (it kept its own backups only as a local reference).
 
 - The default name is `main`, the usual name of a repository's first branch. An empty `printer_name` means
   `main`. The name never comes from the system.
-- `printerkeep install --name <name>` (install.sh: `PRINTER_NAME`) sets the name before the first backup. A
+- `printerkeep install --printer-name <name>` (install.sh: `PRINTER_NAME`) sets the name before the first backup. A
   name that cannot be a branch stops the install before it changes anything.
 - `printerkeep rename <name>` moves the local history (the branch, and the sent and fetched references) to
   the new name and sends it. The repository keeps the old branch (the output says so). It refuses a name that
@@ -479,6 +479,12 @@ first printer's history (it kept its own backups only as a local reference).
     with a merge commit. The README and the license are not in the config folder, so they are not in the
     backups after that.
 - klipper-backup branches: see "Move from klipper-backup".
+- Command line (decided 2026-10-13): the printer name is always `--printer-name <name>` (`install`,
+  `restore`, and `add-repository` with M7), the same words as `PRINTER_NAME` and `printer_name:`. The rule:
+  the main thing a command acts on is positional, and things that change how it acts are flags. Thus only
+  `rename <printer name>` has it as a positional argument: the name is what it acts on. Not both forms for one
+  command: two ways to write the same thing are harder to learn and to read. `install --name` and `restore
+  <url> <name>` (v0.1) are gone.
 
 ### Move from klipper-backup (2026-10-13)
 
@@ -497,7 +503,7 @@ script):
 - printerkeep does not check whether klipper-backup is still installed (that would mean following how users
   install and remove it). It prints a notice: stop klipper-backup, or it sends its backups to the same branch.
 - With the default name `main`, the usual klipper-backup repository (one `main` branch) needs no options.
-  One klipper-backup branch per printer: install each printer with `--name <branch>`.
+  One klipper-backup branch per printer: install each printer with `--printer-name <branch>`.
 - Earlier notes (from the postponed guide): klipper-backup's clone `~/config_backup` has its token in the
   remote URL; a public klipper-backup repository had 825 commits, 86 of them changed the config folder.
 
@@ -540,13 +546,12 @@ changes files.
    - A new branch, and the local history has more than the install's first backup: "Send the backups made
      on this printer, or start the history in the repository from now?" From now: one backup of the current
      files; the local history is set aside.
-   - **The printer name as an argument,** the same for both commands: `add-repository <url> [printer name]`
-     and `restore <url> [printer name]` (restore has it already; add-repository has none today, and a user
-     expected it to work). With a name, this printer takes that name: if the repository has that branch, it
-     continues it (after the question); if not, it starts a new branch with that name. This replaces the
-     manual edit of `printer_name:` and a separate `--name` option.
+   - **`--printer-name` for both commands:** `add-repository <url> --printer-name <name>`, the same as
+     `install` and `restore` (a user expected add-repository to take a printer name). With a name, this
+     printer takes that name: if the repository has that branch, it continues it (after the question); if
+     not, it starts a new branch with that name. This replaces the manual edit of `printer_name:`.
    - Without a terminal, printerkeep never guesses: it stops, lists what it found, and names the options
-     (the printer name argument, `--continue`, `--from-now`).
+     (`--printer-name`, `--continue`, `--from-now`).
    - `restore` = the same, plus it writes the files of the backup (as now: never removes files, `--overwrite`
      for different files). After a restore, the install's first backup (of the default configuration) is
      set aside like any other local backup.

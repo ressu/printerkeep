@@ -161,7 +161,7 @@ printerkeep restore https://github.com/<user>/<repository>.git
 printerkeep writes the files of the backup into the config folder and continues the history. It never
 removes files. If a file in the config folder is different from the backup, printerkeep stops and lists
 those files; add `--overwrite` to replace them. If the repository has backups of several printers, add the
-printer name: `printerkeep restore <url> <printer name>`. Restart Moonraker and Klipper after a restore.
+printer name: `printerkeep restore <url> --printer-name <printer name>`. Restart Moonraker and Klipper after a restore.
 
 ### Change files in the repository
 
@@ -199,7 +199,7 @@ printerkeep keeps the time of the last repository check in memory (`/run/user/<i
 ### Printer name
 
 The printer name is also the name of the printer's branch in the repository. The default is `main`. Set it
-at install with `--name` (or `PRINTER_NAME` for the install script), or later with:
+at install with `--printer-name` (or `PRINTER_NAME` for the install script), or later with:
 
 ```sh
 printerkeep rename printer-2
@@ -230,7 +230,7 @@ printerkeep always skips these files, in addition to your `ignore` rules:
 ## Several printers
 
 Each printer has its own branch, named after the printer, so give each printer its own name. Set it at
-install with `--name printer-2` (or `PRINTER_NAME=printer-2` for the install script), or later with
+install with `--printer-name printer-2` (or `PRINTER_NAME=printer-2` for the install script), or later with
 `printerkeep rename printer-2` (see [Printer name](#printer-name)). One printer can keep the default name `main`. printerkeep never takes over
 the branch of another printer with the same name: `add-repository` stops and tells you what to do.
 

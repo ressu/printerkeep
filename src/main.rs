@@ -45,7 +45,9 @@ enum Command {
     Restore {
         /// The repository URL, without a token.
         url: String,
-        /// The printer to restore. Necessary if the repository has backups of more printers.
+        /// The printer to restore (its branch in the repository). Necessary if the repository has backups of
+        /// several printers.
+        #[arg(long, value_name = "PRINTER_NAME")]
         printer_name: Option<String>,
         /// Replace files in the config folder that are different from the backup.
         #[arg(long)]
@@ -100,9 +102,9 @@ enum Command {
     /// moonraker.conf.
     Install {
         /// The printer name: the name of its branch in the repository. Without it: main. Give each printer
-        /// its own name when more printers use the same repository.
-        #[arg(long)]
-        name: Option<String>,
+        /// its own name when several printers use the same repository.
+        #[arg(long, value_name = "PRINTER_NAME")]
+        printer_name: Option<String>,
     },
     /// Give this printer a new name. Its history moves to the new name.
     ///
@@ -112,7 +114,8 @@ enum Command {
     /// rename stops: it never takes over a branch.
     Rename {
         /// The new printer name, for example printer-2.
-        name: String,
+        #[arg(value_name = "PRINTER_NAME")]
+        printer_name: String,
     },
     /// Remove what install made. Keeps the history, the login for the repository and printerkeep.conf.
     Uninstall,
@@ -171,9 +174,9 @@ fn main() -> ExitCode {
         Command::Decide {
             file, use_shared, ..
         } => app::decide(&paths, file, *use_shared),
-        Command::Rename { name } => app::rename(&paths, name),
-        Command::Install { name } => install::Locations::from_env()
-            .and_then(|at| install::install(&paths, &at, name.as_deref()))
+        Command::Rename { printer_name } => app::rename(&paths, printer_name),
+        Command::Install { printer_name } => install::Locations::from_env()
+            .and_then(|at| install::install(&paths, &at, printer_name.as_deref()))
             .map_err(app::Error::from),
         Command::Uninstall => install::Locations::from_env()
             .and_then(|at| install::uninstall(&paths, &at))

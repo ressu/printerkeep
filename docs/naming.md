@@ -149,14 +149,14 @@ printerkeep writes it.
 |---|---|
 | `printerkeep backup` | Makes a backup if a file changed, and applies changes from shared. The timer runs this. |
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
-| `printerkeep restore <url> [<printer name>]` | Restores a printer from the repository. |
+| `printerkeep restore <url> [--printer-name <printer name>]` | Restores a printer from the repository. `--printer-name` selects the printer when the repository has several. |
 | `printerkeep add-repository <url>` | Connects the printer to a repository. With an `https://` URL it uses the stored token, or asks for a personal access token if there is none or the repository does not accept it. With an SSH URL it makes an SSH key and shows the public key. |
 | `printerkeep change-token` | Replaces the token of the repository, for example when it expired. The new token replaces the old one only if the repository accepts it. |
-| `printerkeep install [--name <name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--name` sets the printer name. |
+| `printerkeep install [--printer-name <printer name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--printer-name` sets the printer name. |
 | `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |
 | `printerkeep follow <file>` | Starts to follow a shared file. |
 | `printerkeep stop-following <file>` | Stops following a shared file. The file stays on the printer. |
-| `printerkeep rename <name>` | Gives the printer a new name. The history moves to the new branch; the repository keeps the old branch. |
+| `printerkeep rename <printer name>` | Gives the printer a new name. The history moves to the new branch; the repository keeps the old branch. |
 | `printerkeep copy-to-shared <file> [--yes]` | Makes the shared version equal to this printer's version, except override lines. Shows the changes and asks first; `--yes` does not ask. |
 | `printerkeep decide <file> --use-shared\|--keep-mine` | Finishes a needs-decision file without editing it. |
 

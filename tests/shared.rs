@@ -632,7 +632,9 @@ fn shared_has_a_static_readme() {
 
     let readme = show(&url, "shared", "README.md");
     assert!(
-        readme.contains(&format!("printerkeep restore {url} <printer name>")),
+        readme.contains(&format!(
+            "printerkeep restore {url} --printer-name <printer name>"
+        )),
         "{readme}"
     );
     // Status is not in the repository: it changes nothing on shared.

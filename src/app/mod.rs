@@ -120,7 +120,7 @@ pub enum Error {
     #[error(
         "The repository already has a printer named '{name}', with backups that are not from this printer. \
          printerkeep does not continue them. If this is the same printer after a new install, restore it: \
-         printerkeep restore {url} {name}. If it is a different printer, give this printer its own name, \
+         printerkeep restore {url} --printer-name {name}. If it is a different printer, give this printer its own name, \
          then add the repository again: printerkeep rename <name>"
     )]
     NameInUse { name: String, url: String },
@@ -134,7 +134,7 @@ pub enum Error {
     #[error("The repository has no backups.")]
     NothingToRestore,
     #[error(
-        "The repository has backups of more printers: {}. Select one: printerkeep restore <url> <printer name>",
+        "The repository has backups of more printers: {}. Select one: printerkeep restore <url> --printer-name <printer name>",
         .0.join(", ")
     )]
     SelectPrinter(Vec<String>),

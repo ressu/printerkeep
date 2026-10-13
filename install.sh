@@ -63,7 +63,7 @@ chmod 755 "$ASSET"
 
 set -- install
 if [ -n "${PRINTER_NAME:-}" ]; then
-  set -- install --name "$PRINTER_NAME"
+  set -- install --printer-name "$PRINTER_NAME"
 fi
 if [ -n "$PRINTER_DATA" ]; then
   "./$ASSET" --printer-data "$PRINTER_DATA" "$@"
