@@ -21,20 +21,22 @@ pub fn content(printer_name: &str, url: &str, follow: &[String]) -> Vec<u8> {
         "{MARKER}\n\
          # {printer_name}\n\
          \n\
-         This branch has the backups of the Klipper configuration of **{printer_name}**, made by\n\
-         [printerkeep]({PROJECT}). The files of this branch are the files of the config folder\n\
-         (`printer_data/config`) of the printer. Only this README.md is not in the config folder:\n\
-         printerkeep writes it, and replaces changes to it.\n\
+         This branch holds the backups of the Klipper configuration of **{printer_name}**, made by\n\
+         [printerkeep]({PROJECT}).\n\
          \n\
-         Each backup is a commit. To see an older version of a file, open the history of the file.\n\
+         The files here are the printer's config folder (`printer_data/config`) as it was at the last backup.\n\
+         This README is the one exception: printerkeep adds it here, and it is not on the printer. printerkeep\n\
+         replaces any changes to it at the next backup.\n\
          \n\
-         ## Restore the printer\n\
+         Each backup is a commit, so the history of a file shows all its earlier versions.\n\
+         \n\
+         ## Restore this printer\n\
          \n\
          For example after a new SD card:\n\
          \n\
-         1. Install Klipper and Moonraker (for example with KIAUH).\n\
-         2. Install printerkeep: {PROJECT}#install\n\
-         3. On the printer, run:\n\
+         1. Install Klipper and Moonraker, for example with KIAUH.\n\
+         2. [Install printerkeep]({PROJECT}#install).\n\
+         3. Run this on the printer:\n\
          \n\
          \x20  ```sh\n\
          \x20  printerkeep restore {url} --printer-name {printer_name}\n\
@@ -46,9 +48,9 @@ pub fn content(printer_name: &str, url: &str, follow: &[String]) -> Vec<u8> {
         text.push_str(
             "\n## Shared files\n\
              \n\
-             This printer follows these files from the `shared` branch. Changes from shared come to the\n\
-             printer, and the printer keeps its local changes. On the printer, `printerkeep status` shows\n\
-             the status of each followed file.\n\n",
+             This printer follows these files from the `shared` branch. It gets the changes that are made to\n\
+             them there, and keeps its own changes. To see the status of each file, run `printerkeep status`\n\
+             on the printer.\n\n",
         );
         for file in follow {
             text.push_str(&format!("- `{file}`\n"));
@@ -63,24 +65,25 @@ pub fn shared_content(url: &str) -> Vec<u8> {
         "{MARKER}\n\
          # Printer configuration\n\
          \n\
-         This repository has the Klipper configuration of more printers, made by [printerkeep]({PROJECT}).\n\
+         This repository holds the Klipper configuration of several printers, made by\n\
+         [printerkeep]({PROJECT}).\n\
          \n\
-         - Each printer has its own branch, with the name of the printer. The branch has the files of the\n\
-         \x20 config folder of that printer, and a README.md with the steps to restore it. Select the branch\n\
-         \x20 in the branch list of the repository.\n\
-         - This branch, `shared`, has the shared files. A printer that follows a shared file gets the changes\n\
-         \x20 to it, and keeps its local changes. On a printer, `printerkeep status` shows the status of each\n\
-         \x20 followed file.\n\
+         - **Each printer has its own branch,** named after the printer. Select it in the branch list of the\n\
+         \x20 repository. It holds the printer's config folder, and a README with the steps to restore it.\n\
+         - **This branch, `shared`, holds the shared files.** A printer that follows a shared file gets the\n\
+         \x20 changes that are made to it here, and keeps its own changes. To see the status of each file, run\n\
+         \x20 `printerkeep status` on the printer.\n\
          \n\
          ## Restore a printer\n\
          \n\
-         Install Klipper, Moonraker and printerkeep ({PROJECT}#install). Then, on the printer:\n\
+         Install Klipper, Moonraker and [printerkeep]({PROJECT}#install). Then run this on the printer:\n\
          \n\
          ```sh\n\
          printerkeep restore {url} --printer-name <printer name>\n\
          ```\n\
          \n\
-         To change this README, remove its first line. printerkeep then does not write it again.\n"
+         You can edit this README. Delete its first line (a hidden comment) first: printerkeep then leaves it\n\
+         as it is.\n"
     )
     .into_bytes()
 }
