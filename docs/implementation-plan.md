@@ -8,7 +8,7 @@ Status: draft (2026-10-11). Based on [problem.md](problem.md), [solution-options
 | Release | Content | Goal |
 |---|---|---|
 | **0.1** | One printer: local history, repository, restore, installer, update_manager. | A replacement for klipper-backup. The authors move their own printers to printerkeep. |
-| **0.2** | More printers: follow, changes from shared, needs decision, override, copy to shared, overview. Changes in the repository get to the printer (M6). | The full design. |
+| **0.2** | More printers: follow, changes from shared, needs decision, override, copy to shared, status. Changes in the repository get to the printer (M6). | The full design. |
 
 0.1 already uses the 0.2 repository format (one branch per printer, files at the top). Thus, 0.2 needs no
 migration.
@@ -56,8 +56,7 @@ src/
   merge.rs       three-way merge per file, needs-decision block (C4, C5)
   overrides.rs   override lines (C6)
   shared.rs      follow, stop-following, copy-to-shared, changes from shared
-  readme.rs      README.md on each printer branch
-  overview.rs    README.md on the shared branch
+  readme.rs      README.md on each printer branch and on shared
 ```
 
 ### Git commands that printerkeep uses
@@ -231,7 +230,7 @@ Each milestone ends with working, tested software.
   uses no network. `backup` writes it to `printer_data/printerkeep/send-problem`, and removes it after a send
   that works.
 - No README in the printer branch, as klipper-backup has: a printer branch is the config folder, and restore
-  writes all its files. The overview on `shared` (C7, 0.2) is the place for it.
+  writes all its files. (Changed in M5 part 6: a README.md that is not in the config folder.)
 
 ### M5. More printers (0.2)
 
@@ -244,7 +243,7 @@ Each milestone ends with working, tested software.
   override lines it keeps back.
 - Changes in the repository on the printer's own branch (M6): the same per-file merge, with the printer's
   branch in the repository as the other side.
-- Overview: `README.md` on `shared`, one section per printer. Pushes at the same time: fetch, rebase, retry.
+- `README.md` on `shared`: static (see part 7).
 - Status per followed file in the log and in `status`.
 - **Done when:** property tests show the merge rules (an override line never changes; when changes touch
   different lines, the result has both; a needs-decision file is always valid configuration), and
@@ -366,25 +365,26 @@ important also without shared files).
   and changes from the repository skip a README.md with the marker. printerkeep replaces changes to it.
 - If the config folder has its own `README.md`, that file is backed up, and printerkeep adds none.
 - `status` does not count it in "Files in the last backup".
-- To come with the overview: `shared` gets its own README.md (all printers). With more printers, `shared` is
+- `shared` gets its own README.md (part 7: static). With more printers, `shared` is
   the main branch: the guide tells the user to make it the default branch on the git host (git cannot set
   that).
 
-Part 7 (2026-10-13): the overview, `README.md` on `shared` (C7), in `overview.rs`.
+Part 7 (2026-10-13): the README of `shared`. First built as an overview with a status section per
+printer; then simplified (decided with the user): the status is too complex for the need.
 
-- Each printer writes only its own section, between `<!-- printerkeep: printer <name> -->` and
-  `<!-- printerkeep: end <name> -->`: how many files it follows, how many need decision or have changes
-  waiting, and a table with the status of each file. A printer that follows nothing has no section.
-- printerkeep writes a section only when it changed, after the send. Without a change: no network, no write.
-  If another printer changed `shared` at the same time, it fetches and tries again (three times).
-- printerkeep writes the text above the sections once (what the repository is, how to restore a printer).
-  The user can change it. A README.md on `shared` that printerkeep did not make is never changed.
-- No links to branches: the link form is different on each git host. The section names the branch.
+- The status is not in the repository. `printerkeep status` on each printer shows it. A page with all
+  printers needs coordination between printers (each writes its section, races, retries, a commit on
+  `shared` per status change). Revisit if users need a dashboard.
+- `README.md` on `shared` is static: what the repository is, that each printer has its own branch (find it
+  with the branch list of the git host), and the restore command. printerkeep writes it in the same commit
+  as a `copy-to-shared`, when shared has none or when printerkeep's README is out of date (a new URL). No
+  separate commit, no coordination. Without the marker line, printerkeep never changes it.
 - `README.md` cannot be followed or copied to shared.
-- A base does not move when the file did not change in shared (for example, only the overview changed).
-  Else each overview update would change the state file on all printers, and make backups for nothing.
+- A base does not move when the file did not change in shared (only other files changed). Else each copy
+  of another file would change the state file on all printers, and make backups for nothing.
 - Default branch: git cannot set it. The user README tells users with more printers to make `shared` the
   default branch on the git host.
+- Low priority: a status column in the printer README's list of followed files.
 
 ### M6. Real-data tests (0.2)
 

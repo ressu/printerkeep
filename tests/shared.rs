@@ -746,62 +746,70 @@ fn a_web_edit_gets_to_a_printer_without_changes() {
 }
 
 #[test]
-fn overview_on_shared_shows_each_printer() {
+fn shared_has_a_static_readme() {
     let (_dir, url) = repository();
     let printer1 = Printer::new("printer-1", &url);
     let printer2 = Printer::new("printer-2", &url);
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+
+    let readme = shared(&url, "README.md");
+    assert!(
+        readme.contains(&format!("printerkeep restore {url} <printer name>")),
+        "{readme}"
+    );
+    // Status is not in the repository: it changes nothing on shared.
     printer2.ok(&["follow", "macros/macros.cfg"]);
-
-    let overview = shared(&url, "README.md");
-    assert!(overview.contains("# Printers\n"), "{overview}");
-    assert!(
-        overview.contains(&format!("printerkeep restore {url} <printer name>")),
-        "{overview}"
-    );
-    assert!(
-        overview.contains("### printer-1\n\nprinter-1 follows 1 shared file. Branch: `printer-1`."),
-        "{overview}"
-    );
-    assert!(overview.contains("### printer-2\n"), "{overview}");
-    assert!(
-        overview.contains("| `macros/macros.cfg` | up to date |"),
-        "{overview}"
-    );
-
-    // The overview changes shared, but not the file: printer 1 makes no backup for it.
-    let output = printer1.ok(&["backup"]);
-    assert_eq!(output, "No files changed. No backup made.\n");
-
-    // Needs decision shows in the overview.
     printer2.write(
         "macros/macros.cfg",
         &MACROS.replace("variable_temp: 230", "variable_temp: 250"),
     );
+    printer2.ok(&["backup"]);
+    assert_eq!(
+        git(Path::new(&url), &["log", "--format=%s", "shared"]),
+        "Copied macros/macros.cfg from printer-1"
+    );
+
+    // The user's own README on shared stays.
+    let web = tempfile::tempdir().unwrap();
+    let work = web.path().join("work");
+    std::process::Command::new("git")
+        .args(["clone", "--quiet", "--branch", "shared", &url])
+        .arg(&work)
+        .status()
+        .unwrap();
+    fs::write(work.join("README.md"), "# Our printers\n").unwrap();
+    for args in [
+        &["add", "-A"][..],
+        &[
+            "-c",
+            "user.name=web",
+            "-c",
+            "user.email=web@example.com",
+            "commit",
+            "--quiet",
+            "-m",
+            "own readme",
+        ],
+        &["push", "--quiet", "origin", "shared"],
+    ] {
+        assert!(
+            std::process::Command::new("git")
+                .current_dir(&work)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
     printer1.write(
         "macros/macros.cfg",
-        &MACROS.replace("variable_temp: 230", "variable_temp: 240"),
+        &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
     printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
-    printer2.ok(&["backup"]);
-    let overview = shared(&url, "README.md");
-    assert!(
-        overview.contains("printer-2 follows 1 shared file. 1 needs decision."),
-        "{overview}"
-    );
-    assert!(
-        overview.contains("| `macros/macros.cfg` | needs decision |"),
-        "{overview}"
-    );
+    assert_eq!(shared(&url, "README.md"), "# Our printers\n");
 
     // README.md on shared is not a file to follow.
     let error = printer2.fails(&["follow", "README.md"]);
-    assert!(error.contains("the overview of the printers"), "{error}");
-
-    // A printer that follows nothing has no section.
-    printer2.ok(&["stop-following", "macros/macros.cfg"]);
-    let overview = shared(&url, "README.md");
-    assert!(!overview.contains("printer-2"), "{overview}");
-    assert!(overview.contains("### printer-1\n"), "{overview}");
+    assert!(error.contains("README.md on the shared branch"), "{error}");
 }

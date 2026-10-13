@@ -80,8 +80,8 @@ includes these.
   from shared. If the changes do not touch the same lines, printerkeep merges them. If they touch the same
   lines, the file needs decision.
 - **M5 Status.** For each printer and each followed file, the user can see one status: up to date, local
-  changes, changes waiting or needs decision. The user can see it without a desktop, for example in the
-  overview in the repository, in Fluidd, or with a command on the printer.
+  changes, changes waiting or needs decision. The user can see it without a desktop, for example with a
+  command on the printer, or in Fluidd.
 - **M6 A printer's own file changed in the repository** gets to that printer only.
 - **M7 Long offline.** A printer is offline for weeks. When it comes back, it gets all changes correctly.
 - **M8 Start to share a file that is already different on many printers.** This must be possible without a

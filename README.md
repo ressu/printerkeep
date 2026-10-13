@@ -270,13 +270,15 @@ line for it yet, shared gets `switch_pin: CHANGE_ME   # printerkeep: override`. 
 follow the file must set its own value. Klipper refuses `CHANGE_ME` for pins and numbers, so the printer
 does not start with another printer's value.
 
-### The overview
+### Status and the shared branch
 
-The `shared` branch has a `README.md` that shows each printer and the status of its followed files: up to
-date, local changes, changes waiting, or needs decision. On the printer, `printerkeep status` shows the same.
+`printerkeep status` shows each followed file with its status: up to date, local changes, changes waiting,
+or needs decision.
 
-With more printers, make `shared` the default branch of the repository, so that the repository's page shows
-the overview. On GitHub: the repository's Settings > General > Default branch.
+The `shared` branch has a `README.md` that tells what the repository is and how to restore a printer. Each
+printer's branch is in the branch list of the repository. With more printers, make `shared` the default
+branch, so that the repository's page shows this README. On GitHub: the repository's Settings > General >
+Default branch.
 
 ## Design
 

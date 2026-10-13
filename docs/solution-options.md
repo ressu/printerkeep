@@ -133,15 +133,16 @@ switch_pin: ^PG12   # printerkeep: override
 - Later idea: printerkeep can suggest an override when the same line is different on most printers that
   follow the file.
 
-### C7. Status and overview
+### C7. Status and the README of shared
 
-At each run, printerkeep writes a short status that people can read:
+Each followed file has one status: *up to date*, *local changes*, *changes waiting* or *needs decision*.
+`printerkeep status` on the printer shows it, and the log file `printer_data/logs/printerkeep.log` (Fluidd and
+Mainsail show it) gets a line when something happens.
 
-- into the log file `printer_data/logs/printerkeep.log` (Fluidd and Mainsail show it), and
-- into the repository, in the overview, which shows all printers.
-
-Each followed file has one status: *up to date*, *local changes*, *changes waiting* or *needs decision*. On the
-printer, `printerkeep status` shows the same. A message in the Klipper console (for example with `RESPOND`) or a
+Decided 2026-10-13: the status is **not** in the repository. A status page that all printers write needs
+coordination between printers (races, retries, a commit on `shared` for each status change). The `shared`
+branch has a static `README.md`: what the repository is, and how to restore a printer. Users find the printer
+branches with the branch list of the git host. If users need a page with all printers later, revisit this. A message in the Klipper console (for example with `RESPOND`) or a
 Moonraker notification is possible later. See the open questions.
 
 ### C8. Repository, restore, update
@@ -180,7 +181,7 @@ paste over SSH or the web pages). This option is here only for comparison.
 branch <printer-1>   = printer 1's config folder, 1:1 (files at the top)
 branch <printer-2>   = printer 2's config folder
 branch shared        = the shared files, at the same paths as on the printers
-                       + the overview with the status of all printers (C7)
+                       + a static README.md: what the repository is, how to restore (C7)
 ```
 
 "Shared" means *available to follow*, not *used by every printer*. Each printer follows only the files it
@@ -204,8 +205,8 @@ Shared has one version per path. If files with similar names have different cont
 - Each printer has its own, clean history.
 - GitHub *compare* (`shared...printer-1`) shows how a printer's shared files are different. But it also shows
   every file that is not shared.
-- Disadvantages: beginners do not find branches easily ("where is my other printer?"). The overview on
-  `shared` (the default branch when there are more printers) links to every printer's branch. Copy to shared
+- Disadvantages: beginners do not find branches easily ("where is my other printer?"). The README on
+  `shared` (the default branch when there are more printers) tells that each printer has a branch. Copy to shared
   in the web pages needs a branch change between copy and paste.
 
 Why branches are not a problem here: today, branches are difficult because people coordinate them manually.
@@ -218,7 +219,7 @@ does all coordination.
 printers/<printer-1>/…   = printer 1's config folder
 printers/<printer-2>/…
 shared/…                 = shared files, same paths
-README.md                = overview (C7)
+README.md                = what the repository is (C7)
 ```
 
 - All printers are on one page. Easy to find.
@@ -237,8 +238,7 @@ README.md                = overview (C7)
 - The most separation. It fits the future possibility "changes from other people" (another person's
   repository is one more source).
 - More authentication: on GitHub, a deploy key works for one repository only. Each printer needs two keys or a
-  user token. That doubles the setup in S2 and S3. The status is in two repositories, so there is no single
-  overview.
+  user token. That doubles the setup in S2 and S3.
 - Every option can support "changes from other people" later: a line in the settings file can name another
   repository as the source. Thus, this is not an advantage of option C only.
 
@@ -272,7 +272,7 @@ for A, B and C.
 | M2 Printer edit stays local | ~ | ✓ core | ✓ core | ✓ core |
 | M3 Copy to shared | ✗ manual | ✓ 1 command; web: copy between branches | ✓ 1 command; web: copy on one branch | ~ 1 command; web: copy between repositories |
 | M4 Lasting local changes | ✗ | ✓ core | ✓ core | ✓ core |
-| M5 Status | ✗ | ✓ overview + compare view | ✓ overview | ~ in two repositories |
+| M5 Status | ✗ | ✓ status command + compare view | ✓ status command | ~ in two repositories |
 | M6 Printer's file changed in the repository | ~ manual pull | ✓ edit printer branch | ✓ edit `printers/<x>/` | ✓ edit printer repository |
 | M7 Long offline | ~ | ✓ core | ✓ core (+ push races) | ✓ core |
 | M8 Share a file that is already different | ✗ | ✓ see below | ✓ see below | ~ |
@@ -321,7 +321,7 @@ retract to shared (M3). Then printer 2 gets it as a change from shared.
 
 ### M9: needs decision on printer 2
 
-1. The status (the log file in Fluidd, the overview) shows `KAMP_Settings.cfg: needs decision`.
+1. The status (the log file in Fluidd, `printerkeep status`) shows `KAMP_Settings.cfg: needs decision`.
 2. In Fluidd, open `KAMP_Settings.cfg`. The `####` block shows this printer's active line and the shared line,
    commented out, below it.
 3. Keep one line. Delete the `####` lines. Save.
@@ -359,7 +359,7 @@ in the file (C5). Lines for one printer only use the override mark (C6).
   some differences at no cost.
 - The difficult part of branches (manual coordination) is exactly what the core does automatically.
 
-Accepted disadvantage compared to B: it is more difficult to find things on the git host. The overview on the
+Accepted disadvantage compared to B: it is more difficult to find things on the git host. The README on the
 `shared` branch helps. The core does not depend on the shape of the repository. Thus, B stays available if A
 is a problem in practice.
 

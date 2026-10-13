@@ -10,7 +10,6 @@ pub mod install;
 pub mod log;
 pub mod merge;
 pub mod overrides;
-pub mod overview;
 pub mod paths;
 pub mod readme;
 pub mod repository;

@@ -47,14 +47,51 @@ pub fn content(printer_name: &str, url: &str, follow: &[String]) -> Vec<u8> {
             "\n## Shared files\n\
              \n\
              This printer follows these files from the `shared` branch. Changes from shared come to the\n\
-             printer, and the printer keeps its local changes. The README.md of the `shared` branch shows\n\
-             all printers.\n\n",
+             printer, and the printer keeps its local changes. On the printer, `printerkeep status` shows\n\
+             the status of each followed file.\n\n",
         );
         for file in follow {
             text.push_str(&format!("- `{file}`\n"));
         }
     }
     text.into_bytes()
+}
+
+/// The README of the `shared` branch. It changes only when the URL changes.
+pub fn shared_content(url: &str) -> Vec<u8> {
+    format!(
+        "{MARKER}\n\
+         # Printer configuration\n\
+         \n\
+         This repository has the Klipper configuration of more printers, made by [printerkeep]({PROJECT}).\n\
+         \n\
+         - Each printer has its own branch, with the name of the printer. The branch has the files of the\n\
+         \x20 config folder of that printer, and a README.md with the steps to restore it. Select the branch\n\
+         \x20 in the branch list of the repository.\n\
+         - This branch, `shared`, has the shared files. A printer that follows a shared file gets the changes\n\
+         \x20 to it, and keeps its local changes. On a printer, `printerkeep status` shows the status of each\n\
+         \x20 followed file.\n\
+         \n\
+         ## Restore a printer\n\
+         \n\
+         Install Klipper, Moonraker and printerkeep ({PROJECT}#install). Then, on the printer:\n\
+         \n\
+         ```sh\n\
+         printerkeep restore {url} <printer name>\n\
+         ```\n\
+         \n\
+         To change this README, remove its first line. printerkeep then does not write it again.\n"
+    )
+    .into_bytes()
+}
+
+/// `true` if printerkeep writes the README of `shared`: shared has none, or it is printerkeep's and it is
+/// different. A README that the user made (without the marker) is never changed.
+pub fn shared_needs_write(existing: Option<&[u8]>, new: &[u8]) -> bool {
+    match existing {
+        None => true,
+        Some(existing) => is_generated(existing) && existing != new,
+    }
 }
 
 /// `true` if the content is a README that printerkeep wrote.
@@ -88,5 +125,22 @@ mod tests {
         );
         assert!(text.contains("- `macros.cfg`\n"));
         assert!(!is_generated(b"# My notes\n"));
+    }
+
+    #[test]
+    fn shared_readme_is_written_only_when_needed() {
+        let url = "https://github.com/me/printers.git";
+        let new = shared_content(url);
+        assert!(
+            String::from_utf8_lossy(&new)
+                .contains(&format!("printerkeep restore {url} <printer name>"))
+        );
+        assert!(shared_needs_write(None, &new));
+        assert!(!shared_needs_write(Some(&new), &new));
+        assert!(shared_needs_write(
+            Some(&shared_content("/srv/old.git")),
+            &new
+        ));
+        assert!(!shared_needs_write(Some(b"# Our printers\n"), &new));
     }
 }

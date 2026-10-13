@@ -156,7 +156,7 @@ pub fn check_path(path: &str) -> Result<(), String> {
         return Err("use a path in the config folder, without '..' or '.'".into());
     }
     if path == crate::readme::README_FILE {
-        return Err("README.md on the shared branch is the overview of the printers".into());
+        return Err("README.md on the shared branch tells what the repository is".into());
     }
     if path == SETTINGS_FILE || path == STATE_FILE {
         return Err("this file belongs to this printer only".into());
@@ -255,7 +255,7 @@ pub fn apply(
             continue;
         };
         let same = |a: &[u8], b: &[u8]| merge::to_lf(a) == merge::to_lf(b);
-        // The file did not change in shared (for example, only the overview changed). The base stays: a
+        // The file did not change in shared (only other files changed). The base stays: a
         // new base would change the state file, and make a backup, for nothing.
         if same(&base, &shared) {
             continue;
@@ -337,14 +337,6 @@ impl FileStatus {
             FileStatus::NotInShared => "not in shared",
         }
     }
-    /// The status word only, for the overview.
-    pub fn word(&self) -> &'static str {
-        match self {
-            FileStatus::ChangesWaiting => "changes waiting",
-            FileStatus::NeedsDecision => "needs decision",
-            other => other.text(),
-        }
-    }
 }
 
 /// The status of a followed file, from printerkeep's last copy of shared. Uses no network.
@@ -395,14 +387,13 @@ pub fn content_at(git: &Git, commit: &str, path: &str) -> Result<Option<Vec<u8>>
     }
 }
 
-/// A new shared commit on `tip` with the file `entry` at `path`. Returns `None` if shared already has that
-/// file.
+/// A new shared commit on `tip` with these files (path and entry). Returns `None` if shared already has the
+/// first file: the others (the README of shared) go only with a change of the first.
 pub fn copy_commit(
     git: &Git,
     paths: &Paths,
     tip: Option<&str>,
-    path: &str,
-    entry: TreeEntry,
+    files: Vec<(&str, TreeEntry)>,
     message: &str,
     identity: &Identity,
 ) -> Result<Option<String>, GitError> {
@@ -410,10 +401,15 @@ pub fn copy_commit(
         Some(tip) => git.read_tree(tip)?,
         None => Tree::new(),
     };
-    if tree.get(path.as_bytes()) == Some(&entry) {
+    let Some((path, entry)) = files.first() else {
+        return Ok(None);
+    };
+    if tree.get(path.as_bytes()) == Some(entry) {
         return Ok(None);
     }
-    tree.insert(path.as_bytes().to_vec(), entry);
+    for (path, entry) in files {
+        tree.insert(path.as_bytes().to_vec(), entry);
+    }
     let tree = git.write_tree(&tree, &paths.index())?;
     git.commit(&tree, tip, message, identity).map(Some)
 }

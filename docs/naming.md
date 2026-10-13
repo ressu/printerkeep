@@ -5,7 +5,7 @@ Status: **decided** (2026-10-11): vocabulary, project name and artifact names.
 ## Writing rule
 
 User-facing text loosely follows [ASD-STE100](https://www.asd-ste100.org/) (Simplified Technical English).
-This covers CLI output, status files, in-file markers, notifications, docs and the overview page.
+This covers CLI output, status files, in-file markers, notifications, docs and the READMEs in the repository.
 
 - **One word, one meaning.** Use the terms below for these concepts and nothing else. No synonyms, even for
   variety.
@@ -39,7 +39,6 @@ This covers CLI output, status files, in-file markers, notifications, docs and t
 | **override** | A line marked so that it never leaves this printer and is never changed by shared, e.g. pin lines. Marked with the inline comment `# printerkeep: override`. | pin (means GPIO pins in Klipper), fix, force, local line |
 | **needs decision** | A change from shared and a local change touch the same lines. The tool cannot choose; the user must. The file shows both, with the shared lines commented out. | conflict, held, merge error |
 | **changes from shared** | Changes to followed files that come from shared. | update (reserved for updates of the tool itself), upstream, incoming |
-| **overview** | The page in the repository that shows all printers and the state of their followed files. | dashboard, hub, report |
 
 ### Status words
 
@@ -64,7 +63,7 @@ printer has its own branch, and shared is the branch named `shared`.
 |---|---|---|
 | CLI, adding a file | `Copied macros.cfg to shared. Other printers can now follow it.` | `Shared macros.cfg!` |
 | Status | `macros.cfg: needs decision. Open the file and look for the #### lines.` | `macros.cfg: merge conflict (held)` |
-| Overview | `printer-2 follows 3 shared files. 1 needs decision.` | `printer-2 is drifting on 1 file` |
+| Status | `printer-2 follows 3 shared files. 1 needs decision.` | `printer-2 is drifting on 1 file` |
 | No change | `No files changed. No backup made.` | `Nothing to commit, working tree clean` |
 
 ## Project name: printerkeep
@@ -168,7 +167,7 @@ Commands are verbs. `add-repository` replaces the earlier `repository`.
 | Printer branch | The printer name. Default: the host name. A printer cannot be named `shared`. |
 | Shared branch | `shared` |
 | Printer README | `README.md` at the top of each printer branch: what the branch is and how to restore the printer. Not in the config folder; its first line is the marker `<!-- printerkeep: … -->`. |
-| Overview | `README.md` on the `shared` branch |
+| README of shared | `README.md` on the `shared` branch: what the repository is, how to restore a printer. Static; printerkeep writes it with a copy to shared when it is missing or out of date (a new URL). Without its marker line, printerkeep never changes it. |
 
 ### Markers in configuration files
 
