@@ -493,3 +493,43 @@ fn ssh_url_makes_a_key() {
     let key = printer.dir.path().join("printerkeep/id_ed25519.pub");
     assert!(fs::read_to_string(key).unwrap().starts_with("ssh-ed25519 "));
 }
+
+#[test]
+fn readme_is_in_the_repository_but_not_in_the_config_folder() {
+    let (_dir, url) = repository();
+    let printer = Printer::new("printer-1");
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["add-repository", &url]);
+
+    let readme = git(Path::new(&url), &["show", "printer-1:README.md"]);
+    assert!(readme.starts_with("<!-- printerkeep:"), "{readme}");
+    assert!(
+        readme.contains(&format!("printerkeep restore {url} printer-1")),
+        "{readme}"
+    );
+    assert!(!printer.config().join("README.md").exists());
+    let status = printer.ok(&["status"]);
+    assert!(status.contains("Files in the last backup: 2\n"), "{status}");
+    assert!(
+        status.contains("Changes since the last backup: none"),
+        "{status}"
+    );
+
+    // A restore does not write it into the config folder.
+    let new_install = Printer::empty();
+    new_install.ok(&["restore", &url]);
+    assert_eq!(new_install.read("printer.cfg"), "[printer]\n");
+    assert!(!new_install.config().join("README.md").exists());
+    assert_eq!(
+        new_install.ok(&["backup"]),
+        "No files changed. No backup made.\n"
+    );
+
+    // The user's own README.md wins.
+    printer.write("README.md", "# My printer notes\n");
+    printer.ok(&["backup"]);
+    assert_eq!(
+        git(Path::new(&url), &["show", "printer-1:README.md"]),
+        "# My printer notes"
+    );
+}

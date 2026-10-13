@@ -22,6 +22,9 @@ pub struct Scan {
     pub files: Vec<ScannedFile>,
     /// Symlinks and files that printerkeep does not back up (relative paths, for messages).
     pub skipped: Vec<String>,
+    /// A file that printerkeep adds to the backup, but that is not in the config folder (`README.md`):
+    /// path and content. A file in the config folder with the same path wins.
+    pub generated: Option<(Vec<u8>, Vec<u8>)>,
 }
 
 /// Reads the config folder. Applies the ignore rules and skips symlinks.

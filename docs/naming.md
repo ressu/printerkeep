@@ -167,6 +167,7 @@ Commands are verbs. `add-repository` replaces the earlier `repository`.
 |---|---|
 | Printer branch | The printer name. Default: the host name. A printer cannot be named `shared`. |
 | Shared branch | `shared` |
+| Printer README | `README.md` at the top of each printer branch: what the branch is and how to restore the printer. Not in the config folder; its first line is the marker `<!-- printerkeep: … -->`. |
 | Overview | `README.md` on the `shared` branch |
 
 ### Markers in configuration files

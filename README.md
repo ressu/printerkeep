@@ -124,6 +124,9 @@ repository. Permissions: "Contents", "Read and write".
   your user can read. `printerkeep.conf` gets the URL only.
 - After each backup, printerkeep sends new backups to the repository, on a branch with the name of the
   printer. It never overwrites changes in the repository.
+- The branch has a `README.md` that tells what it is and how to restore the printer. printerkeep writes it.
+  It is not in the config folder. If your config folder has its own `README.md`, printerkeep backs up your
+  file and adds none.
 - When the token expires, `printerkeep status` and the log tell you. Make a new token, then run
   `printerkeep change-token`. printerkeep uses the new token only if the repository accepts it.
 - With an SSH URL (`git@github.com:<user>/<repository>.git`), printerkeep makes its own SSH key and shows the

@@ -7,6 +7,7 @@ use crate::git::Git;
 use crate::ignore::IgnoreRules;
 use crate::merge::{self, Merged, Source};
 use crate::paths::Paths;
+use crate::readme;
 use crate::shared::{self, SharedError};
 use crate::state::STATE_FILE;
 use std::collections::BTreeSet;
@@ -120,6 +121,19 @@ pub fn apply(
             Some(entry) => Some(git.blob(&entry.oid)?),
             None => None,
         };
+        // printerkeep's README.md is not in the config folder.
+        if path == readme::README_FILE {
+            let theirs = match remote_tree.get(path_bytes) {
+                Some(entry) => Some(git.blob(&entry.oid)?),
+                None => None,
+            };
+            if [&base, &theirs]
+                .iter()
+                .any(|c| c.as_deref().is_some_and(readme::is_generated))
+            {
+                continue;
+            }
+        }
         let Some(theirs_entry) = remote_tree.get(path_bytes) else {
             if mine.is_some() {
                 event(Event::RemovedThere);

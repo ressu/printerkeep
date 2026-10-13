@@ -56,6 +56,7 @@ src/
   merge.rs       three-way merge per file, needs-decision block (C4, C5)
   overrides.rs   override lines (C6)
   shared.rs      follow, stop-following, copy-to-shared, changes from shared
+  readme.rs      README.md on each printer branch
   overview.rs    README.md on the shared branch
 ```
 
@@ -354,6 +355,20 @@ Part 5 (2026-10-13): no SD writes when nothing changed, and `check_repository`.
   `XDG_RUNTIME_DIR`, each run checks. A run by hand (on a terminal) and the commands (`follow`,
   `copy-to-shared`, …) always check. A send that the repository refuses always leads to a merge (part 4).
 - A web edit on a printer that has no new backups continues the repository's history (no merge commit).
+
+Part 6 (2026-10-13): README.md on each printer branch (moved up: a visible README with the restore steps is
+important also without shared files).
+
+- `README.md` at the top of the printer branch: what the branch is, that printerkeep made it, how to restore
+  the printer (with the URL and the printer name), and the followed files. All git hosts show a README at the
+  top. Only with a repository.
+- It is added to each backup, but it is not in the config folder. Its first line is a hidden marker. Restore
+  and changes from the repository skip a README.md with the marker. printerkeep replaces changes to it.
+- If the config folder has its own `README.md`, that file is backed up, and printerkeep adds none.
+- `status` does not count it in "Files in the last backup".
+- To come with the overview: `shared` gets its own README.md (all printers). With more printers, `shared` is
+  the main branch: the guide tells the user to make it the default branch on the git host (git cannot set
+  that).
 
 ### M6. Real-data tests (0.2)
 

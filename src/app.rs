@@ -6,6 +6,7 @@ use crate::git::{self, Git, GitError, Identity};
 use crate::ignore::{IgnoreRules, RuleError};
 use crate::overrides;
 use crate::paths::Paths;
+use crate::readme;
 use crate::repository::{self, History, RepositoryError, Sent, UrlKind};
 use crate::repository_changes;
 use crate::settings::{self, Settings, SettingsError};
@@ -242,7 +243,16 @@ fn backup_and_send(
         git.init(printer_name)?;
     }
     // The files on the printer go into the history before printerkeep writes a file.
-    let (outcome, skipped) = make_backup(paths, &rules, &git, printer_name, run.message)?;
+    // README.md for the printer branch in the repository (not in the config folder).
+    let readme = settings
+        .repository
+        .as_deref()
+        .map(|url| readme::content(printer_name, url, &settings.follow));
+    let files = Files {
+        rules: &rules,
+        readme: readme.as_deref(),
+    };
+    let (outcome, skipped) = make_backup(paths, files, &git, printer_name, run.message)?;
     let remote = match &settings.repository {
         Some(url) => Some(repository::remote(url, paths)?),
         None => None,
@@ -269,7 +279,7 @@ fn backup_and_send(
     let (mut shared, shared_news) = follow_shared(
         paths,
         settings,
-        &rules,
+        files,
         &git,
         printer_name,
         remote.as_ref(),
@@ -284,7 +294,7 @@ fn backup_and_send(
         let fetched = repository::fetched_ref(printer_name);
         match git.fetch(remote, printer_name, &fetched) {
             Ok(()) => {
-                if let Some(lines) = take_repository_changes(paths, &rules, &git, printer_name)? {
+                if let Some(lines) = take_repository_changes(paths, files, &git, printer_name)? {
                     from_repository = lines;
                 }
             }
@@ -305,7 +315,7 @@ fn backup_and_send(
     // The repository has changes on this printer's branch that the check did not see: merge them, then
     // send again.
     if let Some(Err(RepositoryError::RepositoryAhead)) = &sent
-        && let Some(lines) = take_repository_changes(paths, &rules, &git, printer_name)?
+        && let Some(lines) = take_repository_changes(paths, files, &git, printer_name)?
     {
         from_repository.extend(lines);
         sent = send_now();
@@ -411,7 +421,7 @@ fn mark_checked(paths: &Paths) {
 /// commit: then printerkeep does not merge.
 fn take_repository_changes(
     paths: &Paths,
-    rules: &IgnoreRules,
+    files: Files,
     git: &Git,
     printer_name: &str,
 ) -> Result<Option<Vec<String>>, Error> {
@@ -425,7 +435,7 @@ fn take_repository_changes(
     let Some(base) = git.merge_base(&local, &remote)? else {
         return Ok(None);
     };
-    let events = repository_changes::apply(git, paths, rules, &base, &remote)?;
+    let events = repository_changes::apply(git, paths, files.rules, &base, &remote)?;
     let lines = events.iter().map(|e| e.line()).collect();
     if base == local {
         // No new backups on the printer: continue the repository's history. A backup follows only if the
@@ -441,10 +451,10 @@ fn take_repository_changes(
             &remote,
             "printerkeep: in the repository",
         )?;
-        make_backup(paths, rules, git, printer_name, None)?;
+        make_backup(paths, files, git, printer_name, None)?;
         return Ok(Some(lines));
     }
-    let scan = scan(paths, rules)?;
+    let scan = backup_scan(paths, files)?;
     let prepared = backup::prepare(git, &scan, &reference, true)?;
     let tree = git.write_tree(&prepared.tree, &paths.index())?;
     let message = format!("{}\n", repository_changes::message(&events));
@@ -468,12 +478,12 @@ fn take_repository_changes(
 /// Makes a backup if a file changed. Returns what happened and the files that were not backed up.
 fn make_backup(
     paths: &Paths,
-    rules: &IgnoreRules,
+    files: Files,
     git: &Git,
     printer_name: &str,
     message: Option<&str>,
 ) -> Result<(Outcome, Vec<String>), Error> {
-    let scan = scan(paths, rules)?;
+    let scan = backup_scan(paths, files)?;
     let reference = branch(printer_name);
     let prepared = backup::prepare(git, &scan, &reference, true)?;
     let outcome = if prepared.parent.is_none() && prepared.tree.is_empty() {
@@ -509,7 +519,7 @@ fn identity(printer_name: &str) -> Identity {
 fn follow_shared(
     paths: &Paths,
     settings: &Settings,
-    rules: &IgnoreRules,
+    files: Files,
     git: &Git,
     printer_name: &str,
     remote: Option<&git::Remote>,
@@ -554,7 +564,7 @@ fn follow_shared(
     lines.extend(events.iter().map(FileEvent::line));
     let message = shared::message(&events);
     if let Some(message) = &message {
-        make_backup(paths, rules, git, printer_name, Some(message))?;
+        make_backup(paths, files, git, printer_name, Some(message))?;
     }
     // Lines that only repeat a status (for example, a file that still needs decision) are not news.
     let news = fetch_problem
@@ -1195,7 +1205,17 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
     let settings = settings::load(&paths.settings())?;
     let rules = IgnoreRules::new(settings.ignore.iter().map(String::as_str))?;
     let printer_name = printer_name(&settings)?;
-    let scan = scan(paths, &rules)?;
+    let readme = settings
+        .repository
+        .as_deref()
+        .map(|url| readme::content(&printer_name, url, &settings.follow));
+    let scan = backup_scan(
+        paths,
+        Files {
+            rules: &rules,
+            readme: readme.as_deref(),
+        },
+    )?;
 
     let git = Git::new(&paths.git_dir);
     let reference = branch(&printer_name);
@@ -1208,7 +1228,10 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
             time: crate::log::timestamp(UNIX_EPOCH + Duration::from_secs(time)),
             summary,
             count: git.count_commits(commit)?,
-            files: git.read_tree(commit)?.len(),
+            files: {
+                let tree = git.read_tree(commit)?;
+                tree.len() - usize::from(readme::in_tree(&git, &tree)?)
+            },
         };
         if settings.repository.is_some() {
             not_sent = Some(match git.resolve(&repository::sent_ref(&printer_name))? {
@@ -1355,6 +1378,23 @@ fn host_name() -> String {
 
 fn branch(printer_name: &str) -> String {
     format!("refs/heads/{printer_name}")
+}
+
+/// What goes into a backup: the files of the config folder that the rules do not skip, and printerkeep's
+/// README.md (only with a repository).
+#[derive(Clone, Copy)]
+struct Files<'a> {
+    rules: &'a IgnoreRules,
+    readme: Option<&'a [u8]>,
+}
+
+/// The files of a backup.
+fn backup_scan(paths: &Paths, files: Files) -> Result<Scan, Error> {
+    let mut scan = scan(paths, files.rules)?;
+    scan.generated = files
+        .readme
+        .map(|content| (readme::README_FILE.as_bytes().to_vec(), content.to_vec()));
+    Ok(scan)
 }
 
 fn scan(paths: &Paths, rules: &IgnoreRules) -> Result<Scan, Error> {

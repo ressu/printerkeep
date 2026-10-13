@@ -11,6 +11,7 @@ pub mod log;
 pub mod merge;
 pub mod overrides;
 pub mod paths;
+pub mod readme;
 pub mod repository;
 pub mod repository_changes;
 pub mod settings;

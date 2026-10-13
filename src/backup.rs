@@ -22,6 +22,10 @@ pub struct Prepared {
     /// The files of the new backup.
     pub tree: Tree,
     pub changes: Changes,
+    /// printerkeep's own file (`Scan::generated`) is new or different. It is not in `changes`.
+    pub generated_changed: bool,
+    /// The number of files in `tree` that are not in the config folder.
+    pub generated: usize,
 }
 
 const REGULAR: &str = "100644";
@@ -71,6 +75,24 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
         }
         tree.insert(file.path.clone(), entry);
     }
+    let mut generated_changed = false;
+    let mut generated = 0;
+    if let Some((path, content)) = &scan.generated
+        && !tree.contains_key(path)
+    {
+        let mut entry = TreeEntry {
+            mode: REGULAR.to_string(),
+            oid: git.hash_blob(content, false)?,
+        };
+        if old.get(path) != Some(&entry) {
+            generated_changed = true;
+            if write {
+                entry.oid = git.hash_blob(content, true)?;
+            }
+        }
+        tree.insert(path.clone(), entry);
+        generated = 1;
+    }
     for path in old.keys() {
         if !tree.contains_key(path) {
             changes.removed.push(display(path));
@@ -100,6 +122,8 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
         parent,
         tree,
         changes,
+        generated_changed,
+        generated,
     })
 }
 
@@ -113,15 +137,17 @@ pub fn commit(
     identity: &Identity,
     message: Option<&str>,
 ) -> Result<Option<(String, String)>, GitError> {
-    if prepared.changes.is_empty() {
+    if prepared.changes.is_empty() && !prepared.generated_changed {
         return Ok(None);
     }
     let tree = git.write_tree(&prepared.tree, index)?;
     let message = match message {
         Some(message) => format!("{message}\n"),
-        None => prepared
-            .changes
-            .message(prepared.parent.is_none(), prepared.tree.len()),
+        None if prepared.changes.is_empty() => "README.md from printerkeep\n".to_string(),
+        None => prepared.changes.message(
+            prepared.parent.is_none(),
+            prepared.tree.len() - prepared.generated,
+        ),
     };
     let commit = git.commit(&tree, prepared.parent.as_deref(), &message, identity)?;
     git.update_ref(

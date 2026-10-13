@@ -419,6 +419,12 @@ pub fn plan_restore(git: &Git, tree: &Tree, config: &Path) -> Result<RestorePlan
         same: 0,
     };
     for (path, entry) in tree {
+        // printerkeep's README.md is not in the config folder.
+        if path == crate::readme::README_FILE.as_bytes()
+            && crate::readme::is_generated(&git.blob(&entry.oid).map_err(RepositoryError::Git)?)
+        {
+            continue;
+        }
         let disk = config.join(OsStr::from_bytes(path));
         let is_regular_file =
             std::fs::symlink_metadata(&disk).is_ok_and(|m| m.file_type().is_file());

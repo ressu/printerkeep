@@ -174,6 +174,17 @@ impl Git {
         run(self.command().args(["cat-file", "blob", oid]), None)
     }
 
+    /// The blob id of `content`. With `write`, stores it.
+    pub fn hash_blob(&self, content: &[u8], write: bool) -> Result<String, GitError> {
+        let mut command = self.command();
+        command.args(["hash-object", "--no-filters", "--stdin"]);
+        if write {
+            command.arg("-w");
+        }
+        let stdout = run(&mut command, Some(content))?;
+        Ok(line(&stdout))
+    }
+
     /// Stores `content` as a blob and returns its id.
     pub fn write_blob(&self, content: &[u8]) -> Result<String, GitError> {
         let stdout = run(
