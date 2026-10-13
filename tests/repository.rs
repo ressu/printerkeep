@@ -261,20 +261,48 @@ fn unreachable_repository_keeps_backups_for_later() {
     let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n");
     printer.ok(&["add-repository", &url]);
+    let log = || fs::read_to_string(printer.dir.path().join("logs/printerkeep.log")).unwrap();
 
     let moved = dir.path().join("moved.git");
     fs::rename(&url, &moved).unwrap();
     printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     let output = printer.ok(&["backup"]);
     assert!(output.contains("Cannot send the backups: "), "{output}");
-    assert!(output.contains("printerkeep tries again at the next backup."));
+    assert!(
+        output.contains("Check the network connection of the printer")
+            && output.contains("printerkeep tries again at the next run."),
+        "{output}"
+    );
 
-    fs::rename(&moved, &url).unwrap();
+    // The same problem at the next runs: the terminal shows it, the log does not get it again.
+    for _ in 0..2 {
+        let output = printer.ok(&["backup"]);
+        assert!(output.contains("Cannot send the backups: "), "{output}");
+    }
+    assert_eq!(
+        log().matches("Cannot send the backups: ").count(),
+        1,
+        "{}",
+        log()
+    );
     assert!(
         printer
-            .ok(&["backup"])
-            .contains("Sent 1 backup to the repository.")
+            .ok(&["status"])
+            .contains("Backups not in the repository: 1. The last try to send them did not work:")
     );
+
+    fs::rename(&moved, &url).unwrap();
+    let output = printer.ok(&["backup"]);
+    assert!(
+        output.contains("Sent 1 backup to the repository."),
+        "{output}"
+    );
+    assert!(
+        output.contains("The problem of the last runs is solved."),
+        "{output}"
+    );
+    assert!(log().contains("The problem of the last runs is solved."));
+    assert!(!printer.ok(&["status"]).contains("did not work"));
 }
 
 #[test]
@@ -655,4 +683,38 @@ fn rename_refuses_a_klipper_backup_branch_and_the_documented_way_continues_it() 
     );
     // The old branch in the repository stays as it was.
     assert!(remote_tip(&url, "printer-1.example.net").len() == 40);
+}
+
+#[test]
+fn the_backup_run_continues_when_the_local_data_was_removed() {
+    let (_dir, url) = repository();
+    let printer = Printer::named("printer-1");
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["add-repository", &url]);
+    let old_tip = remote_tip(&url, "printer-1");
+
+    // The real case: printerkeep's data was removed; printerkeep.conf (with the repository) stays.
+    fs::remove_dir_all(printer.dir.path().join("printerkeep")).unwrap();
+    printer.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
+    let output = printer.ok(&["backup"]);
+    assert!(
+        output
+            .contains("printerkeep.conf names this branch, so printerkeep continues its history."),
+        "{output}"
+    );
+    assert!(output.contains("Sent "), "{output}");
+    assert!(!output.contains("Cannot send"), "{output}");
+    let tip = remote_tip(&url, "printer-1");
+    git(
+        Path::new(&url),
+        &["merge-base", "--is-ancestor", &old_tip, &tip],
+    );
+    assert_eq!(
+        show(&url, "printer-1", "printer.cfg"),
+        "[printer]\nmax_velocity: 300\n"
+    );
+    assert_eq!(
+        printer.ok(&["backup"]),
+        "No files changed. No backup made.\n"
+    );
 }

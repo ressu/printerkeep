@@ -604,6 +604,23 @@ Part 1 (2026-10-13): points 1 and 3 (`app::Ask`, `app::Connect`, `repository::se
   branch is the printer's when it is not clear. After a klipper-backup branch is continued, the output still
   says to stop klipper-backup, and the commit says "Continued the klipper-backup history".
 
+Part 2 (2026-10-13): points 2, 4 and 5.
+
+- The backup run continues the repository's history by itself when the send is refused, the histories
+  have no common backup, and `printerkeep.conf` names this printer (`add-repository` and `restore` always
+  write it). One line says so, with the reference where the local backups were set aside. Tested with the
+  real case: local data removed, `printerkeep.conf` kept.
+- All problems of a run (send, repository check, changes from shared) are one text in `send-problem`. The
+  log gets them only when the text changes, and one line "The problem of the last runs is solved." when it
+  is gone. The terminal shows the problems at each run. `status` shows the last problem also when all
+  backups are sent.
+- Found in a manual check: printerkeep took the last line of git's error output ("and the repository
+  exists."). Now it takes the first `fatal:`/`error:` line. When the repository cannot be reached, the
+  check and the send failed with the same cause: only the send line stays.
+- Messages with a fix now: connection errors (check the network and the URL in `printerkeep.conf`), a
+  refused token (access, "Contents: Read and write", expiry), restore with no backups or an unknown printer
+  name, and the send race (tries again at the next run).
+
 Backlog: log rotation. printerkeep rotates at 1 MB (`printerkeep.log` → `printerkeep.log.1`). Decide if
 that is enough, or if it should work like Moonraker's own logs.
 

@@ -156,7 +156,13 @@ impl fmt::Display for Status {
             Some(url) => {
                 writeln!(f, "Repository: {url}")?;
                 match self.not_sent {
-                    Some(0) => writeln!(f, "All backups are in the repository."),
+                    Some(0) => {
+                        writeln!(f, "All backups are in the repository.")?;
+                        match &self.send_problem {
+                            Some(problem) => writeln!(f, "The last run had a problem:\n{problem}"),
+                            None => Ok(()),
+                        }
+                    }
                     Some(n) => match &self.send_problem {
                         Some(problem) => writeln!(
                             f,

@@ -22,9 +22,12 @@ pub enum RepositoryError {
     UnsupportedUrl(String),
     #[error("{}", login_failed(url))]
     LoginFailed { url: String },
-    #[error("Cannot connect to the repository {url}: {message}")]
+    #[error(
+        "Cannot connect to the repository {url}: {message}. Check the network connection of the printer, \
+         and the repository URL in printerkeep.conf"
+    )]
     Connection { url: String, message: String },
-    #[error("The repository has changes that are not on this printer")]
+    #[error("The repository has backups on this printer's branch that are not on this printer")]
     RepositoryAhead,
     #[error(
         "ssh-keygen is not installed. Install it, for example with: sudo apt install openssh-client"
@@ -273,15 +276,30 @@ pub fn classify(error: GitError, url: &str) -> RepositoryError {
     } else {
         RepositoryError::Connection {
             url: url.to_string(),
-            message: stderr
-                .lines()
-                .rev()
-                .find(|l| !l.trim().is_empty())
-                .unwrap_or("unknown error")
-                .trim_start_matches("fatal: ")
-                .to_string(),
+            message: main_message(stderr),
         }
     }
+}
+
+/// The line of git's error output that says what went wrong: the first "fatal:" or "error:" line (git adds
+/// general advice after it), without that word and without the last period.
+fn main_message(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let line = lines
+        .iter()
+        .find(|l| l.starts_with("fatal:") || l.starts_with("error:"))
+        .or(lines.last())
+        .copied()
+        .unwrap_or("unknown error");
+    line.trim_start_matches("fatal:")
+        .trim_start_matches("error:")
+        .trim()
+        .trim_end_matches('.')
+        .to_string()
 }
 
 /// The reference with the last backup that the repository has (from this printer's view).
@@ -513,6 +531,21 @@ pub fn write_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_main_line_of_a_git_error() {
+        let stderr = "fatal: '/srv/printers.git' does not appear to be a git repository\n\
+                      fatal: Could not read from remote repository.\n\n\
+                      Please make sure you have the correct access rights\nand the repository exists.\n";
+        assert_eq!(
+            main_message(stderr),
+            "'/srv/printers.git' does not appear to be a git repository"
+        );
+        assert_eq!(
+            main_message("ssh: connect to host github.com port 22: Network is unreachable\n"),
+            "ssh: connect to host github.com port 22: Network is unreachable"
+        );
+    }
 
     #[test]
     fn url_kinds() {

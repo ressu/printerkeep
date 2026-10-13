@@ -111,7 +111,8 @@ printerkeep status     # the last backup, changes since then, and the repository
 
 printerkeep writes what it does to `printer_data/logs/printerkeep.log`. Fluidd and Mainsail show it with
 the other logs. A run in which nothing changed writes nothing at all, so the SD card is not worn by
-backups that did not happen.
+backups that did not happen. A problem (for example, the repository cannot be reached) goes to the log when
+it starts and when it is solved, with what to do; `printerkeep status` shows it until then.
 
 ### Send backups to a repository
 

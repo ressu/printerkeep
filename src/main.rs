@@ -144,14 +144,15 @@ fn main() -> ExitCode {
     };
     let paths = Paths::new(printer_data);
 
-    // A backup run with no changes is not logged: no write to the SD card.
-    let mut quiet = false;
+    // A backup run logs only what is new: nothing for a run with no change, and a problem only when it starts,
+    // changes or is solved. No write to the SD card for a run that repeats the last one.
+    let mut log_only: Option<Vec<String>> = None;
     let result = match &cli.command {
         Command::Backup => {
             // By hand (on a terminal), check the repository now. The timer follows check_repository.
             let check_now = std::io::stdin().is_terminal();
             app::backup(&paths, check_now).map(|report| {
-                quiet = report.quiet;
+                log_only = Some(report.log_lines());
                 report.lines()
             })
         }
@@ -215,8 +216,9 @@ fn main() -> ExitCode {
             for line in &lines {
                 println!("{line}");
             }
-            if !lines.is_empty() && !quiet {
-                log_lines(&paths, &lines);
+            let log = log_only.unwrap_or_else(|| lines.clone());
+            if !log.is_empty() {
+                log_lines(&paths, &log);
             }
             ExitCode::SUCCESS
         }

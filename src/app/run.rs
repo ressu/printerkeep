@@ -15,6 +15,12 @@ pub struct BackupReport {
     pub from_repository: Vec<String>,
     /// What happened with the repository. `None` if there is no repository.
     pub sent: Option<Result<Sent, RepositoryError>>,
+    /// The problems of this run (sending, the repository check, changes from shared).
+    pub problems: Vec<String>,
+    /// The problems are not the same as at the last run.
+    pub problem_changed: bool,
+    /// The last run had a problem, and this run has none.
+    pub solved: bool,
     /// Nothing happened: no backup, no change, nothing sent, no problem. The log does not get this run, so
     /// that a run with no changes writes nothing to the SD card.
     pub quiet: bool,
@@ -33,7 +39,20 @@ pub enum Outcome {
 }
 
 impl BackupReport {
-    /// The lines for the terminal and the log.
+    /// The lines for the log: the same, but a problem only when it is new or changed, and nothing for a
+    /// run in which nothing happened.
+    pub fn log_lines(&self) -> Vec<String> {
+        if self.quiet {
+            return Vec::new();
+        }
+        let mut lines = self.lines();
+        if !self.problem_changed {
+            lines.retain(|line| !self.problems.contains(line));
+        }
+        lines
+    }
+
+    /// The lines for the terminal.
     pub fn lines(&self) -> Vec<String> {
         let mut lines = match &self.outcome {
             Outcome::Made { summary, .. } => {
@@ -52,18 +71,13 @@ impl BackupReport {
         lines.extend(self.shared.iter().cloned());
         lines.extend(self.from_repository.iter().cloned());
         match &self.sent {
-            None | Some(Ok(Sent::Nothing)) => {}
             Some(Ok(Sent::Sent(1))) => lines.push("Sent 1 backup to the repository.".to_string()),
             Some(Ok(Sent::Sent(n))) => lines.push(format!("Sent {n} backups to the repository.")),
-            Some(Err(RepositoryError::RepositoryAhead)) => lines.push(
-                "The repository has changes that are not on this printer. printerkeep did not send the \
-                 backups, so nothing in the repository is overwritten. The backups stay on this printer."
-                    .to_string(),
-            ),
-            Some(Err(error @ RepositoryError::LoginFailed { .. })) => lines.push(error.to_string()),
-            Some(Err(error)) => lines.push(format!(
-                "Cannot send the backups: {error}. printerkeep tries again at the next backup."
-            )),
+            _ => {}
+        }
+        lines.extend(self.problems.iter().cloned());
+        if self.solved {
+            lines.push("The problem of the last runs is solved.".to_string());
         }
         lines
     }
@@ -141,7 +155,8 @@ pub(super) fn backup_and_send(
                 Ok(heads) => Some(heads),
                 Err(error) => {
                     problems.push(format!(
-                        "Cannot check the repository for changes: {}. printerkeep tries again later.",
+                        "Cannot check the repository for changes: {}. printerkeep tries again at the next \
+                         run.",
                         repository::classify(error, &remote.url)
                     ));
                     None
@@ -150,7 +165,7 @@ pub(super) fn backup_and_send(
         }
         _ => None,
     };
-    let (mut shared, shared_news) = follow_shared(
+    let (shared, shared_news, shared_problem) = follow_shared(
         paths,
         settings,
         files,
@@ -159,6 +174,10 @@ pub(super) fn backup_and_send(
         remote.as_ref(),
         heads.as_ref(),
     )?;
+    problems.extend(shared_problem);
+    // printerkeep.conf names this printer (add-repository and restore write it): the printer was connected
+    // to this branch before. If their histories have no common backup, the run continues the repository's.
+    let continue_unrelated = settings.printer_name.is_some();
 
     // Changes on this printer's branch in the repository (M6).
     let mut from_repository = Vec::new();
@@ -168,12 +187,12 @@ pub(super) fn backup_and_send(
         let fetched = repository::fetched_ref(printer_name);
         match git.fetch(remote, printer_name, &fetched) {
             Ok(()) => {
-                if let Some(lines) = take_repository_changes(paths, files, &git, printer_name)? {
+                if let Some(lines) = take_repository_changes(paths, files, &git, printer_name, continue_unrelated)? {
                     from_repository = lines;
                 }
             }
             Err(error) => problems.push(format!(
-                "Cannot get the changes from the repository: {}. printerkeep tries again later.",
+                "Cannot get the changes from the repository: {}. printerkeep tries again at the next run.",
                 repository::classify(error, &remote.url)
             )),
         }
@@ -189,29 +208,38 @@ pub(super) fn backup_and_send(
     // The repository has changes on this printer's branch that the check did not see: merge them, then
     // send again.
     if let Some(Err(RepositoryError::RepositoryAhead)) = &sent
-        && let Some(lines) = take_repository_changes(paths, files, &git, printer_name)?
+        && let Some(lines) =
+            take_repository_changes(paths, files, &git, printer_name, continue_unrelated)?
     {
         from_repository.extend(lines);
         sent = send_now();
     }
-    // status has no network. It shows the problem from the last try.
-    match &sent {
-        Some(Err(error)) => {
-            let _ = std::fs::write(paths.send_problem(), format!("{error}\n"));
+    // The problems of this run, as one text. status has no network: it shows the text of the last run. The
+    // log gets a problem when it starts, when it changes and when it is solved, not at each run.
+    if let Some(Err(error)) = &sent {
+        // The repository cannot be reached: the check found the same. One line says it.
+        if matches!(error, RepositoryError::Connection { .. }) {
+            problems.retain(|p| !p.starts_with("Cannot check the repository for changes"));
         }
-        Some(Ok(_)) => {
-            if paths.send_problem().exists() {
-                let _ = std::fs::remove_file(paths.send_problem());
-            }
-        }
-        None => {}
+        problems.push(send_problem(error));
     }
+    let problem = (!problems.is_empty()).then(|| problems.join("\n"));
+    let previous = std::fs::read_to_string(paths.send_problem())
+        .ok()
+        .map(|text| text.trim_end().to_string());
+    let problem_changed = problem != previous;
+    if problem_changed {
+        let _ = match &problem {
+            Some(text) => std::fs::write(paths.send_problem(), format!("{text}\n")),
+            None => std::fs::remove_file(paths.send_problem()),
+        };
+    }
+    let solved = previous.is_some() && problem.is_none();
     let quiet = outcome == Outcome::NoChange
         && !shared_news
         && from_repository.is_empty()
-        && problems.is_empty()
-        && matches!(sent, None | Some(Ok(Sent::Nothing)));
-    shared.extend(problems);
+        && !problem_changed
+        && matches!(sent, None | Some(Ok(Sent::Nothing)) | Some(Err(_)));
     Ok(BackupReport {
         printer_name: printer_name.to_string(),
         outcome,
@@ -219,8 +247,23 @@ pub(super) fn backup_and_send(
         shared,
         from_repository,
         sent,
+        problems,
+        problem_changed,
+        solved,
         quiet,
     })
+}
+
+/// The text for a send that did not work: what happened, and what to do.
+fn send_problem(error: &RepositoryError) -> String {
+    match error {
+        RepositoryError::RepositoryAhead => "The repository changed while printerkeep sent the backups. \
+            printerkeep did not send them, so nothing in the repository is overwritten. It tries again at \
+            the next run."
+            .to_string(),
+        RepositoryError::LoginFailed { .. } => error.to_string(),
+        error => format!("Cannot send the backups: {error}. printerkeep tries again at the next run."),
+    }
 }
 
 /// `true` if the repository's commit `tip` of this printer's branch is not in the printer's history.
@@ -298,6 +341,7 @@ fn take_repository_changes(
     files: Files,
     git: &Git,
     printer_name: &str,
+    continue_unrelated: bool,
 ) -> Result<Option<Vec<String>>, Error> {
     let reference = branch(printer_name);
     let (Some(local), Some(remote)) = (
@@ -307,7 +351,29 @@ fn take_repository_changes(
         return Ok(None);
     };
     let Some(base) = git.merge_base(&local, &remote)? else {
-        return Ok(None);
+        if !continue_unrelated {
+            return Ok(None);
+        }
+        // No common backup, but printerkeep.conf names this branch: printerkeep's data on the printer was
+        // removed, or the printer was set up again. Continue the repository's history; the files do not
+        // change, and the next backup has them.
+        let kept = match repository::continue_history(git, printer_name, &remote)? {
+            History::Continued { kept } => kept,
+            _ => None,
+        };
+        let mut lines = vec![format!(
+            "The branch {printer_name} in the repository has backups that are not in this printer's \
+             history (printerkeep's data on the printer was removed, or the printer was set up again). \
+             printerkeep.conf names this branch, so printerkeep continues its history. Your files did not \
+             change."
+        )];
+        if let Some(kept) = kept {
+            lines.push(format!(
+                "The backups that were only on this printer are not sent. They stay on this printer as {kept}."
+            ));
+        }
+        make_backup(paths, files, git, printer_name, None)?;
+        return Ok(Some(lines));
     };
     let events = repository_changes::apply(git, paths, files.rules, &base, &remote)?;
     let lines = events.iter().map(|e| e.line()).collect();
@@ -390,20 +456,21 @@ fn follow_shared(
     printer_name: &str,
     remote: Option<&git::Remote>,
     heads: Option<&std::collections::BTreeMap<String, String>>,
-) -> Result<(Vec<String>, bool), Error> {
+) -> Result<(Vec<String>, bool, Option<String>), Error> {
     let state_file = paths.config.join(STATE_FILE);
     let mut state = state::load(&state_file)?;
     if settings.follow.is_empty() && state.files.is_empty() {
-        return Ok((Vec::new(), false));
+        return Ok((Vec::new(), false, None));
     }
     let mut lines = Vec::new();
+    let mut problem = None;
     let Some(remote) = remote else {
         lines.push(
             "printerkeep.conf has files to follow, but this printer has no repository. \
              To add one: printerkeep add-repository <url>"
                 .to_string(),
         );
-        return Ok((lines, false));
+        return Ok((lines, false, None));
     };
     let local = git.resolve(SHARED_REF)?;
     let tip = match heads.map(|h| h.get(SHARED_BRANCH)) {
@@ -415,16 +482,14 @@ fn follow_shared(
         Some(Some(_)) => match shared::fetch(git, remote) {
             Ok(tip) => tip,
             Err(error) => {
-                lines.push(format!(
-                    "Cannot get changes from shared: {error}. printerkeep tries again at the next \
-                     backup."
+                problem = Some(format!(
+                    "Cannot get changes from shared: {error}. printerkeep tries again at the next run."
                 ));
                 // The last copy is still a correct shared version.
                 local
             }
         },
     };
-    let fetch_problem = !lines.is_empty();
     let events = shared::apply(git, paths, &settings.follow, tip.as_deref(), &mut state)?;
     state::save(&state_file, &state)?;
     lines.extend(events.iter().map(FileEvent::line));
@@ -433,10 +498,9 @@ fn follow_shared(
         make_backup(paths, files, git, printer_name, Some(message))?;
     }
     // Lines that only repeat a status (for example, a file that still needs decision) are not news.
-    let news = fetch_problem
-        || message.is_some()
+    let news = message.is_some()
         || events
             .iter()
             .any(|e| matches!(e.event, shared::Event::Placeholders(_)));
-    Ok((lines, news))
+    Ok((lines, news, problem))
 }

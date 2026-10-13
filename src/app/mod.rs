@@ -100,7 +100,9 @@ pub enum Error {
     #[error("No token. printerkeep needs a personal access token for an https:// repository.")]
     NoToken,
     #[error(
-        "The repository did not accept the token, or the URL is wrong ({url}). The stored login did not change."
+        "The repository did not accept the token, or the URL is wrong ({url}). The stored login did not \
+         change. Check that the token has access to this repository, with the permission \"Contents: Read and \
+         write\", and that it did not expire. Then try again."
     )]
     TokenRefused { url: String },
     #[error("This printer has no repository. To add one: printerkeep add-repository <url>")]
@@ -137,14 +139,21 @@ pub enum Error {
          printer continue that branch: printerkeep add-repository {url} --printer-name {name} --continue"
     )]
     NameTaken { name: String, url: String },
-    #[error("The repository has no backups.")]
+    #[error(
+        "The repository has no backups of a printer. Check the URL. To send backups to it, run \
+         printerkeep add-repository <url> on the printer that has them."
+    )]
     NothingToRestore,
     #[error(
         "The repository has backups of several printers: {}. Select one: printerkeep restore <url> --printer-name <printer name>",
         .0.join(", ")
     )]
     SelectPrinter(Vec<String>),
-    #[error("The repository has no printer named '{name}'. Printers in the repository: {}", .available.join(", "))]
+    #[error(
+        "The repository has no printer named '{name}'. Printers in the repository: {}. Use one of them: \
+         printerkeep restore <url> --printer-name <printer name>",
+        .available.join(", ")
+    )]
     NoSuchPrinter {
         name: String,
         available: Vec<String>,
