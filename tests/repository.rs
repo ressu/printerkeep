@@ -233,7 +233,7 @@ fn changes_in_the_repository_get_to_the_printer() {
         "{output}"
     );
     assert!(
-        output.contains("macros.cfg: removed in the repository. printerkeep does not remove files"),
+        output.contains("macros.cfg: removed in the repository, and kept on this printer"),
         "{output}"
     );
     assert_eq!(

@@ -28,7 +28,7 @@ pub enum RepositoryError {
          repository URL in printerkeep.conf."
     )]
     Connection { url: String, message: String },
-    #[error("The repository has backups on this printer's branch that are not on this printer")]
+    #[error("The repository has backups on this printer's branch that aren't on this printer")]
     RepositoryAhead,
     #[error(
         "An SSH URL needs ssh-keygen, and it isn't installed. Install it, for example with:\n  \

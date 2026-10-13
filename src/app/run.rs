@@ -397,10 +397,10 @@ fn take_repository_changes(
             _ => None,
         };
         let mut lines = vec![format!(
-            "The branch {printer_name} in the repository has backups that are not in this printer's \
-             history (printerkeep's data on the printer was removed, or the printer was set up again). \
-             printerkeep.conf names this branch, so printerkeep continues its history. Your files did not \
-             change."
+            "The branch {printer_name} in the repository has backups that aren't in this printer's \
+             history. That happens when printerkeep's data on the printer was removed, or the printer was \
+             set up again. printerkeep.conf names this branch, so printerkeep continues its history. Your \
+             files didn't change."
         )];
         if let Some(kept) = kept {
             lines.push(format!(

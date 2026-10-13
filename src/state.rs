@@ -149,7 +149,7 @@ fn parse(text: &str) -> Result<State, String> {
         let string = |name: &str| match fields.get(name) {
             Some(Json::String(s)) => Ok(Some(s.clone())),
             None => Ok(None),
-            Some(_) => Err(format!("{path}: \"{name}\" is not a string")),
+            Some(_) => Err(format!("{path}: \"{name}\" isn't a string")),
         };
         let base = string("base")?.ok_or_else(|| format!("{path}: no \"base\""))?;
         state.files.insert(
@@ -278,7 +278,7 @@ impl Parser<'_> {
                 _ => bytes.push(b),
             }
         }
-        String::from_utf8(bytes).map_err(|_| "a string is not UTF-8".into())
+        String::from_utf8(bytes).map_err(|_| "a string isn't UTF-8".into())
     }
 }
 

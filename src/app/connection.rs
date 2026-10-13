@@ -214,7 +214,7 @@ pub fn add_repository(
             // Another history with configuration: this printer's from before a new install, klipper-backup's,
             // or another printer's with the same name. Only the user knows which; the same question for all.
             let question = format!(
-                "The branch {target} in the repository has backups that are not on this printer.\n\
+                "The branch {target} in the repository has backups that aren't on this printer.\n\
                  If you continue that history, your files do not change, and the backups made on this \
                  printer are set aside.\n\
                  Continue that history on this printer?"
@@ -594,7 +594,7 @@ pub fn rename(paths: &Paths, new: &str) -> Result<Vec<String>, Error> {
     let mut lines = vec![format!("Renamed the printer from {old} to {new}.")];
     if settings.repository.is_some() {
         lines.push(format!(
-            "The repository keeps the branch {old}. If you do not need it, remove it in the web pages of the \
+            "The repository keeps the branch {old}. If you don't need it, remove it in the web pages of the \
              repository."
         ));
         // The repository does not have the new branch yet: send all backups.

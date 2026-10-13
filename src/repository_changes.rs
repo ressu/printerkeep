@@ -45,12 +45,12 @@ impl FileEvent {
                 format!("{path}: needs a decision. Open the file and look for the #### lines.")
             }
             Event::RemovedThere => format!(
-                "{path}: removed in the repository. printerkeep does not remove files from the config \
-                 folder. If you do not need it, remove it on this printer."
+                "{path}: removed in the repository, and kept on this printer: printerkeep leaves the files in \
+                 the config folder in place. If you don't need it, remove it on this printer."
             ),
             Event::RemovedHere => format!(
-                "{path}: changed in the repository, but removed on this printer. printerkeep did not write \
-                 it."
+                "{path}: changed in the repository, but removed on this printer, so printerkeep didn't write \
+                 it back."
             ),
         }
     }
