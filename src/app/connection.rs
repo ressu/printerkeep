@@ -201,28 +201,23 @@ pub fn add_repository(
             // "Add a README file"): join it.
             join_history(&git, paths, &target, &commit)?
         } else {
-            // Another history with configuration: klipper-backup's, this printer's from before a new
-            // install, or another printer's with the same name. Only the user knows which.
-            let klipper_backup = is_klipper_backup(&git, &commit)?;
-            let from = if klipper_backup {
-                "from klipper-backup"
-            } else {
-                "that are not on this printer"
-            };
+            // Another history with configuration: this printer's from before a new install, klipper-backup's,
+            // or another printer's with the same name. Only the user knows which; the same question for all.
             let question = format!(
-                "The branch {target} in the repository has backups {from}. Continue that history on this \
-                 printer? Your files do not change; the backups made on this printer are set aside"
+                "The branch {target} in the repository has backups that are not on this printer. Continue \
+                 that history on this printer? Your files do not change; the backups made on this printer \
+                 are set aside"
             );
             let yes = choices.continue_history || ask.confirm(&question).unwrap_or(false);
             if !yes {
                 return Err(Error::NameInUse {
                     name: target,
                     url: url.to_string(),
-                    klipper_backup,
                 });
             }
             let continued = repository::continue_history(&git, &target, &commit)?;
-            if klipper_backup {
+            // klipper-backup still runs on the printer, if the user did not stop it: the report says so.
+            if is_klipper_backup(&git, &commit)? {
                 History::KlipperBackup
             } else {
                 continued

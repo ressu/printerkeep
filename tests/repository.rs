@@ -76,7 +76,7 @@ fn a_printer_never_takes_over_the_branch_of_another_printer() {
     let error = String::from_utf8(error).unwrap();
     assert!(
         error.contains(
-            "The branch printer-1 in the repository has backups from another install or another printer"
+            "The branch printer-1 in the repository has backups with no common history with this printer's"
         ),
         "{error}"
     );

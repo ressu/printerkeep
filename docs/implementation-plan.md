@@ -533,10 +533,10 @@ changes files.
 
 1. **`add-repository` and `restore` ask which printer this is.**
    - Both first show what they found: the printer name (and where it comes from: `printerkeep.conf` or the
-     default `main`), and the printer branches in the repository, with klipper-backup branches marked.
+     default `main`), and the printer branches in the repository.
    - A branch with this printer's name and a different history: "Continue that history on this printer?"
      Yes: continue (a klipper-backup branch the same way: the files move to the top). No: select another
-     name.
+     name. The same question for every branch.
    - No branch with this printer's name, but other printers in the repository: "Is this printer one of
      them? Type its name, or press Enter for a new branch." A name: rename the printer to it, then continue.
      This rename must work although the repository has the name (`rename` refuses that today, as a guard).
@@ -599,8 +599,10 @@ Part 1 (2026-10-13): points 1 and 3 (`app::Ask`, `app::Connect`, `repository::se
 - "From now" is asked only when the local history has more than one backup (more than the install's).
 - `restore` moves the local history (for example the install's first backup under `main`) to the restored
   name, so it is set aside, not left on an unused branch.
-- Not done as planned: the list of printers does not mark klipper-backup branches. That would need a fetch
-  of every branch; printerkeep says it in the "continue?" question of the selected branch instead.
+- Not done as planned, and dropped (decided with the user): the list of printers does not mark
+  klipper-backup branches, and the "continue?" question is the same for every branch. The user knows which
+  branch is the printer's when it is not clear. After a klipper-backup branch is continued, the output still
+  says to stop klipper-backup, and the commit says "Continued the klipper-backup history".
 
 Backlog: log rotation. printerkeep rotates at 1 MB (`printerkeep.log` → `printerkeep.log.1`). Decide if
 that is enough, or if it should work like Moonraker's own logs.

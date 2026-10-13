@@ -118,18 +118,12 @@ pub enum Error {
     )]
     DeployKeyNeeded { public_key: String },
     #[error(
-        "The branch {name} in the repository has backups {}, with no common history with this printer's \
-         backups. printerkeep did not continue it, and changed nothing. If this is this printer (set up \
-         again, or its klipper-backup branch): printerkeep add-repository {url} --printer-name {name} \
-         --continue. If it is a different printer: printerkeep add-repository {url} --printer-name <another \
-         name>",
-        if *.klipper_backup { "from klipper-backup" } else { "from another install or another printer" }
+        "The branch {name} in the repository has backups with no common history with this printer's \
+         backups. printerkeep did not continue it, and changed nothing. To continue that branch on this \
+         printer: printerkeep add-repository {url} --printer-name {name} --continue. For a different branch: \
+         printerkeep add-repository {url} --printer-name <another name>"
     )]
-    NameInUse {
-        name: String,
-        url: String,
-        klipper_backup: bool,
-    },
+    NameInUse { name: String, url: String },
     #[error(
         "The repository has printers ({}), and this printer has the default name main. printerkeep does not \
          guess which printer this is. If it is one of them: printerkeep add-repository {url} --printer-name \
