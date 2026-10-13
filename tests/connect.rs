@@ -131,7 +131,9 @@ fn install_as_main_then_connect_as_an_existing_printer() {
     let report = add(&printer, &url, &Connect::default(), &ask).unwrap();
     let asked = ask.asked.borrow();
     assert!(
-        asked[0].contains("The repository has these printers: foobar, main. This printer's name is main (the default)."),
+        asked[0].starts_with(
+            "The repository has these printers:\n  foobar\n  main\nThis printer's name is main (the default).\n"
+        ),
         "{asked:?}"
     );
     assert!(

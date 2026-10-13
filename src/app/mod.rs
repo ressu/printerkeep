@@ -121,22 +121,23 @@ pub enum Error {
     DeployKeyNeeded { public_key: String },
     #[error(
         "The branch {name} in the repository has backups with no common history with this printer's \
-         backups. printerkeep did not continue it, and changed nothing. To continue that branch on this \
-         printer: printerkeep add-repository {url} --printer-name {name} --continue. For a different branch: \
-         printerkeep add-repository {url} --printer-name <another name>"
+         backups.\nprinterkeep did not continue it, and changed nothing.\n\
+         To continue that branch on this printer:\n  printerkeep add-repository {url} --printer-name {name} \
+         --continue\nFor a different branch:\n  printerkeep add-repository {url} --printer-name <another name>"
     )]
     NameInUse { name: String, url: String },
     #[error(
-        "The repository has printers ({}), and this printer has the default name main. printerkeep does not \
-         guess which printer this is. If it is one of them: printerkeep add-repository {url} --printer-name \
-         <its name>. For a new printer: printerkeep add-repository {url} --printer-name <new name>",
+        "The repository has printers ({}), and this printer has the default name main.\n\
+         printerkeep does not guess which printer this is.\nIf it is one of them:\n  printerkeep \
+         add-repository {url} --printer-name <its name>\nFor a new printer:\n  printerkeep add-repository \
+         {url} --printer-name <new name>",
         .printers.join(", ")
     )]
     WhichPrinter { url: String, printers: Vec<String> },
     #[error(
         "The repository already has a branch named '{name}' (from another printer, or from klipper-backup). \
-         rename never takes over a branch in the repository. Select a different name. Or, to make this \
-         printer continue that branch: printerkeep add-repository {url} --printer-name {name} --continue"
+         rename never takes over a branch in the repository.\nSelect a different name. Or, to make this \
+         printer continue that branch:\n  printerkeep add-repository {url} --printer-name {name} --continue"
     )]
     NameTaken { name: String, url: String },
     #[error(

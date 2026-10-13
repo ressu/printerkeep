@@ -224,7 +224,10 @@ fn main() -> ExitCode {
         }
         Err(error) => {
             eprintln!("printerkeep: {error}");
-            log_lines(&paths, &[format!("Error: {error}")]);
+            // A message of more lines: each line gets its own time in the log.
+            let text = format!("Error: {error}");
+            let lines: Vec<String> = text.lines().map(str::to_string).collect();
+            log_lines(&paths, &lines);
             ExitCode::FAILURE
         }
     }

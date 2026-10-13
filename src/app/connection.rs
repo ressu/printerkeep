@@ -97,7 +97,8 @@ pub enum TokenUse {
 }
 
 /// The questions that add-repository and restore ask on a terminal. Each returns `None` when there is no
-/// terminal: then printerkeep does not guess, and the caller gets an error that names the options.
+/// terminal: then printerkeep does not guess, and the caller gets an error that names the options. A
+/// question is short lines: the explanation first, the question itself on the last line.
 pub trait Ask {
     /// A yes/no question. The default answer is no.
     fn confirm(&self, question: &str) -> Option<bool>;
@@ -114,6 +115,15 @@ pub struct Connect {
     pub continue_history: bool,
     /// `--from-now`: for a new branch, send only a backup of the files now; set the local history aside.
     pub from_now: bool,
+}
+
+/// Names for a question, one on each line.
+fn list(names: &[String]) -> String {
+    names
+        .iter()
+        .map(|name| format!("  {name}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The printer branches in the repository (not `shared`).
@@ -159,9 +169,10 @@ pub fn add_repository(
         None if !others || (chosen && printers.contains(&current)) => current.clone(),
         None => {
             let question = format!(
-                "The repository has these printers: {}. This printer's name is {current}{}. Which printer is \
-                 this? Type its name (a new name makes a new branch), or press Enter to use {current}",
-                printers.join(", "),
+                "The repository has these printers:\n{}\nThis printer's name is {current}{}.\n\
+                 Which printer is this? Type its name (a new name makes a new branch), or press Enter to \
+                 use {current}",
+                list(&printers),
                 if chosen { "" } else { " (the default)" }
             );
             match ask.text(&question) {
@@ -204,9 +215,10 @@ pub fn add_repository(
             // Another history with configuration: this printer's from before a new install, klipper-backup's,
             // or another printer's with the same name. Only the user knows which; the same question for all.
             let question = format!(
-                "The branch {target} in the repository has backups that are not on this printer. Continue \
-                 that history on this printer? Your files do not change; the backups made on this printer \
-                 are set aside"
+                "The branch {target} in the repository has backups that are not on this printer.\n\
+                 If you continue that history, your files do not change, and the backups made on this \
+                 printer are set aside.\n\
+                 Continue that history on this printer?"
             );
             let yes = choices.continue_history || ask.confirm(&question).unwrap_or(false);
             if !yes {
@@ -234,8 +246,10 @@ pub fn add_repository(
             || (local_backups > 1
                 && ask
                     .confirm(&format!(
-                        "This printer has {local_backups} backups. Start the history in the repository from \
-                         now? (They are set aside on this printer and not sent; answer no to send them)"
+                        "This printer has {local_backups} backups. You can send them all, or start the \
+                         history in the repository from now: then they are set aside on this printer and not \
+                         sent.\n\
+                         Start the history in the repository from now?"
                     ))
                     .unwrap_or(false));
         if from_now {
@@ -505,8 +519,8 @@ pub fn restore(
             [one] => one.clone(),
             _ => {
                 let question = format!(
-                    "The repository has these printers: {}. Which printer is this? Type its name",
-                    available.join(", ")
+                    "The repository has these printers:\n{}\nWhich printer is this? Type its name",
+                    list(&available)
                 );
                 match ask.text(&question).map(|a| a.trim().to_string()) {
                     Some(name) if available.contains(&name) => name,
