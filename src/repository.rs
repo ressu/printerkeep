@@ -424,8 +424,10 @@ pub fn plan_restore(git: &Git, tree: &Tree, config: &Path) -> Result<RestorePlan
     };
     for (path, entry) in tree {
         // printerkeep's README.md is not in the config folder.
-        if path == crate::readme::README_FILE.as_bytes()
-            && crate::readme::is_generated(&git.blob(&entry.oid).map_err(RepositoryError::Git)?)
+        if path == crate::branch_readme::README_FILE.as_bytes()
+            && crate::branch_readme::is_generated(
+                &git.blob(&entry.oid).map_err(RepositoryError::Git)?,
+            )
         {
             continue;
         }

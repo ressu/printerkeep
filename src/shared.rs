@@ -154,7 +154,7 @@ pub fn check_path(path: &str) -> Result<(), String> {
     {
         return Err("use a path in the config folder, without '..' or '.'".into());
     }
-    if path == crate::readme::README_FILE {
+    if path == crate::branch_readme::README_FILE {
         return Err("README.md on the shared branch tells what the repository is".into());
     }
     if path == SETTINGS_FILE || path == STATE_FILE {

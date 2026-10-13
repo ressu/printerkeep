@@ -9,11 +9,11 @@
 //! The command modules `use super::*`: the imports below are also theirs.
 
 use crate::backup::{self, Changes};
+use crate::branch_readme;
 use crate::git::{self, Git, GitError, Identity};
 use crate::ignore::{IgnoreRules, RuleError};
 use crate::overrides;
 use crate::paths::Paths;
-use crate::readme;
 use crate::repository::{self, History, RepositoryError, Sent, UrlKind};
 use crate::repository_changes;
 use crate::settings::{self, Settings, SettingsError};
@@ -238,9 +238,12 @@ struct Files<'a> {
 /// The files of a backup.
 fn backup_scan(paths: &Paths, files: Files) -> Result<Scan, Error> {
     let mut scan = scan(paths, files.rules)?;
-    scan.generated = files
-        .readme
-        .map(|content| (readme::README_FILE.as_bytes().to_vec(), content.to_vec()));
+    scan.generated = files.readme.map(|content| {
+        (
+            branch_readme::README_FILE.as_bytes().to_vec(),
+            content.to_vec(),
+        )
+    });
     Ok(scan)
 }
 

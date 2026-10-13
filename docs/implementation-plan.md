@@ -66,7 +66,7 @@ src/
   backup.rs             commit only on change, commit messages (C2)
   repository.rs         URLs, tokens, keys, send, continue a history, restore (C8)
   repository_changes.rs changes on the printer's own branch in the repository (M6)
-  readme.rs             README.md on each printer branch and on shared
+  branch_readme.rs      README.md on each printer branch and on shared
   log.rs                printer_data/logs/printerkeep.log
   install.rs            install and uninstall (systemd user units, update_manager)
   state.rs              .printerkeep-state.json: base per followed file (C3)

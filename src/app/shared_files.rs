@@ -144,14 +144,14 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
         not_copied = for_shared;
         let mut files = vec![(path.as_str(), entry)];
         // The README of shared: when shared has none, or printerkeep's README is not up to date.
-        let shared_readme = readme::shared_content(remote.url.as_str());
+        let shared_readme = branch_readme::shared_content(remote.url.as_str());
         let in_shared = match &tip {
-            Some(tip) => shared::content_at(&git, tip, readme::README_FILE)?,
+            Some(tip) => shared::content_at(&git, tip, branch_readme::README_FILE)?,
             None => None,
         };
-        if readme::shared_needs_write(in_shared.as_deref(), &shared_readme) {
+        if branch_readme::shared_needs_write(in_shared.as_deref(), &shared_readme) {
             files.push((
-                readme::README_FILE,
+                branch_readme::README_FILE,
                 git::TreeEntry {
                     mode: "100644".to_string(),
                     oid: git.hash_blob(&shared_readme, true)?,

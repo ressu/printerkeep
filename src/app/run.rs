@@ -121,7 +121,7 @@ pub(super) fn backup_and_send(
     let readme = settings
         .repository
         .as_deref()
-        .map(|url| readme::content(printer_name, url, &settings.follow));
+        .map(|url| branch_readme::content(printer_name, url, &settings.follow));
     let files = Files {
         rules: &rules,
         readme: readme.as_deref(),

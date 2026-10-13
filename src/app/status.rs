@@ -36,7 +36,7 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
     let readme = settings
         .repository
         .as_deref()
-        .map(|url| readme::content(&printer_name, url, &settings.follow));
+        .map(|url| branch_readme::content(&printer_name, url, &settings.follow));
     let scan = backup_scan(
         paths,
         Files {
@@ -58,7 +58,7 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
             count: git.count_commits(commit)?,
             files: {
                 let tree = git.read_tree(commit)?;
-                tree.len() - usize::from(readme::in_tree(&git, &tree)?)
+                tree.len() - usize::from(branch_readme::in_tree(&git, &tree)?)
             },
         };
         if settings.repository.is_some() {

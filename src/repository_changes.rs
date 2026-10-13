@@ -3,11 +3,11 @@
 //! (C4), and then joins the two histories with a merge commit. It never removes a file from the config
 //! folder, and never writes its own state file from the repository.
 
+use crate::branch_readme;
 use crate::git::Git;
 use crate::ignore::IgnoreRules;
 use crate::merge::{self, Merged, Source};
 use crate::paths::Paths;
-use crate::readme;
 use crate::shared::{self, SharedError};
 use crate::state::STATE_FILE;
 use std::collections::BTreeSet;
@@ -122,14 +122,14 @@ pub fn apply(
             None => None,
         };
         // printerkeep's README.md is not in the config folder.
-        if path == readme::README_FILE {
+        if path == branch_readme::README_FILE {
             let theirs = match remote_tree.get(path_bytes) {
                 Some(entry) => Some(git.blob(&entry.oid)?),
                 None => None,
             };
             if [&base, &theirs]
                 .iter()
-                .any(|c| c.as_deref().is_some_and(readme::is_generated))
+                .any(|c| c.as_deref().is_some_and(branch_readme::is_generated))
             {
                 continue;
             }

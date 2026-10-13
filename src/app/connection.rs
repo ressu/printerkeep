@@ -152,7 +152,7 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
 
 /// `true` if the commit is from klipper-backup: its README.md starts with klipper-backup's title.
 fn is_klipper_backup(git: &Git, commit: &str) -> Result<bool, Error> {
-    Ok(shared::content_at(git, commit, readme::README_FILE)?
+    Ok(shared::content_at(git, commit, branch_readme::README_FILE)?
         .is_some_and(|content| content.starts_with(b"# klipper-backup")))
 }
 
