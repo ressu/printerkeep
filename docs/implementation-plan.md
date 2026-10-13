@@ -27,6 +27,18 @@ is greater. Thus, from the release after v0.1, versions have three numbers again
 refuses a version that is not three numbers, and a tag that does not match. A printer with v0.1 must be
 updated by hand once (its installed version is not a semantic version).
 
+Future (2026-10-13): simpler releases. The 0.2.0 release changed six places by hand: the version in
+`Cargo.toml` (and `Cargo.lock`), four examples in the README (three URLs and `VERSION=`), and two comments in
+`install.sh`. Ideas to decide later:
+
+- Docs without a version: the README examples use `<version>` (with a link to the release page), or the
+  `releases/latest/download/` URLs where a fixed release is not needed. Then only `Cargo.toml` changes.
+- A release script (`scripts/release.sh <version>`): set the version in `Cargo.toml`, update `Cargo.lock`,
+  run the checks, make the jj change and the tag. It prints the push commands, and does not push.
+- The version from the tag: the release workflow sets the version from the tag (for example with
+  `cargo set-version`), so that `Cargo.toml` does not change for a release. Local builds then show the last
+  version in `Cargo.toml`, which can be wrong.
+
 ## Project setup
 
 - **License:** MIT (the same as layerlock).
