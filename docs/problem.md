@@ -180,6 +180,11 @@ Not in version 1 and not designed for. But the design must not make them impossi
   another person becomes the shared version, and local changes merge on top. The design must not expect that
   every shared version comes from the user's own printers.
 - **Groups of printers**, if users need them.
+- **Status of all printers in one command** (working name `printerkeep repo status`; the final name must
+  follow naming.md, which avoids "repo"). It shows the status of the followed files of every printer branch.
+  This needs no coordination between printers: each printer branch has `printerkeep.conf` (the follow list)
+  and `.printerkeep-state.json` (the bases), so any printer can compute all statuses from the repository with
+  one fetch. Possible start for a dashboard later.
 - **Backup when a file changes (inotify)**, settings for apply and restart, more commands for experts.
 - **Time gating for state files.** Files that extensions rewrite often (`[save_variables]` files such as
   `variables.cfg`, Happy Hare's `mmu_vars.cfg`) can cause a backup at almost every run. Version 1 backs them

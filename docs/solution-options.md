@@ -142,7 +142,8 @@ Mainsail show it) gets a line when something happens.
 Decided 2026-10-13: the status is **not** in the repository. A status page that all printers write needs
 coordination between printers (races, retries, a commit on `shared` for each status change). The `shared`
 branch has a static `README.md`: what the repository is, and how to restore a printer. Users find the printer
-branches with the branch list of the git host. If users need a page with all printers later, revisit this. A message in the Klipper console (for example with `RESPOND`) or a
+branches with the branch list of the git host. If users need a page with all printers later, revisit this. A first step is a command that shows the
+status of all printer branches (see "Future possibilities" in problem.md). A message in the Klipper console (for example with `RESPOND`) or a
 Moonraker notification is possible later. See the open questions.
 
 ### C8. Repository, restore, update
