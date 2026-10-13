@@ -304,7 +304,7 @@ The design is in [`docs/`](docs/). Start with [problem.md](docs/problem.md).
 ## Development
 
 ```sh
-nix develop          # optional: toolchain, cargo-zigbuild, zig, qemu, shellcheck (or direnv: .envrc)
+nix develop          # optional: toolchain with the release targets, qemu, shellcheck (or direnv: .envrc)
 cargo test
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings

@@ -26,7 +26,7 @@ refuses a tag that does not match.
 
 - **License:** MIT (the same as layerlock).
 - **Rust:** edition 2024. `rust-toolchain.toml` pins the toolchain for every contributor. An optional
-  `flake.nix` gives a Nix devShell with the toolchain, `git`, `cargo-zigbuild`/zig, Python 3 (for the Klipper
+  `flake.nix` gives a Nix devShell with the toolchain, `git`, Python 3 (for the Klipper
   parser tests) and `jj`.
 - **One crate** with a library and a binary (`src/lib.rs`, `src/main.rs`). Split into a workspace
   (`printerkeep-*`) only if a real need appears.
@@ -101,7 +101,8 @@ Each milestone ends with working, tested software.
 
 - Cargo project, license, `rust-toolchain.toml`, `flake.nix`, CLAUDE.md, README stub.
 - CI: `cargo fmt --check`, `clippy -D warnings`, tests.
-- Release workflow on a tag: build the four musl targets with `cargo-zigbuild`, publish
+- Release workflow on a tag: build the four musl targets (since 2026-10-13 with `cargo build` and `rust-lld`,
+  see `.cargo/config.toml`; before, with `cargo-zigbuild`), publish
   `printerkeep-linux-{aarch64,armv7,armv6,x86_64}` and a SHA-256 checksum file. (Pre-releases were removed later, see "Versions".)
 - **Done when:** a tag makes a release with five files, and each binary runs `printerkeep --version` (CI runs
   the ARM binaries with qemu-user).

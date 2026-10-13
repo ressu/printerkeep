@@ -19,8 +19,8 @@ cargo clippy --all-targets -- -D warnings
 shellcheck install.sh scripts/*.sh
 # Klipper's and Kalico's parsers ignore printerkeep's markers (CI pins the firmware commits)
 python3 -I tests/klipper/check_markers.py <klipper or kalico checkout> tests/klipper/cases
-# Release build for one target, and run it (ARM needs qemu)
-cargo zigbuild --release --target aarch64-unknown-linux-musl
+# Release build for one target (links with rust-lld, see .cargo/config.toml), and run it (ARM needs qemu)
+cargo build --release --target aarch64-unknown-linux-musl
 qemu-aarch64 target/aarch64-unknown-linux-musl/release/printerkeep --version
 ```
 
@@ -35,7 +35,7 @@ Try `printerkeep install` on a printer with a local build (before a release exis
 printer: units, `moonraker.conf`, backups of the real config folder. No sudo.
 
 ```sh
-cargo zigbuild --release --target aarch64-unknown-linux-musl
+cargo build --release --target aarch64-unknown-linux-musl
 scp target/aarch64-unknown-linux-musl/release/printerkeep <ssh host>:
 ssh <ssh host> './printerkeep install && rm printerkeep'     # remove with: printerkeep uninstall
 ```

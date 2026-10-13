@@ -34,8 +34,6 @@
           default = pkgs.mkShell {
             packages = [
               rust
-              pkgs.cargo-zigbuild
-              pkgs.zig
               pkgs.git
               pkgs.jujutsu
               pkgs.python3 # Klipper parser tests (M5)

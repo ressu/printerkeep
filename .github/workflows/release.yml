@@ -52,15 +52,6 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
-      # Its latest release (v2.2.1) still targets Node.js 20: GitHub runs it on Node.js 24 with a warning.
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0 # same as the Nix devShell
-
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-zigbuild@0.23.4 # same as the Nix devShell
-
       - name: Install qemu
         run: sudo apt-get update && sudo apt-get install -y qemu-user
 
@@ -68,7 +59,8 @@ jobs:
         run: cargo test
 
       - name: Build
-        run: cargo zigbuild --release --target ${{ matrix.target }}
+        # Links with rust-lld (.cargo/config.toml): no C cross toolchain.
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Smoke test
         run: |

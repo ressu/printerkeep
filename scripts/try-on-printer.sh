@@ -113,7 +113,7 @@ esac
 
 # cargo builds again only if the source changed.
 echo "==> Building for $arch ($target)"
-cargo zigbuild --quiet --release --target "$target"
+cargo build --quiet --release --target "$target"
 binary="target/$target/release/printerkeep"
 
 if [ "$(sha256sum "$binary" | sed 's/ .*//')" = "$remote_sum" ]; then

@@ -1,0 +1,15 @@
+# The release targets link with Rust's own linker (rust-lld) and the musl C runtime that Rust ships. No C
+# cross toolchain is needed: printerkeep has no C dependencies. Build with:
+#   cargo build --release --target <target>
+
+[target.aarch64-unknown-linux-musl]
+linker = "rust-lld"
+
+[target.armv7-unknown-linux-musleabihf]
+linker = "rust-lld"
+
+[target.arm-unknown-linux-musleabihf]
+linker = "rust-lld"
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
