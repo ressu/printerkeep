@@ -124,8 +124,13 @@ pub enum Error {
          then add the repository again: printerkeep rename <name>"
     )]
     NameInUse { name: String, url: String },
-    #[error("The repository already has a branch named '{0}'. Select a different name.")]
-    NameTaken(String),
+    #[error(
+        "The repository already has a branch named '{name}' (from another printer, or from klipper-backup). \
+         rename never takes over a branch in the repository. Select a different name. Or, to make this \
+         printer continue that branch, set printer_name: {name} in printerkeep.conf, then run: printerkeep \
+         add-repository {url}"
+    )]
+    NameTaken { name: String, url: String },
     #[error("The repository has no backups.")]
     NothingToRestore,
     #[error(

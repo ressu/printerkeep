@@ -447,7 +447,10 @@ pub fn rename(paths: &Paths, new: &str) -> Result<Vec<String>, Error> {
                 .map_err(|e| repository::classify(e, url))?
                 .is_some()
             {
-                return Err(Error::NameTaken(new.to_string()));
+                return Err(Error::NameTaken {
+                    name: new.to_string(),
+                    url: url.clone(),
+                });
             }
         }
         for (from, to) in [

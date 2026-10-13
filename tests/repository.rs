@@ -590,3 +590,56 @@ fn a_klipper_backup_branch_is_continued() {
         history
     );
 }
+
+#[test]
+fn rename_refuses_a_klipper_backup_branch_and_the_documented_way_continues_it() {
+    let (_dir, url) = repository();
+    web_commit(
+        &url,
+        "printer-1",
+        "New backup from 01/10/26 - 10:00:00",
+        |work| {
+            fs::create_dir_all(work.join("printer_data/config")).unwrap();
+            fs::write(work.join("README.md"), "# klipper-backup 💾 \n").unwrap();
+            fs::write(work.join("printer_data/config/printer.cfg"), "[printer]\n").unwrap();
+        },
+    );
+    let klipper_backup = remote_tip(&url, "printer-1");
+
+    // The printer has an old name and is connected; its branch in the repository is not the klipper-backup one.
+    let printer = Printer::named("printer-1.example.net");
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["add-repository", &url]);
+
+    let error = printer.fails(&["rename", "printer-1"]);
+    assert!(
+        error.contains("rename never takes over a branch in the repository."),
+        "{error}"
+    );
+    assert!(
+        error.contains("set printer_name: printer-1 in printerkeep.conf"),
+        "{error}"
+    );
+
+    // The documented way: set the name in printerkeep.conf, then add-repository.
+    let settings = printer.read("printerkeep.conf");
+    printer.write(
+        "printerkeep.conf",
+        &settings.replace(
+            "printer_name: printer-1.example.net",
+            "printer_name: printer-1",
+        ),
+    );
+    let output = printer.ok(&["add-repository", &url]);
+    assert!(
+        output.contains("The branch printer-1 has backups from klipper-backup."),
+        "{output}"
+    );
+    let tip = remote_tip(&url, "printer-1");
+    git(
+        Path::new(&url),
+        &["merge-base", "--is-ancestor", &klipper_backup, &tip],
+    );
+    // The old branch in the repository stays as it was.
+    assert!(remote_tip(&url, "printer-1.example.net").len() == 40);
+}

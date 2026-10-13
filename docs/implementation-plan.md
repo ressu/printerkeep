@@ -534,6 +534,9 @@ changes files.
    - No branch with this printer's name, but other printers in the repository: "Is this printer one of
      them? Type its name, or press Enter for a new branch." A name: rename the printer to it, then continue.
      This rename must work although the repository has the name (`rename` refuses that today, as a guard).
+     Users expect `rename` to rename the branch in the repository; it does not (it makes a new branch and
+     leaves the old one). The README explains this since 2026-10-13. With M7, "make this printer continue
+     that branch" is a question of `add-repository`, not a manual edit of `printerkeep.conf`.
    - A new branch, and the local history has more than the install's first backup: "Send the backups made
      on this printer, or start the history in the repository from now?" From now: one backup of the current
      files; the local history is set aside.

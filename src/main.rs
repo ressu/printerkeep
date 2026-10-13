@@ -104,10 +104,12 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Give the printer a new name. Its history moves to the branch with the new name.
+    /// Give this printer a new name. Its history moves to the new name.
     ///
-    /// In the repository, the old branch stays. Remove it in the web pages of the repository if you do not
-    /// need it.
+    /// The next send makes a new branch with the new name in the repository, with the whole history.
+    /// printerkeep does not rename or remove the old branch in the repository: remove it in the web pages of
+    /// the repository if you do not need it. If the repository already has a branch with the new name,
+    /// rename stops: it never takes over a branch.
     Rename {
         /// The new printer name, for example printer-2.
         name: String,

@@ -181,7 +181,7 @@ printerkeep needs no settings. `printer_data/config/printerkeep.conf` is optiona
 ```
 [printerkeep]
 # The printer name, which is also its branch name in the repository. The default is main.
-# To change it, run printerkeep rename <name>; do not edit this line, because the history must move too.
+# To change it, run printerkeep rename <name> (see "Printer name"): the history must move too.
 printer_name: printer-1
 # Written by add-repository and restore.
 repository: https://github.com/<user>/<repository>.git
@@ -195,6 +195,25 @@ check_repository: 1h
 ```
 
 printerkeep keeps the time of the last repository check in memory (`/run/user/<id>`), not on the SD card.
+
+### Printer name
+
+The printer name is also the name of the printer's branch in the repository. The default is `main`. Set it
+at install with `--name` (or `PRINTER_NAME` for the install script), or later with:
+
+```sh
+printerkeep rename printer-2
+```
+
+What `rename` does:
+
+- On the printer, the history moves to the new name, and `printerkeep.conf` gets the new name.
+- In the repository, the next send makes a **new** branch with the new name, with the whole history.
+  printerkeep does not rename or remove the old branch: it stays as it was. Remove it in the web pages of the
+  repository if you do not need it.
+- If the repository already has a branch with the new name (another printer's, or klipper-backup's),
+  `rename` stops. It never takes over a branch. To make this printer continue such a branch, set
+  `printer_name:` in `printerkeep.conf` to the branch name, then run `printerkeep add-repository <url>`.
 
 ### Files that are not backed up
 
@@ -212,7 +231,7 @@ printerkeep always skips these files, in addition to your `ignore` rules:
 
 Each printer has its own branch, named after the printer, so give each printer its own name. Set it at
 install with `--name printer-2` (or `PRINTER_NAME=printer-2` for the install script), or later with
-`printerkeep rename printer-2`. One printer can keep the default name `main`. printerkeep never takes over
+`printerkeep rename printer-2` (see [Printer name](#printer-name)). One printer can keep the default name `main`. printerkeep never takes over
 the branch of another printer with the same name: `add-repository` stops and tells you what to do.
 
 Files that several printers use can be **shared**. A printer that **follows** a shared file gets the changes
