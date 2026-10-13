@@ -608,6 +608,19 @@ impl AddReport {
                 self.printer_name
             )),
             History::Same => {}
+            History::KlipperBackup => {
+                lines.push(format!(
+                    "The branch {} has backups from klipper-backup. printerkeep continues that history: \
+                     the files of the config folder are now at the top of the branch, and the older backups \
+                     stay in the history.",
+                    self.printer_name
+                ));
+                lines.push(
+                    "Important: stop klipper-backup on this printer (its timer, services and update_manager \
+                     section). If it still runs, it sends its backups to the same branch."
+                        .to_string(),
+                );
+            }
             History::Joined => lines.push(format!(
                 "The repository has no configuration on the branch {}. printerkeep joined its history.",
                 self.printer_name
@@ -684,9 +697,15 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
             };
             if related {
                 repository::continue_history(&git, &printer_name, &commit)?
+            } else if is_klipper_backup(&git, &commit)? {
+                // A klipper-backup branch: continue its history. The next backup is a child of its last
+                // commit, so git sees printer_data/config/* moved to the top (a rename) and follows the
+                // files. The printer's own backups stay on the printer as a kept reference.
+                repository::continue_history(&git, &printer_name, &commit)?;
+                History::KlipperBackup
             } else if has_configuration(&git, &commit)? {
-                // Another printer with the same name, a new install of this printer, or a klipper-backup
-                // branch. printerkeep never takes over that history by itself.
+                // Another printer with the same name, or a new install of this printer. printerkeep never
+                // takes over that history by itself.
                 return Err(Error::NameInUse {
                     name: printer_name,
                     url: url.to_string(),
@@ -705,7 +724,9 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
         &[("printer_name", &printer_name), ("repository", url)],
     )?;
     let settings = settings::load(&paths.settings())?;
-    let backup = backup_and_send(paths, &settings, &printer_name, COMMAND)?;
+    let message =
+        (history == History::KlipperBackup).then_some("Continued the klipper-backup history");
+    let backup = backup_and_send(paths, &settings, &printer_name, Run { message, ..COMMAND })?;
     Ok(AddReport {
         url: url.to_string(),
         token: connection.token,
@@ -713,6 +734,12 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
         history,
         backup,
     })
+}
+
+/// `true` if the commit is from klipper-backup: its README.md starts with klipper-backup's title.
+fn is_klipper_backup(git: &Git, commit: &str) -> Result<bool, Error> {
+    Ok(shared::content_at(git, commit, readme::README_FILE)?
+        .is_some_and(|content| content.starts_with(b"# klipper-backup")))
 }
 
 /// `true` if the commit has configuration files (`.cfg`), anywhere in the tree.

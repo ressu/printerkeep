@@ -6,7 +6,8 @@ printers can follow shared files and still keep their own changes.
 printerkeep works with Klipper and with firmware derived from it, such as Kalico.
 
 > **Status: in development, not released yet.** Release 0.1 replaces
-> [klipper-backup](https://github.com/Staubgeborener/klipper-backup) for one printer.
+> [klipper-backup](https://github.com/Staubgeborener/klipper-backup) for one printer, and continues its history
+> (see [Send backups to a repository](#send-backups-to-a-repository)).
 
 ## What printerkeep does
 
@@ -128,6 +129,11 @@ repository. Permissions: "Contents", "Read and write".
   (`main` if you did not give one). It never overwrites changes in the repository.
 - A new repository with only a README or a license (as GitHub makes it with "Add a README file") is fine:
   printerkeep joins its history.
+- **From klipper-backup:** use the same repository. If the branch with the printer name (`main` by default)
+  has klipper-backup's backups, printerkeep continues that history: the files move from
+  `printer_data/config` to the top of the branch, and the older backups stay in the history (git follows
+  the files across the move). First stop and remove klipper-backup on the printer, as its documentation
+  tells, or it keeps sending its backups to the same branch. Use a new token for printerkeep.
 - The branch has a `README.md` that tells what it is and how to restore the printer. printerkeep writes it.
   It is not in the config folder. If your config folder has its own `README.md`, printerkeep backs up your
   file and adds none.

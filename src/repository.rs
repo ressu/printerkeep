@@ -350,6 +350,8 @@ pub enum History {
     Continued { kept: Option<String> },
     /// The repository's branch had no configuration (only a README or a license). Both histories are joined.
     Joined,
+    /// The repository's branch was from klipper-backup. Both histories are joined.
+    KlipperBackup,
 }
 
 /// Makes the printer's branch continue the repository's branch `remote_commit` (already fetched).

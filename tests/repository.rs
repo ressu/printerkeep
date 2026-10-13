@@ -649,3 +649,125 @@ fn rename_moves_the_history_to_a_new_branch() {
             .contains("already has a branch named 'printer-1'")
     );
 }
+
+#[test]
+fn a_klipper_backup_branch_is_continued() {
+    let (dir, url) = repository();
+    // A repository as klipper-backup makes it: its README, and the config folder in printer_data/config.
+    let work = dir.path().join("work");
+    let cloned = std::process::Command::new("git")
+        .args(["clone", "--quiet", &url, work.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(cloned.success());
+    let commit = |message: &str| {
+        for args in [
+            &["add", "-A"][..],
+            &[
+                "-c",
+                "user.name=kb",
+                "-c",
+                "user.email=kb@example.com",
+                "commit",
+                "--quiet",
+                "-m",
+                message,
+            ],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .current_dir(&work)
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+    };
+    fs::create_dir_all(work.join("printer_data/config")).unwrap();
+    fs::write(
+        work.join("README.md"),
+        "# klipper-backup 💾 \nKlipper backup script for manual or automated GitHub backups \n",
+    )
+    .unwrap();
+    fs::write(work.join(".gitignore"), "*.swp\n").unwrap();
+    fs::write(
+        work.join("printer_data/config/printer.cfg"),
+        "[printer]\nmax_velocity: 200\n",
+    )
+    .unwrap();
+    commit("New backup from 01/10/26 - 10:00:00");
+    fs::write(
+        work.join("printer_data/config/printer.cfg"),
+        "[printer]\nmax_velocity: 250\n",
+    )
+    .unwrap();
+    commit("printer.cfg modified - 02/10/26 - 10:00:00");
+    for args in [
+        &["branch", "-M", "main"][..],
+        &["push", "--quiet", "origin", "main"],
+    ] {
+        assert!(
+            std::process::Command::new("git")
+                .current_dir(&work)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let klipper_backup = remote_tip(&url, "main");
+
+    // The printer has the default name main, and its own first backup.
+    let printer = Printer::empty();
+    printer.write("printer.cfg", "[printer]\nmax_velocity: 250\n");
+    printer.ok(&["backup"]);
+    let output = printer.ok(&["add-repository", &url]);
+    assert!(
+        output.contains("The branch main has backups from klipper-backup."),
+        "{output}"
+    );
+    assert!(
+        output.contains("Important: stop klipper-backup on this printer"),
+        "{output}"
+    );
+
+    // The klipper-backup history stays; the branch now has the files of the config folder at the top.
+    let tip = remote_tip(&url, "main");
+    git(
+        Path::new(&url),
+        &["merge-base", "--is-ancestor", &klipper_backup, &tip],
+    );
+    let files = git(Path::new(&url), &["ls-tree", "--name-only", "main"]);
+    assert_eq!(
+        files.lines().collect::<Vec<_>>(),
+        ["README.md", "printer.cfg", "printerkeep.conf"]
+    );
+    assert_eq!(
+        git(Path::new(&url), &["show", "main:printer.cfg"]),
+        "[printer]\nmax_velocity: 250"
+    );
+    assert!(git(Path::new(&url), &["show", "main:README.md"]).starts_with("<!-- printerkeep:"));
+    let history = "Continued the klipper-backup history\n\
+                   printer.cfg modified - 02/10/26 - 10:00:00\n\
+                   New backup from 01/10/26 - 10:00:00";
+    assert_eq!(
+        git(Path::new(&url), &["log", "--format=%s", "main"]),
+        history
+    );
+    // git follows printer.cfg into the klipper-backup history.
+    assert_eq!(
+        git(
+            Path::new(&url),
+            &[
+                "log",
+                "--format=%s",
+                "--follow",
+                "main",
+                "--",
+                "printer.cfg"
+            ]
+        ),
+        history
+    );
+}
