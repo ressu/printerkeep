@@ -35,8 +35,10 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
         None => Tree::new(),
     };
 
+    // Hash without storing. Storing a file that git already has changes its time: a write to the SD card at
+    // each run. Only new and changed files are stored, below.
     let disk_paths: Vec<_> = scan.files.iter().map(|f| f.disk.clone()).collect();
-    let oids = git.hash_files(&disk_paths, write)?;
+    let oids = git.hash_files(&disk_paths, false)?;
 
     let mut tree = Tree::new();
     let mut changes = Changes::default();
@@ -72,6 +74,25 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
     for path in old.keys() {
         if !tree.contains_key(path) {
             changes.removed.push(display(path));
+        }
+    }
+    if write {
+        let known: std::collections::BTreeSet<&str> =
+            old.values().map(|entry| entry.oid.as_str()).collect();
+        let new_files: Vec<_> = scan
+            .files
+            .iter()
+            .filter(|file| {
+                tree.get(&file.path)
+                    .is_some_and(|entry| !known.contains(entry.oid.as_str()))
+            })
+            .collect();
+        let disk: Vec<_> = new_files.iter().map(|file| file.disk.clone()).collect();
+        // The ids of what git stored: a file can change between the two hash commands.
+        for (file, oid) in new_files.iter().zip(git.hash_files(&disk, true)?) {
+            if let Some(entry) = tree.get_mut(&file.path) {
+                entry.oid = oid;
+            }
         }
     }
 

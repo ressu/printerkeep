@@ -136,6 +136,9 @@ pub struct BackupReport {
     pub from_repository: Vec<String>,
     /// What happened with the repository. `None` if there is no repository.
     pub sent: Option<Result<Sent, RepositoryError>>,
+    /// Nothing happened: no backup, no change, nothing sent, no problem. The log does not get this run, so
+    /// that a run with no changes writes nothing to the SD card.
+    pub quiet: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -187,23 +190,51 @@ impl BackupReport {
     }
 }
 
-/// Makes a backup if a file changed, and sends new backups to the repository.
-pub fn backup(paths: &Paths) -> Result<BackupReport, Error> {
+/// Makes a backup if a file changed, and sends new backups to the repository. `check_now`: check the
+/// repository for changes whatever `check_repository` says (for a run by hand).
+pub fn backup(paths: &Paths, check_now: bool) -> Result<BackupReport, Error> {
     let settings = settings::load(&paths.settings())?;
     let printer_name = printer_name(&settings)?;
     let _lock = lock(paths)?;
-    backup_and_send(paths, &settings, &printer_name, None, true)
+    backup_and_send(
+        paths,
+        &settings,
+        &printer_name,
+        Run {
+            check_now,
+            ..Run::default()
+        },
+    )
 }
 
-/// The backup run: a backup of the config folder, then changes from shared, then send. The caller holds
-/// the lock. `message` replaces the message of the first backup. Without `send`, the backups stay on the
-/// printer.
+/// How a run works.
+#[derive(Debug, Default, Clone, Copy)]
+struct Run<'a> {
+    /// Replaces the message of the first backup.
+    message: Option<&'a str>,
+    /// The backups stay on the printer.
+    no_send: bool,
+    /// Check the repository for changes now, whatever `check_repository` says.
+    check_now: bool,
+}
+
+/// A run of a command: check the repository for changes now.
+const COMMAND: Run = Run {
+    message: None,
+    no_send: false,
+    check_now: true,
+};
+
+/// The backup run: a backup of the config folder, then changes from shared and from the repository, then
+/// send. The caller holds the lock.
+///
+/// A run with no changes writes nothing to the SD card: the repository check is `git ls-remote`, and
+/// printerkeep fetches a branch only when it moved.
 fn backup_and_send(
     paths: &Paths,
     settings: &Settings,
     printer_name: &str,
-    message: Option<&str>,
-    send: bool,
+    run: Run,
 ) -> Result<BackupReport, Error> {
     let rules = IgnoreRules::new(settings.ignore.iter().map(String::as_str))?;
     let git = Git::new(&paths.git_dir);
@@ -211,22 +242,72 @@ fn backup_and_send(
         git.init(printer_name)?;
     }
     // The files on the printer go into the history before printerkeep writes a file.
-    let (outcome, skipped) = make_backup(paths, &rules, &git, printer_name, message)?;
-    let shared = follow_shared(paths, settings, &rules, &git, printer_name)?;
+    let (outcome, skipped) = make_backup(paths, &rules, &git, printer_name, run.message)?;
+    let remote = match &settings.repository {
+        Some(url) => Some(repository::remote(url, paths)?),
+        None => None,
+    };
+
+    // What the repository has now. `None`: no check in this run.
+    let mut problems = Vec::new();
+    let heads = match &remote {
+        Some(remote) if run.check_now || check_due(settings, paths) => {
+            mark_checked(paths);
+            match git.remote_heads(remote, &[SHARED_BRANCH, printer_name]) {
+                Ok(heads) => Some(heads),
+                Err(error) => {
+                    problems.push(format!(
+                        "Cannot check the repository for changes: {}. printerkeep tries again later.",
+                        repository::classify(error, &remote.url)
+                    ));
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+    let (mut shared, shared_news) = follow_shared(
+        paths,
+        settings,
+        &rules,
+        &git,
+        printer_name,
+        remote.as_ref(),
+        heads.as_ref(),
+    )?;
+
+    // Changes on this printer's branch in the repository (M6).
+    let mut from_repository = Vec::new();
+    if let (Some(remote), Some(tip)) = (&remote, heads.as_ref().and_then(|h| h.get(printer_name)))
+        && branch_moved(&git, printer_name, tip)?
+    {
+        let fetched = repository::fetched_ref(printer_name);
+        match git.fetch(remote, printer_name, &fetched) {
+            Ok(()) => {
+                if let Some(lines) = take_repository_changes(paths, &rules, &git, printer_name)? {
+                    from_repository = lines;
+                }
+            }
+            Err(error) => problems.push(format!(
+                "Cannot get the changes from the repository: {}. printerkeep tries again later.",
+                repository::classify(error, &remote.url)
+            )),
+        }
+    }
 
     let send_now = || {
-        settings.repository.as_ref().filter(|_| send).map(|url| {
-            repository::remote(url, paths)
-                .and_then(|remote| repository::send(&git, &remote, printer_name))
-        })
+        remote
+            .as_ref()
+            .filter(|_| !run.no_send)
+            .map(|remote| repository::send(&git, remote, printer_name))
     };
     let mut sent = send_now();
-    let mut from_repository = Vec::new();
-    // The repository has changes on this printer's branch (M6): merge them, then send again.
+    // The repository has changes on this printer's branch that the check did not see: merge them, then
+    // send again.
     if let Some(Err(RepositoryError::RepositoryAhead)) = &sent
         && let Some(lines) = take_repository_changes(paths, &rules, &git, printer_name)?
     {
-        from_repository = lines;
+        from_repository.extend(lines);
         sent = send_now();
     }
     // status has no network. It shows the problem from the last try.
@@ -235,10 +316,18 @@ fn backup_and_send(
             let _ = std::fs::write(paths.send_problem(), format!("{error}\n"));
         }
         Some(Ok(_)) => {
-            let _ = std::fs::remove_file(paths.send_problem());
+            if paths.send_problem().exists() {
+                let _ = std::fs::remove_file(paths.send_problem());
+            }
         }
         None => {}
     }
+    let quiet = outcome == Outcome::NoChange
+        && !shared_news
+        && from_repository.is_empty()
+        && problems.is_empty()
+        && matches!(sent, None | Some(Ok(Sent::Nothing)));
+    shared.extend(problems);
     Ok(BackupReport {
         printer_name: printer_name.to_string(),
         outcome,
@@ -246,7 +335,75 @@ fn backup_and_send(
         shared,
         from_repository,
         sent,
+        quiet,
     })
+}
+
+/// `true` if the repository's commit `tip` of this printer's branch is not in the printer's history.
+fn branch_moved(git: &Git, printer_name: &str, tip: &str) -> Result<bool, Error> {
+    if git.resolve(&repository::sent_ref(printer_name))?.as_deref() == Some(tip) {
+        return Ok(false);
+    }
+    let Some(local) = git.resolve(&branch(printer_name))? else {
+        return Ok(true);
+    };
+    // A commit that the printer does not have cannot be in its history.
+    if git.resolve(tip)?.is_none() {
+        return Ok(true);
+    }
+    Ok(!git.is_ancestor(tip, &local)?)
+}
+
+/// The file with the time of the last repository check. It is in `XDG_RUNTIME_DIR` (RAM, `/run/user/<id>`),
+/// so it never writes to the SD card. One file for each printer_data folder. `None` without
+/// `XDG_RUNTIME_DIR`: then printerkeep checks at each run.
+fn last_check_file(paths: &Paths) -> Option<PathBuf> {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty())?;
+    // FNV-1a: a short, stable name for the path.
+    let hash = paths
+        .printer_data
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, &b| {
+            (hash ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+        });
+    Some(
+        PathBuf::from(runtime)
+            .join("printerkeep")
+            .join(format!("last-check-{hash:016x}")),
+    )
+}
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// `true` if `check_repository` says that a check is due.
+fn check_due(settings: &Settings, paths: &Paths) -> bool {
+    let settings::Check::Every(interval) = settings.check_repository else {
+        return false;
+    };
+    let Some(last) = last_check_file(paths)
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .and_then(|text| text.trim().parse::<u64>().ok())
+    else {
+        return true;
+    };
+    let now = now();
+    // The timer starts up to 30 seconds late: one minute less, so that "5m" checks at each run.
+    now < last || now - last + 60 >= interval.as_secs()
+}
+
+fn mark_checked(paths: &Paths) {
+    if let Some(file) = last_check_file(paths) {
+        if let Some(folder) = file.parent() {
+            let _ = std::fs::create_dir_all(folder);
+        }
+        let _ = std::fs::write(file, format!("{}\n", now()));
+    }
 }
 
 /// Merges the changes on this printer's branch in the repository (fetched by `send`) into the config
@@ -269,6 +426,24 @@ fn take_repository_changes(
         return Ok(None);
     };
     let events = repository_changes::apply(git, paths, rules, &base, &remote)?;
+    let lines = events.iter().map(|e| e.line()).collect();
+    if base == local {
+        // No new backups on the printer: continue the repository's history. A backup follows only if the
+        // config folder is different from it (for example, a file that the repository removed).
+        git.update_ref(
+            &reference,
+            &remote,
+            Some(&local),
+            "printerkeep: continue the repository's history",
+        )?;
+        git.set_ref(
+            &repository::sent_ref(printer_name),
+            &remote,
+            "printerkeep: in the repository",
+        )?;
+        make_backup(paths, rules, git, printer_name, None)?;
+        return Ok(Some(lines));
+    }
     let scan = scan(paths, rules)?;
     let prepared = backup::prepare(git, &scan, &reference, true)?;
     let tree = git.write_tree(&prepared.tree, &paths.index())?;
@@ -287,7 +462,7 @@ fn take_repository_changes(
         &remote,
         "printerkeep: in the repository",
     )?;
-    Ok(Some(events.iter().map(|e| e.line()).collect()))
+    Ok(Some(lines))
 }
 
 /// Makes a backup if a file changed. Returns what happened and the files that were not backed up.
@@ -337,46 +512,57 @@ fn follow_shared(
     rules: &IgnoreRules,
     git: &Git,
     printer_name: &str,
-) -> Result<Vec<String>, Error> {
+    remote: Option<&git::Remote>,
+    heads: Option<&std::collections::BTreeMap<String, String>>,
+) -> Result<(Vec<String>, bool), Error> {
     let state_file = paths.config.join(STATE_FILE);
     let mut state = state::load(&state_file)?;
     if settings.follow.is_empty() && state.files.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), false));
     }
     let mut lines = Vec::new();
-    let tip = match &settings.repository {
-        None => {
-            lines.push(
-                "printerkeep.conf has files to follow, but this printer has no repository. \
-                 To add one: printerkeep add-repository <url>"
-                    .to_string(),
-            );
-            None
-        }
-        Some(url) => {
-            match repository::remote(url, paths).and_then(|remote| shared::fetch(git, &remote)) {
-                Ok(tip) => tip,
-                Err(error) => {
-                    lines.push(format!(
-                        "Cannot get changes from shared: {error}. printerkeep tries again at the next \
-                         backup."
-                    ));
-                    // The last copy is still a correct shared version.
-                    git.resolve(SHARED_REF)?
-                }
-            }
-        }
+    let Some(remote) = remote else {
+        lines.push(
+            "printerkeep.conf has files to follow, but this printer has no repository. \
+             To add one: printerkeep add-repository <url>"
+                .to_string(),
+        );
+        return Ok((lines, false));
     };
-    if settings.repository.is_none() && tip.is_none() {
-        return Ok(lines);
-    }
+    let local = git.resolve(SHARED_REF)?;
+    let tip = match heads.map(|h| h.get(SHARED_BRANCH)) {
+        // No check in this run: printerkeep's last copy of shared.
+        None => local,
+        // The repository has no shared branch.
+        Some(None) => None,
+        Some(Some(tip)) if Some(tip) == local.as_ref() => local,
+        Some(Some(_)) => match shared::fetch(git, remote) {
+            Ok(tip) => tip,
+            Err(error) => {
+                lines.push(format!(
+                    "Cannot get changes from shared: {error}. printerkeep tries again at the next \
+                     backup."
+                ));
+                // The last copy is still a correct shared version.
+                local
+            }
+        },
+    };
+    let fetch_problem = !lines.is_empty();
     let events = shared::apply(git, paths, &settings.follow, tip.as_deref(), &mut state)?;
     state::save(&state_file, &state)?;
     lines.extend(events.iter().map(FileEvent::line));
-    if let Some(message) = shared::message(&events) {
-        make_backup(paths, rules, git, printer_name, Some(&message))?;
+    let message = shared::message(&events);
+    if let Some(message) = &message {
+        make_backup(paths, rules, git, printer_name, Some(message))?;
     }
-    Ok(lines)
+    // Lines that only repeat a status (for example, a file that still needs decision) are not news.
+    let news = fetch_problem
+        || message.is_some()
+        || events
+            .iter()
+            .any(|e| matches!(e.event, shared::Event::Placeholders(_)));
+    Ok((lines, news))
 }
 
 /// What `add-repository` did.
@@ -478,7 +664,7 @@ pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddRe
         &[("printer_name", &printer_name), ("repository", url)],
     )?;
     let settings = settings::load(&paths.settings())?;
-    let backup = backup_and_send(paths, &settings, &printer_name, None, true)?;
+    let backup = backup_and_send(paths, &settings, &printer_name, COMMAND)?;
     Ok(AddReport {
         url: url.to_string(),
         token: connection.token,
@@ -622,7 +808,7 @@ pub fn change_token(paths: &Paths, token: AskToken) -> Result<Vec<String>, Error
     let mut lines = vec![format!(
         "The repository {url} accepted the new token. printerkeep uses it from now on."
     )];
-    lines.extend(backup_and_send(paths, &settings, &printer_name, None, true)?.lines());
+    lines.extend(backup_and_send(paths, &settings, &printer_name, COMMAND)?.lines());
     Ok(lines)
 }
 
@@ -780,7 +966,7 @@ pub fn follow(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
     }
     settings::add_to_list(&paths.settings(), "follow", &path)?;
     let settings = settings::load(&paths.settings())?;
-    Ok(backup_and_send(paths, &settings, &printer_name, None, true)?.lines())
+    Ok(backup_and_send(paths, &settings, &printer_name, COMMAND)?.lines())
 }
 
 /// Stops following a shared file. The file stays on the printer.
@@ -793,7 +979,7 @@ pub fn stop_following(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
         return Err(Error::NotFollowed(path));
     }
     let settings = settings::load(&paths.settings())?;
-    let mut lines = backup_and_send(paths, &settings, &printer_name, None, true)?.lines();
+    let mut lines = backup_and_send(paths, &settings, &printer_name, COMMAND)?.lines();
     if std::fs::read(paths.config.join(&path)).is_ok_and(|c| crate::merge::has_block(&c)) {
         lines.push(format!(
             "{path} still has #### lines from a needs decision. Keep the lines that you want, and delete \
@@ -814,7 +1000,16 @@ pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
     let _lock = lock(paths)?;
 
     // First the normal run: a backup, and the changes from shared that this printer does not have yet.
-    let mut lines = backup_and_send(paths, &settings, &printer_name, None, false)?.lines();
+    let mut lines = backup_and_send(
+        paths,
+        &settings,
+        &printer_name,
+        Run {
+            no_send: true,
+            ..COMMAND
+        },
+    )?
+    .lines();
     let state_file = paths.config.join(STATE_FILE);
     let mut state = state::load(&state_file)?;
     let io = |source| Error::Io {
@@ -894,7 +1089,15 @@ pub fn copy_to_shared(paths: &Paths, file: &str) -> Result<Vec<String>, Error> {
     state::save(&state_file, &state)?;
     let settings = settings::load(&paths.settings())?;
     let summary = format!("Copied {path} to shared");
-    let report = backup_and_send(paths, &settings, &printer_name, Some(&summary), true)?;
+    let report = backup_and_send(
+        paths,
+        &settings,
+        &printer_name,
+        Run {
+            message: Some(&summary),
+            ..COMMAND
+        },
+    )?;
     lines.retain(|line| line != "No files changed. No backup made.");
     if copied {
         lines.push(format!(
@@ -957,7 +1160,7 @@ pub fn decide(paths: &Paths, file: &str, use_shared: bool) -> Result<Vec<String>
         "kept the lines of this printer"
     };
     let mut lines = vec![format!("{path}: {which}.")];
-    lines.extend(backup_and_send(paths, &settings, &printer_name, None, true)?.lines());
+    lines.extend(backup_and_send(paths, &settings, &printer_name, COMMAND)?.lines());
     Ok(lines)
 }
 
@@ -1172,8 +1375,24 @@ fn lock(paths: &Paths) -> Result<File, Error> {
         source,
     };
     std::fs::create_dir_all(&paths.data).map_err(io)?;
-    std::fs::set_permissions(&paths.data, std::fs::Permissions::from_mode(0o700)).map_err(io)?;
-    let file = File::create(paths.lock()).map_err(io)?;
+    // Change the mode only when it is wrong: each change is a write to the SD card.
+    if std::fs::metadata(&paths.data)
+        .map_err(io)?
+        .permissions()
+        .mode()
+        & 0o777
+        != 0o700
+    {
+        std::fs::set_permissions(&paths.data, std::fs::Permissions::from_mode(0o700))
+            .map_err(io)?;
+    }
+    // Open without emptying the file: no write at each run.
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(paths.lock())
+        .map_err(io)?;
     match file.try_lock() {
         Ok(()) => Ok(file),
         Err(TryLockError::WouldBlock) => Err(Error::Locked),

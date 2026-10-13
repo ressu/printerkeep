@@ -56,6 +56,7 @@ impl Printer {
     fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::cargo_bin("printerkeep").unwrap();
         command
+            .env_remove("XDG_RUNTIME_DIR")
             .arg("--printer-data")
             .arg(self.dir.path())
             .args(args);
@@ -594,5 +595,152 @@ fn decide_and_status_of_followed_files() {
         MACROS
             .replace("variable_temp: 230", "variable_temp: 250")
             .replace("G90", "G91")
+    );
+}
+
+/// The modification times of all files in a folder.
+fn file_times(folder: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
+    let mut times = Vec::new();
+    let mut folders = vec![folder.to_path_buf()];
+    while let Some(folder) = folders.pop() {
+        for entry in fs::read_dir(&folder).unwrap() {
+            let entry = entry.unwrap();
+            let metadata = entry.metadata().unwrap();
+            if metadata.is_dir() {
+                folders.push(entry.path());
+            } else {
+                times.push((entry.path(), metadata.modified().unwrap()));
+            }
+        }
+    }
+    times.sort();
+    times
+}
+
+#[test]
+fn a_run_with_no_change_writes_nothing() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::new("printer-1", &url);
+    let printer2 = Printer::new("printer-2", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+    printer2.ok(&["backup"]);
+
+    // The repository is checked (each run, without XDG_RUNTIME_DIR), but nothing is new.
+    let before = file_times(printer2.dir.path());
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let output = printer2.ok(&["backup"]);
+    assert_eq!(output, "No files changed. No backup made.\n");
+    assert_eq!(file_times(printer2.dir.path()), before);
+}
+
+#[test]
+fn check_repository_sets_how_often_printerkeep_checks() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::new("printer-1", &url);
+    let printer2 = Printer::new("printer-2", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+    let settings = printer2.read("printerkeep.conf");
+    printer2.write(
+        "printerkeep.conf",
+        &format!("{settings}check_repository: 1h\n"),
+    );
+
+    let runtime = tempfile::tempdir().unwrap();
+    let timer_run = || {
+        let output = printer2
+            .command(&["backup"])
+            .env("XDG_RUNTIME_DIR", runtime.path())
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        String::from_utf8(output.stdout).unwrap()
+    };
+    timer_run();
+    let checks: Vec<_> = fs::read_dir(runtime.path().join("printerkeep"))
+        .unwrap()
+        .collect();
+    assert_eq!(checks.len(), 1);
+
+    // A change in shared. The last check was less than an hour ago: the timer run does not see it.
+    printer1.write(
+        "macros/macros.cfg",
+        &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
+    );
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    let output = timer_run();
+    assert!(!output.contains("macros/macros.cfg"), "{output}");
+    assert_eq!(printer2.read("macros/macros.cfg"), MACROS);
+
+    // After a reboot (an empty XDG_RUNTIME_DIR), or by hand (a command), printerkeep checks.
+    fs::remove_dir_all(runtime.path().join("printerkeep")).unwrap();
+    let output = timer_run();
+    assert!(
+        output.contains("macros/macros.cfg: wrote the changes from shared."),
+        "{output}"
+    );
+}
+
+#[test]
+fn a_web_edit_gets_to_a_printer_without_changes() {
+    let (_dir, url) = repository();
+    let printer = Printer::new("printer-1", &url);
+    let web = tempfile::tempdir().unwrap();
+    let work = web.path().join("work");
+    std::process::Command::new("git")
+        .args(["clone", "--quiet", "--branch", "printer-1", &url])
+        .arg(&work)
+        .status()
+        .unwrap();
+    fs::write(work.join("printer.cfg"), "[printer]\nmax_velocity: 300\n").unwrap();
+    for args in [
+        &["add", "-A"][..],
+        &[
+            "-c",
+            "user.name=web",
+            "-c",
+            "user.email=web@example.com",
+            "commit",
+            "--quiet",
+            "-m",
+            "web",
+        ],
+        &["push", "--quiet", "origin", "printer-1"],
+    ] {
+        assert!(
+            std::process::Command::new("git")
+                .current_dir(&work)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let web_tip = git(Path::new(&url), &["rev-parse", "printer-1"]);
+
+    let output = printer.ok(&["backup"]);
+    assert!(
+        output.contains("printer.cfg: wrote the changes from the repository."),
+        "{output}"
+    );
+    assert_eq!(
+        printer.read("printer.cfg"),
+        "[printer]\nmax_velocity: 300\n"
+    );
+    // The printer continues the repository's history: no merge commit, nothing to send.
+    assert_eq!(
+        git(
+            &printer.dir.path().join("printerkeep/repo.git"),
+            &["rev-parse", "printer-1"]
+        ),
+        web_tip
+    );
+    assert_eq!(
+        printer.ok(&["backup"]),
+        "No files changed. No backup made.\n"
     );
 }

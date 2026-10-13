@@ -110,7 +110,8 @@ fn first_backup_then_no_backup_without_a_change() {
 
     let log = printer.log();
     assert!(log.contains(" UTC Backup made: First backup: 3 files\n"));
-    assert!(log.contains(" UTC No files changed. No backup made.\n"));
+    // A run with no change is not in the log: it writes nothing to the SD card.
+    assert!(!log.contains("No files changed"));
 }
 
 #[test]

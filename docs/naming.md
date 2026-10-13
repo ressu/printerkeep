@@ -136,6 +136,7 @@ follow:
   KAMP_Settings.cfg
 ignore:
   timelapse/*
+check_repository: 1h
 ```
 
 `printer_name` is optional. The default is the host name. A user with one printer and no repository does not

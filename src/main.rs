@@ -106,8 +106,17 @@ fn main() -> ExitCode {
     };
     let paths = Paths::new(printer_data);
 
+    // A backup run with no changes is not logged: no write to the SD card.
+    let mut quiet = false;
     let result = match &cli.command {
-        Command::Backup => app::backup(&paths).map(|report| report.lines()),
+        Command::Backup => {
+            // By hand (on a terminal), check the repository now. The timer follows check_repository.
+            let check_now = std::io::stdin().is_terminal();
+            app::backup(&paths, check_now).map(|report| {
+                quiet = report.quiet;
+                report.lines()
+            })
+        }
         Command::Status => app::status(&paths).map(|status| {
             print!("{status}");
             if let Ok(at) = install::Locations::from_env() {
@@ -152,7 +161,7 @@ fn main() -> ExitCode {
             for line in &lines {
                 println!("{line}");
             }
-            if !lines.is_empty() {
+            if !lines.is_empty() && !quiet {
                 log_lines(&paths, &lines);
             }
             ExitCode::SUCCESS

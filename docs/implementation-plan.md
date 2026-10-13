@@ -338,6 +338,23 @@ Part 4 (2026-10-12): changes in the repository on the printer's own branch (M6),
   a block. This applies to shared and to the repository. (`--zdiff3` does a part of this, but needs git 2.35;
   older printer systems have older git.)
 
+Part 5 (2026-10-13): no SD writes when nothing changed, and `check_repository`.
+
+- Found: a run with no changes wrote a log line, the lock file, `FETCH_HEAD` (each fetch), and a new time on
+  each stored file (git "freshens" objects that `hash-object -w` stores again). Now:
+  - the log gets a run only when something happened (a backup, a change, a send, a problem). A status that
+    only repeats (a file that still needs decision, a file not in shared) is shown on the terminal only;
+  - the lock file is opened without emptying it, and the data folder mode is changed only when it is wrong;
+  - printerkeep hashes all files without storing them, and stores only new and changed files;
+  - the repository check is one `git ls-remote` for `shared` and the printer's branch. printerkeep fetches
+    a branch only when it moved.
+  A test checks that a run with no changes changes no file time in `printer_data`.
+- `check_repository: off | <n>m | <n>h | <n>d` (default 5m). The time of the last check is in
+  `$XDG_RUNTIME_DIR/printerkeep/` (RAM). After a reboot, the first run checks. Without
+  `XDG_RUNTIME_DIR`, each run checks. A run by hand (on a terminal) and the commands (`follow`,
+  `copy-to-shared`, …) always check. A send that the repository refuses always leads to a merge (part 4).
+- A web edit on a printer that has no new backups continues the repository's history (no merge commit).
+
 ### M6. Real-data tests (0.2)
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).

@@ -396,6 +396,31 @@ impl Git {
             .map(str::to_string))
     }
 
+    /// The commits of these branches in the repository (missing branches are not in the result). Writes
+    /// nothing on the printer.
+    pub fn remote_heads(
+        &self,
+        remote: &Remote,
+        branches: &[&str],
+    ) -> Result<BTreeMap<String, String>, GitError> {
+        let mut command = remote.command(self);
+        command.args(["ls-remote", "--heads", &remote.url]);
+        for branch in branches {
+            command.arg(format!("refs/heads/{branch}"));
+        }
+        let stdout = run(&mut command, None)?;
+        Ok(String::from_utf8_lossy(&stdout)
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .filter_map(|(commit, r)| {
+                Some((
+                    r.strip_prefix("refs/heads/")?.to_string(),
+                    commit.to_string(),
+                ))
+            })
+            .collect())
+    }
+
     /// The names of all branches in the repository.
     pub fn remote_branches(&self, remote: &Remote) -> Result<Vec<String>, GitError> {
         let stdout = run(

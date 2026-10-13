@@ -48,6 +48,7 @@ impl Printer {
     fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::cargo_bin("printerkeep").unwrap();
         command
+            .env_remove("XDG_RUNTIME_DIR")
             .arg("--printer-data")
             .arg(self.dir.path())
             .args(args);

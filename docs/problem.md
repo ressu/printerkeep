@@ -180,6 +180,10 @@ Not in version 1 and not designed for. But the design must not make them impossi
   another person becomes the shared version, and local changes merge on top. The design must not expect that
   every shared version comes from the user's own printers.
 - **Groups of printers**, if users need them.
+- **Edit all printers on one branch** (wish list, low priority, 2026-10-13). One branch in the repository
+  has the files of all printers, so the user can edit any printer's files in one place on the git host.
+  printerkeep merges the changes back into each printer. M6 (changes on the printer's own branch) is the
+  first step: the merge per file already works.
 - **Backup when a file changes (inotify)**, settings for apply and restart, more commands for experts.
 - **Time gating for state files.** Files that extensions rewrite often (`[save_variables]` files such as
   `variables.cfg`, Happy Hare's `mmu_vars.cfg`) can cause a backup at almost every run. Version 1 backs them

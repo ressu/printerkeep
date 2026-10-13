@@ -110,6 +110,7 @@ impl<'a> Printer<'a> {
     fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::cargo_bin("printerkeep").unwrap();
         command
+            .env_remove("XDG_RUNTIME_DIR")
             .env("GIT_SSL_CAINFO", self.server.cert())
             .arg("--printer-data")
             .arg(self.dir.path())

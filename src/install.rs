@@ -178,7 +178,7 @@ pub fn install(paths: &Paths, at: &Locations) -> Result<Vec<String>, InstallErro
 
     // The first backup.
     lines.push(String::new());
-    match crate::app::backup(paths) {
+    match crate::app::backup(paths, true) {
         Ok(report) => lines.extend(report.lines()),
         Err(error) => lines.push(format!("The first backup did not work: {error}")),
     }

@@ -156,7 +156,13 @@ repository: https://github.com/<user>/<repository>.git
 ignore:
     *.csv
     timelapse/
+# How often printerkeep checks the repository for changes: off, or a time such as 5m, 1h or 1d.
+# The default is 5m (each run of the timer). printerkeep backup by hand always checks.
+check_repository: 1h
 ```
+
+A run with no changes writes nothing to the SD card: no backup, no log line. The time of the last check is in
+memory (`/run/user/<id>`), not on the SD card.
 
 Change `printer_name` only before the first backup that you send. A different name starts a different
 history.

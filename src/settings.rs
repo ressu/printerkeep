@@ -4,6 +4,7 @@
 //! lines, values that continue on indented lines, and full-line `#` or `;` comments. See `docs/naming.md`.
 
 use std::path::Path;
+use std::time::Duration;
 
 /// The settings. A missing settings file gives the defaults.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -12,6 +13,38 @@ pub struct Settings {
     pub repository: Option<String>,
     pub follow: Vec<String>,
     pub ignore: Vec<String>,
+    pub check_repository: Check,
+}
+
+/// How often printerkeep checks the repository for changes (shared, and this printer's branch).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Check {
+    /// At most once in this time.
+    Every(Duration),
+    /// Only when printerkeep sends backups, or for a command such as `follow`.
+    Off,
+}
+
+impl Default for Check {
+    /// Each run of the timer.
+    fn default() -> Self {
+        Check::Every(Duration::from_secs(5 * 60))
+    }
+}
+
+/// `off`, or a time such as `5m`, `1h` or `1d`.
+fn parse_check(value: &str) -> Option<Check> {
+    if value.eq_ignore_ascii_case("off") {
+        return Some(Check::Off);
+    }
+    let unit = match value.chars().last()? {
+        'm' => 60,
+        'h' => 3600,
+        'd' => 86_400,
+        _ => return None,
+    };
+    let number: u64 = value[..value.len() - 1].trim().parse().ok()?;
+    (number > 0).then(|| Check::Every(Duration::from_secs(number * unit)))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -37,7 +70,7 @@ pub enum SettingsError {
 }
 
 const SECTION: &str = "printerkeep";
-const OPTIONS: &str = "printer_name, repository, follow, ignore";
+const OPTIONS: &str = "printer_name, repository, follow, ignore, check_repository";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -47,7 +80,7 @@ enum Kind {
 
 fn kind(option: &str) -> Option<Kind> {
     match option {
-        "printer_name" | "repository" => Some(Kind::Single),
+        "printer_name" | "repository" | "check_repository" => Some(Kind::Single),
         "follow" | "ignore" => Some(Kind::List),
         _ => None,
     }
@@ -197,6 +230,17 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
         match entry.option.as_str() {
             "printer_name" => settings.printer_name = Some(single()?),
             "repository" => settings.repository = Some(single()?),
+            "check_repository" => {
+                let value = single()?;
+                settings.check_repository = parse_check(&value).ok_or_else(|| {
+                    error(
+                        entry.line,
+                        format!(
+                            "check_repository is '{value}'. Use 'off', or a time such as 5m, 1h or 1d."
+                        ),
+                    )
+                })?;
+            }
             "follow" => settings.follow = entry.values,
             "ignore" => settings.ignore = entry.values,
             _ => unreachable!("options are checked above"),
@@ -425,6 +469,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn check_repository_values() {
+        assert_eq!(
+            ok("").check_repository,
+            Check::Every(Duration::from_secs(300))
+        );
+        assert_eq!(
+            ok("[printerkeep]\ncheck_repository: 1h\n").check_repository,
+            Check::Every(Duration::from_secs(3600))
+        );
+        assert_eq!(
+            ok("[printerkeep]\ncheck_repository: 2d\n").check_repository,
+            Check::Every(Duration::from_secs(2 * 86_400))
+        );
+        assert_eq!(
+            ok("[printerkeep]\ncheck_repository: OFF\n").check_repository,
+            Check::Off
+        );
+        assert!(err("[printerkeep]\ncheck_repository: 10\n").contains("Use 'off', or a time"));
+        assert!(err("[printerkeep]\ncheck_repository: 0m\n").contains("Use 'off', or a time"));
+    }
+
+    #[test]
     fn follow_list_add_and_remove() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("printerkeep.conf");
@@ -486,6 +552,7 @@ mod tests {
                 repository: Some("git@github.com:me/printers.git".into()),
                 follow: vec!["macros/macros.cfg".into(), "KAMP_Settings.cfg".into()],
                 ignore: vec!["timelapse/*".into()],
+                check_repository: Check::default(),
             }
         );
     }
@@ -515,7 +582,7 @@ mod tests {
         assert_eq!(
             err("[printerkeep]\nfolow:\n  a.cfg\n"),
             "printerkeep.conf, line 2: unknown option 'folow'. \
-             Valid options: printer_name, repository, follow, ignore."
+             Valid options: printer_name, repository, follow, ignore, check_repository."
         );
         assert!(err("[moonraker]\n").contains("line 1: unknown section [moonraker]"));
         assert!(err("ignore: a\n").contains("line 1: this option is not in a section"));
