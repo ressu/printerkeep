@@ -254,7 +254,17 @@ fn resolve(
         &mine[prefix..mine.len() - suffix],
         &shared[prefix..shared.len() - suffix],
     );
-    let blocks = if my_rest.is_empty() && shared_rest.is_empty() {
+    // When the rest of one side is the base, only the other side changed it. (Real case: both added the same
+    // retract lines, and only the printer commented out the line after them.)
+    let blocks = if my_rest == shared_rest || shared_rest == base {
+        for line in my_rest {
+            push(out, line);
+        }
+        0
+    } else if my_rest == base {
+        for line in shared_rest {
+            push(out, line);
+        }
         0
     } else {
         out.extend_from_slice(block(my_rest, shared_rest, source).as_bytes());
@@ -483,6 +493,17 @@ mod tests {
             "{content}"
         );
         assert!(content.contains("\n#z: 4\n#w: 5\n"), "{content}");
+    }
+
+    #[test]
+    fn same_added_lines_then_one_side_changed_the_next_line() {
+        let base = "gcode:\n    _RUNOUT_OFF\n    CLEAR_PAUSE\n";
+        let mine = "gcode:\n    {% set r = 20 %}\n    # _RUNOUT_OFF\n    CLEAR_PAUSE\n";
+        let shared = "gcode:\n    {% set r = 20 %}\n    _RUNOUT_OFF\n    CLEAR_PAUSE\n";
+        assert_eq!(
+            run(mine, base, shared),
+            Merged::Clean(mine.as_bytes().to_vec())
+        );
     }
 
     #[test]

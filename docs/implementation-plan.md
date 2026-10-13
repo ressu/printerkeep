@@ -409,6 +409,29 @@ M5 status: the "done when" is met in tests. Not yet tried on real printers.
   The fixtures test the cases in "Real differences, checked" in solution-options.md.
 - **Done when:** all real cases behave as the docs say.
 
+**Decisions made in M6 (2026-10-13):**
+
+- Fixtures: five files from four real printers, shortened to the lines that show each case (452 lines from
+  about 1700), in `tests/fixtures/four-printers/printer-1..4`. Stored with LF; the test writes CRLF where the
+  real printer has CRLF. No serial IDs, host names or tokens (no `host-mcu.cfg`, `moonraker.conf`).
+- `tests/real_data.rs`: line ends only (up to date, CRLF stays), an unrelated file at the same path (not
+  touched), an identical file (up to date), KAMP values (stay; a shared change on the next line merges; the
+  same value needs decision, or stays with an override mark), runout lines commented out in gcode (stay),
+  an improvement in PRINT_END (reaches printers 2 and 3; printer 4 has it already), the same file at a
+  different path (move once, then follow).
+- Found with real data and fixed: both sides add the same lines, and only one side changes the line after
+  them. The merge took the same lines out of the conflict, but then made a block for the next line. Now: if
+  the rest of one side equals the base, the other side wins.
+
+**Open design question (found with real data):** `copy-to-shared` copies the whole file. Printer 4's real
+improvement (the retract in PRINT_END) is in the same file as its lines for missing hardware
+(`# STATUS_HEATING`, `# _RUNOUT_ON`, `# _AUTO_OFF_DISABLE` in gcode). Copying the file to shared would also
+comment out those lines on printers 2 and 3. Override marks do not help: they are for `option: value` lines
+only. Today the way is an edit of only the improvement in the web pages (tested). Options to decide: a
+begin/end override form for gcode lines (C6 "possible later"), `copy-to-shared` that shows the changes and
+asks first (C6 already says it shows them), or copying selected lines only.
+
+
 ### After 0.1: move from klipper-backup
 
 Postponed (2026-10-12): the first guide was not good enough for 0.1. A draft,
