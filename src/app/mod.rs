@@ -32,8 +32,8 @@ mod shared_files;
 mod status;
 
 pub use connection::{
-    AddReport, AskToken, RestoreReport, TokenRequest, TokenUse, add_repository, change_token,
-    rename, restore,
+    AddReport, Ask, AskToken, Connect, RestoreReport, TokenRequest, TokenUse, add_repository,
+    change_token, rename, restore,
 };
 pub use run::{BackupReport, Outcome, backup};
 use run::{COMMAND, Run, backup_and_send};
@@ -118,23 +118,35 @@ pub enum Error {
     )]
     DeployKeyNeeded { public_key: String },
     #[error(
-        "The repository already has a printer named '{name}', with backups that are not from this printer. \
-         printerkeep does not continue them. If this is the same printer after a new install, restore it: \
-         printerkeep restore {url} --printer-name {name}. If it is a different printer, give this printer its own name, \
-         then add the repository again: printerkeep rename <name>"
+        "The branch {name} in the repository has backups {}, with no common history with this printer's \
+         backups. printerkeep did not continue it, and changed nothing. If this is this printer (set up \
+         again, or its klipper-backup branch): printerkeep add-repository {url} --printer-name {name} \
+         --continue. If it is a different printer: printerkeep add-repository {url} --printer-name <another \
+         name>",
+        if *.klipper_backup { "from klipper-backup" } else { "from another install or another printer" }
     )]
-    NameInUse { name: String, url: String },
+    NameInUse {
+        name: String,
+        url: String,
+        klipper_backup: bool,
+    },
+    #[error(
+        "The repository has printers ({}), and this printer has the default name main. printerkeep does not \
+         guess which printer this is. If it is one of them: printerkeep add-repository {url} --printer-name \
+         <its name>. For a new printer: printerkeep add-repository {url} --printer-name <new name>",
+        .printers.join(", ")
+    )]
+    WhichPrinter { url: String, printers: Vec<String> },
     #[error(
         "The repository already has a branch named '{name}' (from another printer, or from klipper-backup). \
          rename never takes over a branch in the repository. Select a different name. Or, to make this \
-         printer continue that branch, set printer_name: {name} in printerkeep.conf, then run: printerkeep \
-         add-repository {url}"
+         printer continue that branch: printerkeep add-repository {url} --printer-name {name} --continue"
     )]
     NameTaken { name: String, url: String },
     #[error("The repository has no backups.")]
     NothingToRestore,
     #[error(
-        "The repository has backups of more printers: {}. Select one: printerkeep restore <url> --printer-name <printer name>",
+        "The repository has backups of several printers: {}. Select one: printerkeep restore <url> --printer-name <printer name>",
         .0.join(", ")
     )]
     SelectPrinter(Vec<String>),

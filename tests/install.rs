@@ -333,3 +333,22 @@ fn install_with_a_name_sets_the_printer_name() {
         .stderr(contains("Cannot use the printer name"));
     assert!(!other.program_dir().exists());
 }
+
+#[test]
+fn install_shows_the_saved_printer_name_and_repository() {
+    let host = Host::new();
+    host.run(&["install"])
+        .assert()
+        .success()
+        .stdout(contains("Printer name: main (the default)."));
+
+    // An earlier installation left printerkeep.conf with a repository: install says so.
+    fs::write(
+        host.printer_data().join("config/printerkeep.conf"),
+        "[printerkeep]\nprinter_name: printer-1\nrepository: /nowhere/printers.git\n",
+    )
+    .unwrap();
+    host.run(&["install"]).assert().success().stdout(contains(
+        "This printer is connected to /nowhere/printers.git as printer-1 (from printerkeep.conf).",
+    ));
+}

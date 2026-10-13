@@ -196,7 +196,31 @@ pub fn install(
         "printerkeep is installed. The log is {}.",
         paths.log.display()
     ));
-    lines.push("To send the backups to a repository: printerkeep add-repository <url>".to_string());
+    // The saved state: a printerkeep.conf from an earlier installation stays (uninstall keeps it).
+    let settings = crate::settings::load(&paths.settings()).unwrap_or_default();
+    let name = settings
+        .printer_name
+        .clone()
+        .unwrap_or_else(|| crate::app::DEFAULT_NAME.to_string());
+    match &settings.repository {
+        Some(url) => {
+            lines.push(format!(
+                "This printer is connected to {url} as {name} (from printerkeep.conf). To connect it \
+                 differently: printerkeep add-repository <url> --printer-name <name>"
+            ));
+        }
+        None => {
+            let source = if settings.printer_name.is_some() {
+                "from printerkeep.conf"
+            } else {
+                "the default"
+            };
+            lines.push(format!("Printer name: {name} ({source})."));
+            lines.push(
+                "To send the backups to a repository: printerkeep add-repository <url>".to_string(),
+            );
+        }
+    }
     lines.push("To remove printerkeep: printerkeep uninstall".to_string());
     Ok(lines)
 }

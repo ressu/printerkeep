@@ -126,6 +126,21 @@ printerkeep asks for a personal access token. To make one on GitHub: Settings > 
 Personal access tokens > Fine-grained tokens > Generate new token. Repository access: "Only select
 repositories", and select the repository. Permissions: "Contents", "Read and write".
 
+If the repository already has printers, printerkeep shows them and asks which one this printer is: type
+its name, or a new name for a new branch. If that branch has backups that are not from this printer (for
+example after you set the printer up again, or klipper-backup's backups), printerkeep asks before it
+continues that history. Continuing never changes your files: the backups that were only on this printer are
+set aside on the printer and not sent. For a new branch, if the printer already has several backups,
+printerkeep asks if you want to send them, or start the history in the repository from now.
+
+Without a terminal (in a script), printerkeep does not ask and does not guess. Give the answers as options:
+
+| Option | Meaning |
+|---|---|
+| `--printer-name <name>` | This printer's name in the repository: an existing printer, or a new branch |
+| `--continue` | Continue that branch, also if its backups are not from this printer |
+| `--from-now` | For a new branch: send only a backup of the files now |
+
 - Do not put the token in the URL. printerkeep keeps the token in `printer_data/printerkeep/credentials`,
   which only your user can read. `printerkeep.conf` stores only the URL.
 - After each backup, printerkeep sends the new backups to the repository. They go to the branch with the
@@ -144,11 +159,13 @@ repositories", and select the repository. Permissions: "Contents", "Read and wri
 
 Use the same repository. First stop and remove klipper-backup on the printer, as its documentation
 describes; if it keeps running, it sends its backups to the same branch. Make a new token for printerkeep,
-then run `printerkeep add-repository` as above.
+then run `printerkeep add-repository` as above. Select the klipper-backup branch of this printer (`main`,
+or the `branch_name` that you gave klipper-backup), and answer yes to continue its history. In a script:
+`printerkeep add-repository <url> --printer-name <branch> --continue`.
 
-If the branch with the printer name (`main` by default) has klipper-backup's backups, printerkeep continues
-that history. The files move from `printer_data/config` to the top of the branch, and the older backups stay
-in the history. git follows the files across the move, so the history of each file is complete.
+printerkeep then continues the klipper-backup history. The files move from `printer_data/config` to the top
+of the branch, and the older backups stay in the history. git follows the files across the move, so the
+history of each file is complete.
 
 ### Restore a printer
 
@@ -158,10 +175,12 @@ For example after a new SD card: install Klipper, Moonraker and printerkeep, the
 printerkeep restore https://github.com/<user>/<repository>.git
 ```
 
-printerkeep writes the files of the backup into the config folder and continues the history. It never
-removes files. If a file in the config folder is different from the backup, printerkeep stops and lists
-those files; add `--overwrite` to replace them. If the repository has backups of several printers, add the
-printer name: `printerkeep restore <url> --printer-name <printer name>`. Restart Moonraker and Klipper after a restore.
+If the repository has several printers, printerkeep asks which one this is (in a script:
+`--printer-name <printer name>`). It writes the files of that printer's last backup into the config folder,
+and continues its history; the backups that were only on this printer, such as the install's first backup,
+are set aside. It never removes files. If a file in the config folder is different from the backup,
+printerkeep stops and lists those files; add `--overwrite` to replace them. Restart Moonraker and Klipper
+after a restore.
 
 ### Change files in the repository
 
@@ -212,8 +231,9 @@ What `rename` does:
   printerkeep does not rename or remove the old branch: it stays as it was. Remove it in the web pages of the
   repository if you do not need it.
 - If the repository already has a branch with the new name (another printer's, or klipper-backup's),
-  `rename` stops. It never takes over a branch. To make this printer continue such a branch, set
-  `printer_name:` in `printerkeep.conf` to the branch name, then run `printerkeep add-repository <url>`.
+  `rename` stops. It never takes over a branch. To make this printer continue such a branch, run
+  `printerkeep add-repository <url>` and select that printer (in a script: `--printer-name <branch>
+  --continue`).
 
 ### Files that are not backed up
 

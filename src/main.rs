@@ -31,9 +31,24 @@ enum Command {
     ///
     /// With an https:// URL, printerkeep asks for a personal access token (or reads it from standard input).
     /// With an SSH URL (git@host:path), printerkeep makes an SSH key and shows the public key.
+    ///
+    /// printerkeep shows the printers in the repository. If it does not know which one this printer is, it
+    /// asks (on a terminal). Without a terminal it never guesses: use the options below.
     AddRepository {
         /// The repository URL, without a token.
         url: String,
+        /// This printer's name in the repository. If the repository has a branch with this name, printerkeep
+        /// continues it (it asks first, if its history is not this printer's); if not, it starts one.
+        #[arg(long, value_name = "PRINTER_NAME")]
+        printer_name: Option<String>,
+        /// Continue the repository's branch also when its history is not this printer's (a new install of
+        /// this printer, or its klipper-backup branch). Your files do not change; local backups are set aside.
+        #[arg(long = "continue")]
+        continue_history: bool,
+        /// For a new branch: send only a backup of the files now, not the backups made on this printer
+        /// before (they are set aside).
+        #[arg(long)]
+        from_now: bool,
     },
     /// Replace the personal access token of the repository, for example when it expired.
     ///
@@ -149,8 +164,19 @@ fn main() -> ExitCode {
             }
             Vec::new()
         }),
-        Command::AddRepository { url } => {
-            app::add_repository(&paths, url, &read_token).map(|report| report.lines())
+        Command::AddRepository {
+            url,
+            printer_name,
+            continue_history,
+            from_now,
+        } => {
+            let choices = app::Connect {
+                printer_name: printer_name.clone(),
+                continue_history: *continue_history,
+                from_now: *from_now,
+            };
+            app::add_repository(&paths, url, &choices, &read_token, &Terminal)
+                .map(|report| report.lines())
         }
         Command::Restore {
             url,
@@ -162,6 +188,7 @@ fn main() -> ExitCode {
             printer_name.as_deref(),
             *overwrite,
             &read_token,
+            &Terminal,
         )
         .map(|report| report.lines()),
         Command::ChangeToken => app::change_token(&paths, &read_token),
@@ -211,6 +238,27 @@ fn log_lines(paths: &Paths, lines: &[String]) {
             "printerkeep: cannot write the log {}: {error}",
             paths.log.display()
         );
+    }
+}
+
+/// Questions on the terminal. Without a terminal, there are no answers: printerkeep does not guess.
+struct Terminal;
+
+impl app::Ask for Terminal {
+    fn confirm(&self, question: &str) -> Option<bool> {
+        let answer = self.text(&format!("{question} [y/N]"))?;
+        Some(matches!(answer.trim(), "y" | "Y" | "yes" | "Yes"))
+    }
+
+    fn text(&self, question: &str) -> Option<String> {
+        let stdin = std::io::stdin();
+        if !stdin.is_terminal() {
+            return None;
+        }
+        eprint!("{question}: ");
+        let mut answer = String::new();
+        stdin.lock().read_line(&mut answer).ok()?;
+        Some(answer.trim().to_string())
     }
 }
 

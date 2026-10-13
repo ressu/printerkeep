@@ -150,7 +150,7 @@ printerkeep writes it.
 | `printerkeep backup` | Makes a backup if a file changed, and applies changes from shared. The timer runs this. |
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
 | `printerkeep restore <url> [--printer-name <printer name>]` | Restores a printer from the repository. `--printer-name` selects the printer when the repository has several. |
-| `printerkeep add-repository <url>` | Connects the printer to a repository. With an `https://` URL it uses the stored token, or asks for a personal access token if there is none or the repository does not accept it. With an SSH URL it makes an SSH key and shows the public key. |
+| `printerkeep add-repository <url> [--printer-name <printer name>] [--continue] [--from-now]` | Connects the printer to a repository. Shows the printers in it and asks which one this printer is; continues that printer's branch (asks first if its backups are not from this printer) or starts a new one. Without a terminal, the options give the answers. With an `https://` URL it uses the stored token, or asks for a personal access token; with an SSH URL it makes an SSH key and shows the public key. |
 | `printerkeep change-token` | Replaces the token of the repository, for example when it expired. The new token replaces the old one only if the repository accepts it. |
 | `printerkeep install [--printer-name <printer name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--printer-name` sets the printer name. |
 | `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |

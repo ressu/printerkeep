@@ -581,6 +581,27 @@ now"; no terminal (stops with the options); each problem logged once.
 printer, and a restore after a new install all work with `add-repository` or `restore` and its questions,
 without hidden state. A problem shows once in the log and in the console, with its fix.
 
+Part 1 (2026-10-13): points 1 and 3 (`app::Ask`, `app::Connect`, `repository::set_aside` and
+`move_local`).
+
+- The questions are a trait (`Ask`): a yes/no and a text question; `None` without a terminal. The CLI asks
+  on the terminal; tests (`tests/connect.rs`) give fixed answers to the library.
+- When printerkeep asks which printer this is: when the repository has *other* printers. With the default
+  name `main` it always asks then (main is not the user's choice). With a chosen name (`printerkeep.conf`
+  or `--printer-name`) it asks only when the repository has no branch with that name. Without a terminal,
+  a chosen name is used (not a guess); the default `main` stops with the options.
+- Found while testing: a printer with the default name `main`, and a repository that has `main` (another
+  printer's, or klipper-backup's) and other printers. The first version went straight to "continue main?"
+  and never asked which printer this is. Hence the rule above.
+- A branch with backups that are not this printer's: printerkeep asks before it continues, also for a
+  klipper-backup branch (before M7 it continued klipper-backup without a question). `--continue` in scripts.
+  A branch without configuration (a new repository's README) is still joined without a question.
+- "From now" is asked only when the local history has more than one backup (more than the install's).
+- `restore` moves the local history (for example the install's first backup under `main`) to the restored
+  name, so it is set aside, not left on an unused branch.
+- Not done as planned: the list of printers does not mark klipper-backup branches. That would need a fetch
+  of every branch; printerkeep says it in the "continue?" question of the selected branch instead.
+
 Backlog: log rotation. printerkeep rotates at 1 MB (`printerkeep.log` → `printerkeep.log.1`). Decide if
 that is enough, or if it should work like Moonraker's own logs.
 

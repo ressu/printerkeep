@@ -75,16 +75,23 @@ fn a_printer_never_takes_over_the_branch_of_another_printer() {
         .clone();
     let error = String::from_utf8(error).unwrap();
     assert!(
-        error.contains("The repository already has a printer named 'printer-1'"),
+        error.contains(
+            "The branch printer-1 in the repository has backups from another install or another printer"
+        ),
         "{error}"
     );
     assert!(
         error.contains(&format!(
-            "printerkeep restore {url} --printer-name printer-1"
+            "printerkeep add-repository {url} --printer-name printer-1 --continue"
         )),
         "{error}"
     );
-    assert!(error.contains("printerkeep rename <name>"), "{error}");
+    assert!(
+        error.contains(&format!(
+            "printerkeep add-repository {url} --printer-name <another name>"
+        )),
+        "{error}"
+    );
     assert_eq!(remote_tip(&url, "printer-1"), history);
 
     // A different printer: rename it, then add the repository.
@@ -344,7 +351,7 @@ fn restore_asks_which_printer_when_there_are_more() {
         .assert()
         .failure()
         .stderr(contains(
-            "backups of more printers: printer-1, printer-2. Select one",
+            "backups of several printers: printer-1, printer-2. Select one",
         ));
     new.command(&["restore", &url, "--printer-name", "printer-3"])
         .assert()
@@ -545,7 +552,7 @@ fn a_klipper_backup_branch_is_continued() {
     let printer = Printer::empty();
     printer.write("printer.cfg", "[printer]\nmax_velocity: 250\n");
     printer.ok(&["backup"]);
-    let output = printer.ok(&["add-repository", &url]);
+    let output = printer.ok(&["add-repository", &url, "--continue"]);
     assert!(
         output.contains("The branch main has backups from klipper-backup."),
         "{output}"
@@ -621,20 +628,22 @@ fn rename_refuses_a_klipper_backup_branch_and_the_documented_way_continues_it() 
         "{error}"
     );
     assert!(
-        error.contains("set printer_name: printer-1 in printerkeep.conf"),
+        error.contains("--printer-name printer-1 --continue"),
         "{error}"
     );
 
-    // The documented way: set the name in printerkeep.conf, then add-repository.
-    let settings = printer.read("printerkeep.conf");
-    printer.write(
-        "printerkeep.conf",
-        &settings.replace(
-            "printer_name: printer-1.example.net",
-            "printer_name: printer-1",
-        ),
+    // The documented way: add-repository with the name of that branch, and --continue (no terminal).
+    let output = printer.ok(&[
+        "add-repository",
+        &url,
+        "--printer-name",
+        "printer-1",
+        "--continue",
+    ]);
+    assert!(
+        output.contains("This printer's name is now printer-1 (it was printer-1.example.net)."),
+        "{output}"
     );
-    let output = printer.ok(&["add-repository", &url]);
     assert!(
         output.contains("The branch printer-1 has backups from klipper-backup."),
         "{output}"

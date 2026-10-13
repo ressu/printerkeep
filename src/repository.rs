@@ -354,6 +354,49 @@ pub enum History {
     KlipperBackup,
 }
 
+/// Keeps `commit` (backups that were only on this printer) as a reference that is never sent, and returns it.
+fn keep_aside(git: &Git, printer_name: &str, commit: &str) -> Result<String, GitError> {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let kept = format!("refs/printerkeep/kept/{printer_name}-{seconds}");
+    git.set_ref(
+        &kept,
+        commit,
+        "printerkeep: keep backups that were only on this printer",
+    )?;
+    Ok(kept)
+}
+
+/// Sets the printer's backups aside: they are kept as a reference that is never sent, and the branch is
+/// removed, so that the next backup starts a new history. Returns the reference, if there were backups.
+pub fn set_aside(git: &Git, printer_name: &str) -> Result<Option<String>, GitError> {
+    let branch = format!("refs/heads/{printer_name}");
+    let Some(local) = git.resolve(&branch)? else {
+        return Ok(None);
+    };
+    let kept = keep_aside(git, printer_name, &local)?;
+    git.delete_ref(&branch)?;
+    let _ = git.delete_ref(&sent_ref(printer_name));
+    Ok(Some(kept))
+}
+
+/// Moves the printer's local history (its branch, and the sent and fetched references) to a new name, and
+/// points HEAD to it. Changes nothing in the repository.
+pub fn move_local(git: &Git, old: &str, new: &str) -> Result<(), GitError> {
+    for (from, to) in [
+        (format!("refs/heads/{old}"), format!("refs/heads/{new}")),
+        (sent_ref(old), sent_ref(new)),
+        (fetched_ref(old), fetched_ref(new)),
+    ] {
+        if let Some(commit) = git.resolve(&from)? {
+            git.set_ref(&to, &commit, "printerkeep: rename")?;
+            git.delete_ref(&from)?;
+        }
+    }
+    git.set_head(new)
+}
+
 /// Makes the printer's branch continue the repository's branch `remote_commit` (already fetched).
 pub fn continue_history(
     git: &Git,
@@ -376,16 +419,7 @@ pub fn continue_history(
             let kept = if git.is_ancestor(&local, remote_commit)? {
                 None
             } else {
-                let seconds = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| d.as_secs());
-                let kept = format!("refs/printerkeep/kept/{printer_name}-{seconds}");
-                git.set_ref(
-                    &kept,
-                    &local,
-                    "printerkeep: keep backups that were only on this printer",
-                )?;
-                Some(kept)
+                Some(keep_aside(git, printer_name, &local)?)
             };
             git.update_ref(
                 &branch,

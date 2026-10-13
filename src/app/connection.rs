@@ -8,6 +8,10 @@ pub struct AddReport {
     pub url: String,
     pub token: TokenUse,
     pub printer_name: String,
+    /// The printer's name before, if it took the name of a printer in the repository.
+    pub renamed_from: Option<String>,
+    /// The printer branches in the repository, before this printer was added.
+    pub printers: Vec<String>,
     pub history: History,
     pub backup: BackupReport,
 }
@@ -19,6 +23,12 @@ impl AddReport {
             TokenUse::Stored => lines.push("Used the stored token.".to_string()),
             TokenUse::New => lines.push("Stored the token.".to_string()),
             TokenUse::None => {}
+        }
+        if let Some(old) = &self.renamed_from {
+            lines.push(format!(
+                "This printer's name is now {} (it was {old}).",
+                self.printer_name
+            ));
         }
         match &self.history {
             History::New => lines.push(format!(
@@ -86,65 +96,176 @@ pub enum TokenUse {
     New,
 }
 
-/// Connects the printer to a repository. `token` is called only for an https:// URL without a stored token
-/// that works.
-pub fn add_repository(paths: &Paths, url: &str, token: AskToken) -> Result<AddReport, Error> {
-    let (_, printer_name) = load(paths)?;
+/// The questions that add-repository and restore ask on a terminal. Each returns `None` when there is no
+/// terminal: then printerkeep does not guess, and the caller gets an error that names the options.
+pub trait Ask {
+    /// A yes/no question. The default answer is no.
+    fn confirm(&self, question: &str) -> Option<bool>;
+    /// A question with a line of text as the answer.
+    fn text(&self, question: &str) -> Option<String>;
+}
+
+/// What a script (or the command line) decided without questions.
+#[derive(Debug, Default, Clone)]
+pub struct Connect {
+    /// `--printer-name`: this printer's name in the repository.
+    pub printer_name: Option<String>,
+    /// `--continue`: continue the repository's branch, also when its history is not this printer's.
+    pub continue_history: bool,
+    /// `--from-now`: for a new branch, send only a backup of the files now; set the local history aside.
+    pub from_now: bool,
+}
+
+/// The printer branches in the repository (not `shared`).
+fn printer_branches(git: &Git, remote: &git::Remote) -> Result<Vec<String>, Error> {
+    Ok(git
+        .remote_branches(remote)
+        .map_err(|e| repository::classify(e, &remote.url))?
+        .into_iter()
+        .filter(|b| b != SHARED_BRANCH)
+        .collect())
+}
+
+/// Connects the printer to a repository: finds which printer in the repository this is (asks, or uses
+/// `choices`), continues that printer's branch or starts a new one, and sends the backups. `token` is called
+/// only for an https:// URL without a stored token that works.
+pub fn add_repository(
+    paths: &Paths,
+    url: &str,
+    choices: &Connect,
+    token: AskToken,
+    ask: &dyn Ask,
+) -> Result<AddReport, Error> {
+    let (settings, current) = load(paths)?;
+    // A name in printerkeep.conf or --printer-name is the user's choice; the default main is not.
+    let chosen = choices.printer_name.is_some() || settings.printer_name.is_some();
+    if let Some(name) = &choices.printer_name {
+        check_name(name)?;
+    }
     let kind = repository::url_kind(url)?;
     let _lock = lock(paths)?;
 
-    let git = open_git(paths, &printer_name)?;
-    let connection = connect(&git, paths, url, kind, &printer_name, token)?;
+    let git = open_git(paths, &current)?;
+    let connection = connect(&git, paths, url, kind, &current, token)?;
     let remote = connection.remote;
+    let printers = printer_branches(&git, &remote)?;
 
-    let history = match connection.commit {
-        None => History::New,
-        Some(_) => {
-            let fetched = repository::fetched_ref(&printer_name);
-            git.fetch(&remote, &printer_name, &fetched)
-                .map_err(|e| repository::classify(e, url))?;
-            let commit = git.resolve(&fetched)?.unwrap_or_default();
-            let local = git.resolve(&branch(&printer_name))?;
-            let related = match &local {
-                Some(local) => git.merge_base(local, &commit)?.is_some(),
-                None => false,
-            };
-            if related {
-                repository::continue_history(&git, &printer_name, &commit)?
-            } else if is_klipper_backup(&git, &commit)? {
-                // A klipper-backup branch: continue its history. The next backup is a child of its last
-                // commit, so git sees printer_data/config/* moved to the top (a rename) and follows the
-                // files. The printer's own backups stay on the printer as a kept reference.
-                repository::continue_history(&git, &printer_name, &commit)?;
-                History::KlipperBackup
-            } else if has_configuration(&git, &commit)? {
-                // Another printer with the same name, or a new install of this printer. printerkeep never
-                // takes over that history by itself.
-                return Err(Error::NameInUse {
-                    name: printer_name,
-                    url: url.to_string(),
-                });
-            } else {
-                // A new repository with only a README or a license (for example made on GitHub with
-                // "Add a README file"): join it.
-                join_history(&git, paths, &printer_name, &commit)?
+    // Which printer in the repository is this?
+    // printerkeep asks when the repository has other printers. The default name main is not a choice of the
+    // user: then it always asks. A chosen name is asked about only when the repository has no branch with it.
+    let others = printers.iter().any(|p| p != &current);
+    let target = match &choices.printer_name {
+        Some(name) => name.clone(),
+        None if !others || (chosen && printers.contains(&current)) => current.clone(),
+        None => {
+            let question = format!(
+                "The repository has these printers: {}. This printer's name is {current}{}. Which printer is \
+                 this? Type its name (a new name makes a new branch), or press Enter to use {current}",
+                printers.join(", "),
+                if chosen { "" } else { " (the default)" }
+            );
+            match ask.text(&question) {
+                Some(answer) if answer.trim().is_empty() => current.clone(),
+                Some(answer) => {
+                    let name = answer.trim().to_string();
+                    check_name(&name)?;
+                    name
+                }
+                None if chosen => current.clone(),
+                None => {
+                    return Err(Error::WhichPrinter {
+                        url: url.to_string(),
+                        printers,
+                    });
+                }
             }
         }
+    };
+    if target != current {
+        repository::move_local(&git, &current, &target)?;
+    }
+
+    let history = if printers.contains(&target) {
+        let fetched = repository::fetched_ref(&target);
+        git.fetch(&remote, &target, &fetched)
+            .map_err(|e| repository::classify(e, url))?;
+        let commit = git.resolve(&fetched)?.unwrap_or_default();
+        let related = match git.resolve(&branch(&target))? {
+            Some(local) => git.merge_base(&local, &commit)?.is_some(),
+            None => true,
+        };
+        if related {
+            repository::continue_history(&git, &target, &commit)?
+        } else if !has_configuration(&git, &commit)? {
+            // A new repository with only a README or a license (for example made on GitHub with
+            // "Add a README file"): join it.
+            join_history(&git, paths, &target, &commit)?
+        } else {
+            // Another history with configuration: klipper-backup's, this printer's from before a new
+            // install, or another printer's with the same name. Only the user knows which.
+            let klipper_backup = is_klipper_backup(&git, &commit)?;
+            let from = if klipper_backup {
+                "from klipper-backup"
+            } else {
+                "that are not on this printer"
+            };
+            let question = format!(
+                "The branch {target} in the repository has backups {from}. Continue that history on this \
+                 printer? Your files do not change; the backups made on this printer are set aside"
+            );
+            let yes = choices.continue_history || ask.confirm(&question).unwrap_or(false);
+            if !yes {
+                return Err(Error::NameInUse {
+                    name: target,
+                    url: url.to_string(),
+                    klipper_backup,
+                });
+            }
+            let continued = repository::continue_history(&git, &target, &commit)?;
+            if klipper_backup {
+                History::KlipperBackup
+            } else {
+                continued
+            }
+        }
+    } else {
+        // A new branch. If the printer has more than the install's first backup, the user can start the
+        // history in the repository from now.
+        let local_backups = match git.resolve(&branch(&target))? {
+            Some(local) => git.count_commits(&local)?,
+            None => 0,
+        };
+        let from_now = choices.from_now
+            || (local_backups > 1
+                && ask
+                    .confirm(&format!(
+                        "This printer has {local_backups} backups. Start the history in the repository from \
+                         now? (They are set aside on this printer and not sent; answer no to send them)"
+                    ))
+                    .unwrap_or(false));
+        if from_now {
+            repository::set_aside(&git, &target)?;
+        }
+        History::New
     };
 
     // The URL only: never a token. The printer name, so that it stays the same.
     settings::set_options(
         &paths.settings(),
-        &[("printer_name", &printer_name), ("repository", url)],
+        &[("printer_name", &target), ("repository", url)],
     )?;
     let settings = settings::load(&paths.settings())?;
-    let message =
-        (history == History::KlipperBackup).then_some("Continued the klipper-backup history");
-    let backup = backup_and_send(paths, &settings, &printer_name, Run { message, ..COMMAND })?;
+    let message = match history {
+        History::KlipperBackup => Some("Continued the klipper-backup history"),
+        _ => None,
+    };
+    let backup = backup_and_send(paths, &settings, &target, Run { message, ..COMMAND })?;
     Ok(AddReport {
         url: url.to_string(),
         token: connection.token,
-        printer_name,
+        renamed_from: (target != current).then_some(current),
+        printer_name: target,
+        printers,
         history,
         backup,
     })
@@ -201,8 +322,6 @@ fn join_history(
 /// A working connection to the repository.
 struct Connection {
     remote: git::Remote,
-    /// The repository's commit for the printer, if there is one.
-    commit: Option<String>,
     token: TokenUse,
 }
 
@@ -223,9 +342,8 @@ fn connect(
             repository::ensure_ssh_key(paths, printer_name)?;
             let remote = repository::remote(url, paths)?;
             match git.remote_branch(&remote, printer_name) {
-                Ok(commit) => Ok(Connection {
+                Ok(_) => Ok(Connection {
                     remote,
-                    commit,
                     token: TokenUse::None,
                 }),
                 Err(error) => match repository::classify(error, url) {
@@ -238,12 +356,10 @@ fn connect(
         }
         UrlKind::Folder => {
             let remote = repository::remote(url, paths)?;
-            let commit = git
-                .remote_branch(&remote, printer_name)
+            git.remote_branch(&remote, printer_name)
                 .map_err(|e| repository::classify(e, url))?;
             Ok(Connection {
                 remote,
-                commit,
                 token: TokenUse::None,
             })
         }
@@ -267,10 +383,9 @@ fn connect_with_token(
     if !replace && repository::has_token(paths, url) {
         let remote = repository::remote(url, paths)?;
         match git.remote_branch(&remote, printer_name) {
-            Ok(commit) => {
+            Ok(_) => {
                 return Ok(Connection {
                     remote,
-                    commit,
                     token: TokenUse::Stored,
                 });
             }
@@ -294,11 +409,10 @@ fn connect_with_token(
     // The new token replaces the stored one only when the repository accepts it.
     repository::store_new_token(paths, url, &new_token)?;
     match git.remote_branch(&repository::new_token_remote(url, paths), printer_name) {
-        Ok(commit) => {
+        Ok(_) => {
             repository::keep_new_token(paths)?;
             Ok(Connection {
                 remote: repository::remote(url, paths)?,
-                commit,
                 token: TokenUse::New,
             })
         }
@@ -363,28 +477,25 @@ impl RestoreReport {
     }
 }
 
-/// Restores the config folder from the repository. Never removes files. Replaces different files only
-/// with `overwrite`.
+/// Restores the config folder from the repository: finds which printer in the repository this is (asks, or
+/// uses `printer`), writes the files of its last backup, and continues its history. The backups that were
+/// only on this printer (for example the install's first backup) are set aside. Never removes files.
+/// Replaces different files only with `overwrite`.
 pub fn restore(
     paths: &Paths,
     url: &str,
     printer: Option<&str>,
     overwrite: bool,
     token: AskToken,
+    ask: &dyn Ask,
 ) -> Result<RestoreReport, Error> {
+    let (_, current) = load(paths)?;
     let kind = repository::url_kind(url)?;
     let _lock = lock(paths)?;
-    let key_name = printer.unwrap_or(DEFAULT_NAME).to_string();
 
-    let git = open_git(paths, &key_name)?;
-    let remote = connect(&git, paths, url, kind, &key_name, token)?.remote;
-
-    let available: Vec<String> = git
-        .remote_branches(&remote)
-        .map_err(|e| repository::classify(e, url))?
-        .into_iter()
-        .filter(|b| b != SHARED_BRANCH)
-        .collect();
+    let git = open_git(paths, &current)?;
+    let remote = connect(&git, paths, url, kind, &current, token)?.remote;
+    let available = printer_branches(&git, &remote)?;
     let printer_name = match printer {
         Some(name) if available.iter().any(|b| b == name) => name.to_string(),
         Some(name) => {
@@ -393,10 +504,21 @@ pub fn restore(
                 available,
             });
         }
+        None if available.contains(&current) => current.clone(),
         None => match available.as_slice() {
             [] => return Err(Error::NothingToRestore),
             [one] => one.clone(),
-            _ => return Err(Error::SelectPrinter(available)),
+            _ => {
+                let question = format!(
+                    "The repository has these printers: {}. Which printer is this? Type its name",
+                    available.join(", ")
+                );
+                match ask.text(&question).map(|a| a.trim().to_string()) {
+                    Some(name) if available.contains(&name) => name,
+                    Some(name) => return Err(Error::NoSuchPrinter { name, available }),
+                    None => return Err(Error::SelectPrinter(available)),
+                }
+            }
         },
     };
 
@@ -415,6 +537,11 @@ pub fn restore(
         return Err(Error::RestoreWouldOverwrite(plan.different));
     }
     repository::write_files(&git, &tree, &paths.config, &plan.write)?;
+    // The local history (for example the install's first backup of the default configuration) goes to the
+    // restored name, and is set aside when the history continues.
+    if printer_name != current {
+        repository::move_local(&git, &current, &printer_name)?;
+    }
     repository::continue_history(&git, &printer_name, &commit)?;
     settings::set_options(
         &paths.settings(),
@@ -453,17 +580,7 @@ pub fn rename(paths: &Paths, new: &str) -> Result<Vec<String>, Error> {
                 });
             }
         }
-        for (from, to) in [
-            (branch(&old), branch(new)),
-            (repository::sent_ref(&old), repository::sent_ref(new)),
-            (repository::fetched_ref(&old), repository::fetched_ref(new)),
-        ] {
-            if let Some(commit) = git.resolve(&from)? {
-                git.set_ref(&to, &commit, "printerkeep: rename")?;
-                git.delete_ref(&from)?;
-            }
-        }
-        git.set_head(new)?;
+        repository::move_local(&git, &old, new)?;
     }
     settings::set_options(&paths.settings(), &[("printer_name", new)])?;
     let mut lines = vec![format!("Renamed the printer from {old} to {new}.")];
