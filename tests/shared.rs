@@ -744,3 +744,64 @@ fn a_web_edit_gets_to_a_printer_without_changes() {
         "No files changed. No backup made.\n"
     );
 }
+
+#[test]
+fn overview_on_shared_shows_each_printer() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::new("printer-1", &url);
+    let printer2 = Printer::new("printer-2", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+
+    let overview = shared(&url, "README.md");
+    assert!(overview.contains("# Printers\n"), "{overview}");
+    assert!(
+        overview.contains(&format!("printerkeep restore {url} <printer name>")),
+        "{overview}"
+    );
+    assert!(
+        overview.contains("### printer-1\n\nprinter-1 follows 1 shared file. Branch: `printer-1`."),
+        "{overview}"
+    );
+    assert!(overview.contains("### printer-2\n"), "{overview}");
+    assert!(
+        overview.contains("| `macros/macros.cfg` | up to date |"),
+        "{overview}"
+    );
+
+    // The overview changes shared, but not the file: printer 1 makes no backup for it.
+    let output = printer1.ok(&["backup"]);
+    assert_eq!(output, "No files changed. No backup made.\n");
+
+    // Needs decision shows in the overview.
+    printer2.write(
+        "macros/macros.cfg",
+        &MACROS.replace("variable_temp: 230", "variable_temp: 250"),
+    );
+    printer1.write(
+        "macros/macros.cfg",
+        &MACROS.replace("variable_temp: 230", "variable_temp: 240"),
+    );
+    printer1.ok(&["copy-to-shared", "macros/macros.cfg"]);
+    printer2.ok(&["backup"]);
+    let overview = shared(&url, "README.md");
+    assert!(
+        overview.contains("printer-2 follows 1 shared file. 1 needs decision."),
+        "{overview}"
+    );
+    assert!(
+        overview.contains("| `macros/macros.cfg` | needs decision |"),
+        "{overview}"
+    );
+
+    // README.md on shared is not a file to follow.
+    let error = printer2.fails(&["follow", "README.md"]);
+    assert!(error.contains("the overview of the printers"), "{error}");
+
+    // A printer that follows nothing has no section.
+    printer2.ok(&["stop-following", "macros/macros.cfg"]);
+    let overview = shared(&url, "README.md");
+    assert!(!overview.contains("printer-2"), "{overview}");
+    assert!(overview.contains("### printer-1\n"), "{overview}");
+}

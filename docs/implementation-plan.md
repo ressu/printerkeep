@@ -370,6 +370,22 @@ important also without shared files).
   the main branch: the guide tells the user to make it the default branch on the git host (git cannot set
   that).
 
+Part 7 (2026-10-13): the overview, `README.md` on `shared` (C7), in `overview.rs`.
+
+- Each printer writes only its own section, between `<!-- printerkeep: printer <name> -->` and
+  `<!-- printerkeep: end <name> -->`: how many files it follows, how many need decision or have changes
+  waiting, and a table with the status of each file. A printer that follows nothing has no section.
+- printerkeep writes a section only when it changed, after the send. Without a change: no network, no write.
+  If another printer changed `shared` at the same time, it fetches and tries again (three times).
+- printerkeep writes the text above the sections once (what the repository is, how to restore a printer).
+  The user can change it. A README.md on `shared` that printerkeep did not make is never changed.
+- No links to branches: the link form is different on each git host. The section names the branch.
+- `README.md` cannot be followed or copied to shared.
+- A base does not move when the file did not change in shared (for example, only the overview changed).
+  Else each overview update would change the state file on all printers, and make backups for nothing.
+- Default branch: git cannot set it. The user README tells users with more printers to make `shared` the
+  default branch on the git host.
+
 ### M6. Real-data tests (0.2)
 
 - Test fixtures from the four-printer setup in the problem description, with neutral names (printer 1–4).

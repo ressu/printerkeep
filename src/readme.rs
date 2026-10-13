@@ -47,7 +47,8 @@ pub fn content(printer_name: &str, url: &str, follow: &[String]) -> Vec<u8> {
             "\n## Shared files\n\
              \n\
              This printer follows these files from the `shared` branch. Changes from shared come to the\n\
-             printer, and the printer keeps its local changes:\n\n",
+             printer, and the printer keeps its local changes. The README.md of the `shared` branch shows\n\
+             all printers.\n\n",
         );
         for file in follow {
             text.push_str(&format!("- `{file}`\n"));

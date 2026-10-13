@@ -5,6 +5,7 @@ use crate::backup::{self, Changes};
 use crate::git::{self, Git, GitError, Identity};
 use crate::ignore::{IgnoreRules, RuleError};
 use crate::overrides;
+use crate::overview;
 use crate::paths::Paths;
 use crate::readme;
 use crate::repository::{self, History, RepositoryError, Sent, UrlKind};
@@ -332,6 +333,12 @@ fn backup_and_send(
         }
         None => {}
     }
+    if let (Some(remote), Some(url)) = (&remote, &settings.repository)
+        && !run.no_send
+        && let Some(problem) = update_overview(paths, settings, &git, remote, url, printer_name)?
+    {
+        problems.push(problem);
+    }
     let quiet = outcome == Outcome::NoChange
         && !shared_news
         && from_repository.is_empty()
@@ -347,6 +354,82 @@ fn backup_and_send(
         sent,
         quiet,
     })
+}
+
+/// Writes this printer's section of the overview (`README.md` on `shared`), if it changed. Returns a line
+/// if the repository could not get it. Without a change, it uses no network and writes nothing.
+fn update_overview(
+    paths: &Paths,
+    settings: &Settings,
+    git: &Git,
+    remote: &git::Remote,
+    url: &str,
+    printer_name: &str,
+) -> Result<Option<String>, Error> {
+    let problem = |error: RepositoryError| {
+        Some(format!(
+            "Cannot update the overview on the shared branch: {error}. printerkeep tries again at the \
+             next backup."
+        ))
+    };
+    for attempt in 1..=3 {
+        let Some(tip) = git.resolve(SHARED_REF)? else {
+            return Ok(None);
+        };
+        let section = if settings.follow.is_empty() {
+            None
+        } else {
+            let state = state::load(&paths.config.join(STATE_FILE))?;
+            let mut files = Vec::new();
+            for path in &settings.follow {
+                let status = match shared::check_path(path) {
+                    Ok(()) => shared::file_status(git, paths, path, &state, Some(&tip))?,
+                    Err(_) => shared::FileStatus::NotInShared,
+                };
+                files.push((path.clone(), status));
+            }
+            Some(overview::section(printer_name, &files))
+        };
+        let readme = shared::content_at(git, &tip, readme::README_FILE)?
+            .map(|content| String::from_utf8_lossy(&content).into_owned());
+        let Some(new) = overview::update(readme.as_deref(), url, printer_name, section.as_deref())
+        else {
+            return Ok(None);
+        };
+        let entry = git::TreeEntry {
+            mode: "100644".to_string(),
+            oid: git.write_blob(new.as_bytes())?,
+        };
+        let message = format!("Overview: {printer_name}");
+        let Some(commit) = shared::copy_commit(
+            git,
+            paths,
+            Some(&tip),
+            readme::README_FILE,
+            entry,
+            &message,
+            &identity(printer_name),
+        )?
+        else {
+            return Ok(None);
+        };
+        match git.push(remote, &commit, SHARED_BRANCH) {
+            Ok(()) => {
+                git.set_ref(SHARED_REF, &commit, "printerkeep: overview")?;
+                return Ok(None);
+            }
+            Err(error) => match repository::classify(error, url) {
+                // Another printer changed shared at the same time: try again on its version.
+                RepositoryError::RepositoryAhead if attempt < 3 => {
+                    if let Err(error) = shared::fetch(git, remote) {
+                        return Ok(problem(error));
+                    }
+                }
+                error => return Ok(problem(error)),
+            },
+        }
+    }
+    Ok(None)
 }
 
 /// `true` if the repository's commit `tip` of this printer's branch is not in the printer's history.

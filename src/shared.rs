@@ -155,6 +155,9 @@ pub fn check_path(path: &str) -> Result<(), String> {
     {
         return Err("use a path in the config folder, without '..' or '.'".into());
     }
+    if path == crate::readme::README_FILE {
+        return Err("README.md on the shared branch is the overview of the printers".into());
+    }
     if path == SETTINGS_FILE || path == STATE_FILE {
         return Err("this file belongs to this printer only".into());
     }
@@ -252,8 +255,9 @@ pub fn apply(
             continue;
         };
         let same = |a: &[u8], b: &[u8]| merge::to_lf(a) == merge::to_lf(b);
+        // The file did not change in shared (for example, only the overview changed). The base stays: a
+        // new base would change the state file, and make a backup, for nothing.
         if same(&base, &shared) {
-            state.files.insert(path.clone(), new_base);
             continue;
         }
         let Some(mine) = current.take() else {
@@ -331,6 +335,14 @@ impl FileStatus {
             }
             FileStatus::Missing => "not in the config folder",
             FileStatus::NotInShared => "not in shared",
+        }
+    }
+    /// The status word only, for the overview.
+    pub fn word(&self) -> &'static str {
+        match self {
+            FileStatus::ChangesWaiting => "changes waiting",
+            FileStatus::NeedsDecision => "needs decision",
+            other => other.text(),
         }
     }
 }
