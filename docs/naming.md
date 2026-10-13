@@ -4,13 +4,18 @@ Status: **decided** (2026-10-11): vocabulary, project name and artifact names.
 
 ## Writing rule
 
-User-facing text loosely follows [ASD-STE100](https://www.asd-ste100.org/) (Simplified Technical English).
-This covers CLI output, status files, in-file markers, notifications, docs and the READMEs in the repository.
+User-facing text follows the `technical-writing` skill: plain, natural English, the main point first, short
+sentences, and things stated positively. This covers CLI output, questions, error messages, log lines,
+in-file markers, the docs, and the README files that printerkeep writes into the repository.
 
-- **One word, one meaning.** Use the terms below for these concepts and nothing else. No synonyms, even for
-  variety.
-- **Simple verbs, short sentences.** Say what happened and what the user must do.
-- **Words to avoid** are listed per term. They are wrong or ambiguous for this audience.
+This file decides the terms; the skill decides the style. When they disagree, this file wins.
+
+- **One word, one meaning.** Use the terms below for these concepts, every time. A synonym, even for
+  variety, makes the reader wonder if it means something else.
+- **Words to avoid** are listed for each term. They are wrong or unclear for this audience.
+
+Until 2026-10-13 the rule was a loose form of ASD-STE100 (Simplified Technical English). It gave stiff,
+sometimes backwards English, so the skill replaces it; the skill keeps the useful parts of ASD-STE100.
 
 ## Vocabulary
 
@@ -23,8 +28,8 @@ This covers CLI output, status files, in-file markers, notifications, docs and t
 | **config folder** | The printer's Klipper config directory (Moonraker's config root, normally `~/printer_data/config`). The tool's scope is exactly this folder. | config dir, printer_data |
 | **backup** (noun and verb) | Save the current files of the config folder to the history. A backup is made only when a file changed. | snapshot, commit, sync |
 | **history** | All backups of a printer. | log, commits |
-| **restore** | Put a printer's files back from the repository, e.g. after a new install. | recover, clone |
-| **repository** | The git repository where backups are stored (e.g. on GitHub). | remote, origin, repo (in messages) |
+| **restore** | Put a printer's files back from the repository, for example after a new install. | recover, clone |
+| **repository** | The git repository where backups are stored (for example on GitHub). | remote, origin, repo (in messages) |
 | **send** | Copy new backups from the printer to the repository. printerkeep never overwrites the repository. | push, upload, sync |
 | **settings file** | The one file in the config folder where the user changes the tool's settings. | manifest, config file (ambiguous with Klipper config) |
 
@@ -36,7 +41,7 @@ This covers CLI output, status files, in-file markers, notifications, docs and t
 | **follow** | A printer that follows a shared file gets changes to it from shared. Stopping is **stop following**. | subscribe, track, use, link |
 | **copy to shared** | Make the shared version of a file equal to this printer's version. Used to add a file to shared and to send an improvement to other printers. | share, promote, publish, push, adopt, upload |
 | **local changes** | The differences between this printer's file and the shared version. They stay on this printer unless the user copies the file to shared. | deviation, drift, diff, patch |
-| **override** | A line marked so that it never leaves this printer and is never changed by shared, e.g. pin lines. Marked with the inline comment `# printerkeep: override`. | pin (means GPIO pins in Klipper), fix, force, local line |
+| **override** | A line marked so that it never leaves this printer and is never changed by shared, for example pin lines. Marked with the inline comment `# printerkeep: override`. | pin (means GPIO pins in Klipper), fix, force, local line |
 | **needs decision** | A change from shared and a local change touch the same lines. The tool cannot choose; the user must. The file shows both, with the shared lines commented out. | conflict, held, merge error |
 | **changes from shared** | Changes to followed files that come from shared. | update (reserved for updates of the tool itself), upstream, incoming |
 
@@ -48,7 +53,7 @@ Each followed file has exactly one status:
 |---|---|
 | **up to date** | Same as the shared version. |
 | **local changes** | Has all changes from shared, plus local changes. |
-| **changes waiting** | Changes from shared are not applied yet (e.g. the printer was offline). |
+| **changes waiting** | Changes from shared are not applied yet (for example, the printer was offline). |
 | **needs decision** | See above. The user must edit the file. |
 
 ### Internal only (code and developer docs)

@@ -45,9 +45,9 @@ Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
 
 ## Rules
 
-- **User-facing text** (CLI output, log, docs for users) uses only the terms in `docs/naming.md` and
-  follows its writing rule: one word, one meaning, simple verbs, short sentences. Never use "share" as a verb;
-  say "copy to shared".
+- **User-facing text** (CLI output, questions, errors, log, docs for users) follows the `technical-writing` skill,
+  and uses only the terms in `docs/naming.md`; for terms, that file wins. Never use "share" as a verb; say
+  "copy to shared".
 - **Git:** run the system `git` command (`src/git.rs`). No git library. Never run `git merge`, `git pull` or
   `git checkout` in the config folder; printerkeep writes a file there only when it has a final, valid result.
 - **No root access.** Nothing in printerkeep or its installer uses sudo. Install into the user's home folder.
