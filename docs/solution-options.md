@@ -145,8 +145,8 @@ Decided 2026-10-13: the status is **not** in the repository. A status page that 
 coordination between printers (races, retries, a commit on `shared` for each status change). The `shared`
 branch has a static `README.md`: what the repository is, and how to restore a printer. Users find the printer
 branches with the branch list of the git host. If users need a page with all printers later, revisit this. A first step is a command that shows the
-status of all printer branches (see "Future possibilities" in problem.md). A message in the Klipper console (for example with `RESPOND`) or a
-Moonraker notification is possible later. See the open questions.
+status of all printer branches (see "Future possibilities" in problem.md). Notifications in Fluidd and
+Mainsail are a future possibility too: Moonraker has no standard way for an outside program to add one.
 
 ### C8. Repository, restore, update
 
@@ -368,8 +368,9 @@ is a problem in practice.
 
 ## Open questions (check before the implementation)
 
-1. Can a different service show a notification in Fluidd or Mainsail through Moonraker? Or is the Klipper
-   console (`RESPOND`) the only easy channel? This changes C7, not the option.
+1. Answered in M7: no standard way. Announcements and warnings can be added only inside Moonraker; agent
+   events are public but Fluidd and Mainsail do not show them; the Klipper console needs `[respond]` and
+   G-code from a backup tool. printerkeep uses the log and `printerkeep status`.
 2. Solved in M5: Klipper's and Kalico's parsers ignore the C5 blocks and the override comments, also in
    multi-line `gcode:` values (`tests/klipper/check_markers.py`).
 3. Default ignore rules: find what Moonraker, KlipperScreen, Crowsnest, timelapse, Spoolman and others write

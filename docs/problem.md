@@ -180,6 +180,12 @@ Not in version 1 and not designed for. But the design must not make them impossi
   another person becomes the shared version, and local changes merge on top. The design must not expect that
   every shared version comes from the user's own printers.
 - **Groups of printers**, if users need them.
+- **Notifications in Fluidd and Mainsail** (2026-10-13). printerkeep tells the user about problems in its
+  log and in `printerkeep status`. A notice in the notification area of Fluidd and Mainsail would be easier
+  to see, but Moonraker has no standard way for a program outside Moonraker to add one: announcements and
+  warnings can be added only inside Moonraker, and Fluidd and Mainsail do not show agent events. Possible
+  ways later: a feature request to Moonraker (agents that add announcements), or if Fluidd and Mainsail
+  start to show agent events. Users who want push messages can set up Moonraker's `[notifier]` themselves.
 - **Status of all printers in one command** (working name `printerkeep repo status`; the final name must
   follow naming.md, which avoids "repo"). It shows the status of the followed files of every printer branch.
   This needs no coordination between printers: each printer branch has `printerkeep.conf` (the follow list)

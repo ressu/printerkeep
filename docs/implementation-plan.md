@@ -568,9 +568,16 @@ changes files.
 5. **Log changes, not states:** a problem is logged when it starts, when it changes and when it is solved
    ("Sending works again: sent 3 backups"). Runs in between are quiet, and `send-problem` is written only
    when its text changes. `printerkeep status` always shows the current problem.
-6. **The Klipper console:** when a problem starts or is solved, a message in the console of Fluidd and
-   Mainsail, through Moonraker's local socket (`printer_data/comms/moonraker.sock`, JSON-RPC with the
-   standard library: no HTTP client). `RESPOND` if the printer has it, else `M118`.
+6. ~~The Klipper console~~: dropped (2026-10-13, decided with the user). There is no standard way for a
+   program outside Moonraker to publish a notice that Fluidd and Mainsail show (checked in their source):
+   - announcements and Moonraker warnings can be added only inside Moonraker (`add_internal_announcement`,
+     `add_warning` are Python functions; the public endpoints only list, dismiss and subscribe to feeds);
+   - agent events (`connection.send_event`) are a public API, but neither Fluidd nor Mainsail shows them;
+   - `[notifier]` (Apprise) needs the user's setup, and a program can start it only through a G-code macro;
+   - the Klipper console (`printer.gcode.script`, `RESPOND`/`M118`) needs `[respond]`, scrolls away, and
+     means that a backup tool sends G-code to the printer.
+   The user gets problems through the log (Fluidd and Mainsail show it) and `printerkeep status`. See
+   "Notifications in Fluidd and Mainsail" in the future possibilities of problem.md.
 
 Tests: the `bluev2` case (local data removed, `printerkeep.conf` kept: the run continues by itself, logs one
 line, then sends); install as `main`, connect as `foobar` (only `foobar` locally, the local backups set aside,
@@ -579,7 +586,7 @@ now"; no terminal (stops with the options); each problem logged once.
 
 **Done when:** on a real printer, a reinstall and a reconnect, a klipper-backup conversion with a branch per
 printer, and a restore after a new install all work with `add-repository` or `restore` and its questions,
-without hidden state. A problem shows once in the log and in the console, with its fix.
+without hidden state. A problem shows once in the log, with its fix, and in `printerkeep status`.
 
 Part 1 (2026-10-13): points 1 and 3 (`app::Ask`, `app::Connect`, `repository::set_aside` and
 `move_local`).
@@ -639,7 +646,7 @@ that is enough, or if it should work like Moonraker's own logs.
 
 | Question | Milestone |
 |---|---|
-| Notifications in Fluidd/Mainsail through Moonraker | later; the log file is enough until then |
+| Notifications in Fluidd/Mainsail through Moonraker | no standard way for an outside program (checked in M7); a future possibility |
 | Klipper parser and markers | M5 spike (done, see M5) |
 | Default ignore rules | M1 |
 | `executable` type details | M3 spike (done, see M3) |
