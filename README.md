@@ -1,25 +1,32 @@
 # printerkeep
 
-printerkeep keeps the configuration of your Klipper printer safe in git. With several printers, it also lets
-them use the same files, while each printer keeps its own changes.
+printerkeep keeps the configuration of your Klipper printers in a git repository: one repository for one
+printer or for several. It is a standalone tool that stays out of your way. After the install it runs by
+itself, and you need no git client and no other computer.
+
+It has a few firm opinions, so that it can stay simple:
+
+- **Each printer has its own branch** in the repository, with the files of its config folder.
+- **Edits go both ways.** Change a file on the printer, or in the repository (for example in GitHub's web
+  editor): printerkeep brings the two together. Only when both changed the same lines, it marks them in
+  the file for you to decide.
+- **Several printers can use the same files,** and each printer keeps its own differences, such as its pins.
 
 printerkeep works with Klipper and with firmware based on it, such as Kalico.
 
-> **Status: in development, not released yet.**
-
-printerkeep replaces [klipper-backup](https://github.com/Staubgeborener/klipper-backup), and can continue the
-history of an existing klipper-backup repository (see [Move from klipper-backup](#move-from-klipper-backup)).
+> **Status:** early releases (0.x). Commands and files can still change.
 
 ## What printerkeep does
 
 - Makes a backup of the config folder, but only when a file changed.
 - Keeps the history on the printer. A repository (for example on GitHub) is optional.
+- Writes changes that you make in the repository into the printer's config folder.
 - Restores a printer from the repository.
-- Writes changes that you make in the repository (for example in GitHub's web editor) into the printer's
-  config folder.
-- Updates itself through Moonraker's update manager.
 - With several printers: shared files, with local changes on each printer (see
   [Several printers](#several-printers)).
+- Updates itself through Moonraker's update manager.
+- Continues the history of an existing [klipper-backup](https://github.com/Staubgeborener/klipper-backup)
+  repository (see [Move from klipper-backup](#move-from-klipper-backup)).
 
 ## Install
 
