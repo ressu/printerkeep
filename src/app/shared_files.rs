@@ -198,7 +198,7 @@ pub fn copy_to_shared(paths: &Paths, file: &str, confirm: Confirm) -> Result<Vec
         &settings,
         &printer_name,
         Run {
-            message: Some(&summary),
+            message: backup::Message::Replace(&summary),
             ..COMMAND
         },
     )?;

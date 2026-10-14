@@ -464,8 +464,6 @@ pub fn continue_history(
 pub struct RestorePlan {
     /// Files to write (new or different).
     pub write: Vec<Vec<u8>>,
-    /// Files that exist and are different. Restore writes them only with --overwrite.
-    pub different: Vec<String>,
     /// Files that are already the same.
     pub same: usize,
 }
@@ -474,7 +472,6 @@ pub struct RestorePlan {
 pub fn plan_restore(git: &Git, tree: &Tree, config: &Path) -> Result<RestorePlan, RepositoryError> {
     let mut plan = RestorePlan {
         write: Vec::new(),
-        different: Vec::new(),
         same: 0,
     };
     for (path, entry) in tree {
@@ -489,7 +486,6 @@ pub fn plan_restore(git: &Git, tree: &Tree, config: &Path) -> Result<RestorePlan
         let disk = config.join(OsStr::from_bytes(path));
         let is_regular_file =
             std::fs::symlink_metadata(&disk).is_ok_and(|m| m.file_type().is_file());
-        let exists = std::fs::symlink_metadata(&disk).is_ok();
         if is_regular_file {
             let content = std::fs::read(&disk).map_err(|source| RepositoryError::Io {
                 context: format!("Can't read {}", disk.display()),
@@ -500,10 +496,6 @@ pub fn plan_restore(git: &Git, tree: &Tree, config: &Path) -> Result<RestorePlan
                 plan.same += 1;
                 continue;
             }
-        }
-        if exists {
-            plan.different
-                .push(String::from_utf8_lossy(path).into_owned());
         }
         plan.write.push(path.clone());
     }

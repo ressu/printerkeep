@@ -261,7 +261,11 @@ fn restore_asks_which_printer_and_sets_the_install_backup_aside() {
         text: Some("printer-2".to_string()),
         ..Answers::default()
     };
-    app::restore(&paths(&printer), &url, None, true, &no_token, &ask).unwrap();
+    let choices = app::RestoreChoices {
+        repository: Some(url.clone()),
+        ..app::RestoreChoices::default()
+    };
+    app::restore(&paths(&printer), &choices, &no_token, &ask).unwrap();
     assert!(ask.asked.borrow()[0].contains("Which printer is this?"));
     assert_eq!(printer.read("printer.cfg"), "[printer]\n# printer-2\n");
     assert_eq!(

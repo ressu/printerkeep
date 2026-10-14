@@ -28,7 +28,7 @@ sometimes backwards English, so the skill replaces it; the skill keeps the usefu
 | **config folder** | The printer's Klipper config directory (Moonraker's config root, normally `~/printer_data/config`). The tool's scope is exactly this folder. | config dir, printer_data |
 | **backup** (noun and verb) | Save the current files of the config folder to the history. A backup is made only when a file changed. | snapshot, commit, sync |
 | **history** | All backups of a printer. | log, commits |
-| **restore** | Put a printer's files back from the repository, for example after a new install. | recover, clone |
+| **restore** | Put files back from a backup: from this printer's history (for example, to undo an edit), from another printer, or from the repository after a new install. | recover, clone, revert, undo |
 | **repository** | The git repository on a git host (GitHub, Gitea, a NAS, …) that printerkeep sends backups to. It's never on the printer: the printer's own backups are its **history**. | remote, origin, repo (in messages) |
 | **connect** | Link the printer to a repository that already exists, so printerkeep sends backups to it. Nothing is created. | add (sounds like making a repository), link, set up |
 | **send** | Copy new backups from the printer to the repository. printerkeep never overwrites the repository. | push, upload, sync |
@@ -155,7 +155,7 @@ printerkeep writes it.
 |---|---|
 | `printerkeep backup` | Makes a backup if a file changed, and applies changes from shared. The timer runs this. |
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
-| `printerkeep restore <url> [--printer-name <printer name>]` | Restores a printer from the repository. `--printer-name` selects the printer when the repository has several. |
+| `printerkeep restore [<file>] [--at <time>] [--repository <url>] [--printer-name <printer name>]` | Puts one file, or all files, back from a backup. It first makes a backup of the files now, and afterward a backup that says what it restored. `--at` takes the backup from that time ("2 days ago", `2026-10-12 14:00`); on a terminal, several backups on that day are listed to pick from. Without `--at`, a terminal lists the earlier versions. `--printer-name` takes the files from another printer. `--repository` takes them from another repository; on a printer that isn't connected (a new install), it connects and continues the printer's history. Never removes files. |
 | `printerkeep connect <url> [--printer-name <printer name>] [--continue] [--from-now]` | Connects the printer to a repository. Shows the printers in it and asks which one this printer is; continues that printer's branch (asks first if its backups are not from this printer) or starts a new one. Without a terminal, the options give the answers. With an `https://` URL it uses the stored token, or asks for a personal access token; with an SSH URL it makes an SSH key and shows the public key. |
 | `printerkeep change-token` | Replaces the token of the repository, for example when it expired. The new token replaces the old one only if the repository accepts it. |
 | `printerkeep install [--printer-name <printer name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--printer-name` sets the printer name. |

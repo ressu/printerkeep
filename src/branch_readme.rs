@@ -39,7 +39,7 @@ pub fn content(printer_name: &str, url: &str, follow: &[String]) -> Vec<u8> {
          3. Run this on the printer:\n\
          \n\
          \x20  ```sh\n\
-         \x20  printerkeep restore {url} --printer-name {printer_name}\n\
+         \x20  printerkeep restore --repository {url} --printer-name {printer_name}\n\
          \x20  ```\n\
          \n\
          4. Restart Moonraker and Klipper.\n"
@@ -79,7 +79,7 @@ pub fn shared_content(url: &str) -> Vec<u8> {
          Install Klipper, Moonraker and [printerkeep]({PROJECT}#install). Then run this on the printer:\n\
          \n\
          ```sh\n\
-         printerkeep restore {url} --printer-name <printer name>\n\
+         printerkeep restore --repository {url} --printer-name <printer name>\n\
          ```\n\
          \n\
          You can edit this README. Delete its first line (a hidden comment) first: printerkeep then leaves it\n\
@@ -124,7 +124,7 @@ mod tests {
         assert!(is_generated(&text));
         let text = String::from_utf8(text).unwrap();
         assert!(text.contains(
-            "   printerkeep restore https://github.com/me/printers.git --printer-name printer-1\n"
+            "   printerkeep restore --repository https://github.com/me/printers.git --printer-name printer-1\n"
         ));
         assert!(text.contains("- `macros.cfg`\n"));
         assert!(!is_generated(b"# My notes\n"));
@@ -135,7 +135,7 @@ mod tests {
         let url = "https://github.com/me/printers.git";
         let new = shared_content(url);
         assert!(String::from_utf8_lossy(&new).contains(&format!(
-            "printerkeep restore {url} --printer-name <printer name>"
+            "printerkeep restore --repository {url} --printer-name <printer name>"
         )));
         assert!(shared_needs_write(None, &new));
         assert!(!shared_needs_write(Some(&new), &new));

@@ -55,19 +55,28 @@ enum Command {
     ///
     /// printerkeep tests the new token. It replaces the old token only if the repository accepts the new one.
     ChangeToken,
-    /// Restore the config folder from the repository, for example after a new install.
+    /// Put files back from a backup: one file or all files, from the last backup or from a time.
     ///
-    /// Never removes files. Files that are different from the backup are replaced only with --overwrite.
+    /// printerkeep first makes a backup of the files now, so you can always go back. It never removes files.
+    ///
+    /// On a terminal without --at, printerkeep lists the earlier versions to pick from. With --at, it takes
+    /// the backup from that time; if there are several backups on that day, a terminal lists them.
+    ///
+    /// After a new install, give the repository with --repository: printerkeep connects to it and continues
+    /// the printer's history.
     Restore {
-        /// The repository URL, without a token.
-        url: String,
-        /// The printer to restore (its branch in the repository). Necessary if the repository has backups of
-        /// several printers.
+        /// The file to restore, a path in the config folder, for example printer.cfg. Without it: all files.
+        file: Option<String>,
+        /// The time, for example "2 days ago", yesterday, 2026-10-12 or "2026-10-12 14:00".
+        #[arg(long, value_name = "TIME")]
+        at: Option<String>,
+        /// The repository to restore from. On a printer that isn't connected yet, printerkeep connects to it.
+        #[arg(long, value_name = "URL")]
+        repository: Option<String>,
+        /// The printer to restore from (its branch in the repository). After a new install: which printer
+        /// this is.
         #[arg(long, value_name = "PRINTER_NAME")]
         printer_name: Option<String>,
-        /// Replace files in the config folder that are different from the backup.
-        #[arg(long)]
-        overwrite: bool,
     },
     /// Start to follow a shared file. printerkeep then writes the changes from shared into it.
     ///
@@ -183,18 +192,19 @@ fn main() -> ExitCode {
             app::connect(&paths, url, &choices, &read_token, &Terminal).map(|report| report.lines())
         }
         Command::Restore {
-            url,
+            file,
+            at,
+            repository,
             printer_name,
-            overwrite,
-        } => app::restore(
-            &paths,
-            url,
-            printer_name.as_deref(),
-            *overwrite,
-            &read_token,
-            &Terminal,
-        )
-        .map(|report| report.lines()),
+        } => {
+            let choices = app::RestoreChoices {
+                file: file.clone(),
+                at: at.clone(),
+                repository: repository.clone(),
+                printer_name: printer_name.clone(),
+            };
+            app::restore(&paths, &choices, &read_token, &Terminal).map(|report| report.lines())
+        }
         Command::ChangeToken => app::change_token(&paths, &read_token),
         Command::Follow { file } => app::follow(&paths, file),
         Command::StopFollowing { file } => app::stop_following(&paths, file),

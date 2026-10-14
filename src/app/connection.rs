@@ -1,4 +1,4 @@
-//! The repository commands: connect, change-token, restore and rename.
+//! The repository commands: connect, change-token and rename. Restore is in `restore`.
 
 use super::*;
 
@@ -117,7 +117,7 @@ pub struct ConnectChoices {
 }
 
 /// Names for a question, one on each line.
-fn list(names: &[String]) -> String {
+pub(super) fn list(names: &[String]) -> String {
     names
         .iter()
         .map(|name| format!("  {name}"))
@@ -126,7 +126,7 @@ fn list(names: &[String]) -> String {
 }
 
 /// The printer branches in the repository (not `shared`).
-fn printer_branches(git: &Git, remote: &git::Remote) -> Result<Vec<String>, Error> {
+pub(super) fn printer_branches(git: &Git, remote: &git::Remote) -> Result<Vec<String>, Error> {
     Ok(git
         .remote_branches(remote)
         .map_err(|e| repository::classify(e, &remote.url))?
@@ -264,8 +264,8 @@ pub fn connect(
     )?;
     let settings = settings::load(&paths.settings())?;
     let message = match history {
-        History::KlipperBackup => Some("Continued the klipper-backup history"),
-        _ => None,
+        History::KlipperBackup => backup::Message::Replace("Continued the klipper-backup history"),
+        _ => backup::Message::Changes,
     };
     let backup = backup_and_send(paths, &settings, &target, Run { message, ..COMMAND })?;
     Ok(ConnectReport {
@@ -328,15 +328,15 @@ fn join_history(
 }
 
 /// A working connection to the repository.
-struct Connection {
-    remote: git::Remote,
-    token: TokenUse,
+pub(super) struct Connection {
+    pub(super) remote: git::Remote,
+    pub(super) token: TokenUse,
 }
 
 /// Connects to the repository and tests the login. For https://, printerkeep uses the stored token, and
 /// asks for a new one only if there is no stored token or the repository does not accept it. For SSH,
 /// printerkeep makes its key, and shows it if the repository does not accept it.
-fn log_in(
+pub(super) fn log_in(
     git: &Git,
     paths: &Paths,
     url: &str,
@@ -453,114 +453,6 @@ pub fn change_token(paths: &Paths, token: AskToken) -> Result<Vec<String>, Error
     )];
     lines.extend(backup_and_send(paths, &settings, &printer_name, COMMAND)?.lines());
     Ok(lines)
-}
-
-/// What `restore` did.
-#[derive(Debug)]
-pub struct RestoreReport {
-    pub printer_name: String,
-    pub written: usize,
-    pub same: usize,
-}
-
-impl RestoreReport {
-    pub fn lines(&self) -> Vec<String> {
-        let mut lines = vec![format!(
-            "Restored {} from the backup of {}.",
-            count(self.written, "file"),
-            self.printer_name
-        )];
-        if self.same > 0 {
-            lines.push(format!(
-                "{} already had the same content.",
-                count(self.same, "file")
-            ));
-        }
-        lines.push(
-            "Restart Moonraker and Klipper to use the restored files: \
-             sudo systemctl restart moonraker klipper"
-                .to_string(),
-        );
-        lines
-    }
-}
-
-/// Restores the config folder from the repository: finds which printer in the repository this is (asks, or
-/// uses `printer`), writes the files of its last backup, and continues its history. The backups that were
-/// only on this printer (for example the install's first backup) are set aside. Never removes files.
-/// Replaces different files only with `overwrite`.
-pub fn restore(
-    paths: &Paths,
-    url: &str,
-    printer: Option<&str>,
-    overwrite: bool,
-    token: AskToken,
-    ask: &dyn Ask,
-) -> Result<RestoreReport, Error> {
-    let (_, current) = load(paths)?;
-    let kind = repository::url_kind(url)?;
-    let _lock = lock(paths)?;
-
-    let git = open_git(paths, &current)?;
-    let remote = log_in(&git, paths, url, kind, &current, token)?.remote;
-    let available = printer_branches(&git, &remote)?;
-    let printer_name = match printer {
-        Some(name) if available.iter().any(|b| b == name) => name.to_string(),
-        Some(name) => {
-            return Err(Error::NoSuchPrinter {
-                name: name.to_string(),
-                available,
-            });
-        }
-        None if available.contains(&current) => current.clone(),
-        None => match available.as_slice() {
-            [] => return Err(Error::NothingToRestore),
-            [one] => one.clone(),
-            _ => {
-                let question = format!(
-                    "The repository has these printers:\n{}\nWhich printer is this? Type its name",
-                    list(&available)
-                );
-                match ask.text(&question).map(|a| a.trim().to_string()) {
-                    Some(name) if available.contains(&name) => name,
-                    Some(name) => return Err(Error::NoSuchPrinter { name, available }),
-                    None => return Err(Error::SelectPrinter(available)),
-                }
-            }
-        },
-    };
-
-    let fetched = repository::fetched_ref(&printer_name);
-    git.fetch(&remote, &printer_name, &fetched)
-        .map_err(|e| repository::classify(e, url))?;
-    let commit = git.resolve(&fetched)?.unwrap_or_default();
-    let tree = git.read_tree(&commit)?;
-
-    std::fs::create_dir_all(&paths.config).map_err(|source| Error::Io {
-        context: format!("Can't make the config folder {}", paths.config.display()),
-        source,
-    })?;
-    let plan = repository::plan_restore(&git, &tree, &paths.config)?;
-    if !plan.different.is_empty() && !overwrite {
-        return Err(Error::RestoreWouldOverwrite(plan.different));
-    }
-    repository::write_files(&git, &tree, &paths.config, &plan.write)?;
-    // The local history (for example the install's first backup of the default configuration) goes to the
-    // restored name, and is set aside when the history continues.
-    if printer_name != current {
-        repository::move_local(&git, &current, &printer_name)?;
-    }
-    repository::continue_history(&git, &printer_name, &commit)?;
-    settings::set_options(
-        &paths.settings(),
-        &[("printer_name", &printer_name), ("repository", url)],
-    )?;
-
-    Ok(RestoreReport {
-        printer_name,
-        written: plan.write.len(),
-        same: plan.same,
-    })
 }
 
 /// Gives the printer a new name. Its history moves to the branch with the new name. In the repository, the

@@ -15,6 +15,7 @@ pub mod overrides;
 pub mod paths;
 pub mod repository;
 pub mod repository_changes;
+pub mod restore;
 pub mod settings;
 pub mod shared;
 pub mod snapshot;

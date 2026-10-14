@@ -47,6 +47,18 @@ pub struct TreeEntry {
 /// All files of a tree, by path (relative, `/`-separated bytes).
 pub type Tree = BTreeMap<Vec<u8>, TreeEntry>;
 
+/// A commit in `Git::log`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    pub commit: String,
+    /// The commit time, in seconds since 1970.
+    pub time: u64,
+    /// The commit time as local time, `YYYY-MM-DD HH:MM:SS`.
+    pub local_time: String,
+    /// The first line of the message.
+    pub subject: String,
+}
+
 /// The author and committer of printerkeep's commits.
 #[derive(Debug, Clone)]
 pub struct Identity {
@@ -357,6 +369,96 @@ impl Git {
             .ok_or_else(|| GitError::Unexpected {
                 command: "show".into(),
             })
+    }
+
+    /// The time that git reads from `when` ("2 days ago", "yesterday", "2026-10-12 14:00"), in seconds since
+    /// 1970. git reads text that it doesn't understand as the time now.
+    pub fn approxidate(&self, when: &str) -> Result<u64, GitError> {
+        let stdout = run(
+            self.command()
+                .arg("rev-parse")
+                .arg(format!("--before={when}")),
+            None,
+        )?;
+        line(&stdout)
+            .strip_prefix("--min-age=")
+            .and_then(|time| time.parse().ok())
+            .ok_or_else(|| GitError::Unexpected {
+                command: "rev-parse".into(),
+            })
+    }
+
+    /// The commits of `reference`, newest first, with first parents only (on a printer branch: the states
+    /// of the config folder). With `path`, only the commits that changed it. `since` and `until` are times
+    /// (seconds since 1970), both included.
+    pub fn log(
+        &self,
+        reference: &str,
+        path: Option<&[u8]>,
+        since: Option<u64>,
+        until: Option<u64>,
+        limit: Option<usize>,
+    ) -> Result<Vec<LogEntry>, GitError> {
+        let mut command = self.command();
+        command.args([
+            "log",
+            "--first-parent",
+            "--format=%H%x00%ct%x00%cd%x00%s",
+            "--date=format-local:%Y-%m-%d %H:%M:%S",
+        ]);
+        if let Some(since) = since {
+            command.arg(format!("--max-age={since}"));
+        }
+        if let Some(until) = until {
+            command.arg(format!("--min-age={until}"));
+        }
+        if let Some(limit) = limit {
+            command.arg(format!("--max-count={limit}"));
+        }
+        command.arg(reference).arg("--");
+        if let Some(path) = path {
+            command.arg(OsStr::from_bytes(path));
+        }
+        let stdout = run(&mut command, None)?;
+        String::from_utf8_lossy(&stdout)
+            .lines()
+            .map(|record| {
+                let mut fields = record.splitn(4, '\0');
+                let (Some(commit), Some(time), Some(local_time), Some(subject)) =
+                    (fields.next(), fields.next(), fields.next(), fields.next())
+                else {
+                    return None;
+                };
+                Some(LogEntry {
+                    commit: commit.to_string(),
+                    time: time.parse().ok()?,
+                    local_time: local_time.to_string(),
+                    subject: subject.to_string(),
+                })
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| GitError::Unexpected {
+                command: "log".into(),
+            })
+    }
+
+    /// The blob of `path` in `commit`, or `None` if the commit has no such file.
+    pub fn file_oid(&self, commit: &str, path: &[u8]) -> Result<Option<String>, GitError> {
+        let mut spec = std::ffi::OsString::from(format!("{commit}:"));
+        spec.push(OsStr::from_bytes(path));
+        let output = output(
+            self.command()
+                .args(["rev-parse", "--verify", "--quiet"])
+                .arg(spec),
+            None,
+        )?;
+        if output.status.success() {
+            Ok(Some(line(&output.stdout)))
+        } else if output.status.code() == Some(1) {
+            Ok(None)
+        } else {
+            Err(failed("rev-parse", &output))
+        }
     }
 
     /// The number of commits that `commit` has in its history, itself included.

@@ -155,7 +155,8 @@ Each milestone ends with working, tested software.
   that this printer does not have"). M6 merges them.
 - `restore <url> [--printer-name <name>]`: fetch the branch and write its files into the config folder. If the
   folder has files that are different from the branch, printerkeep stops and lists them, unless the user
-  adds `--overwrite`. After a restore, printerkeep tells the user to restart Moonraker and Klipper.
+  adds `--overwrite`. After a restore, printerkeep tells the user to restart Moonraker and Klipper. (Changed
+  2026-10-14: `restore --repository <url>`, no `--overwrite`; see "Restore from the history" below M7.)
 - Printer name: `printer_name:` in the settings file, default the host name. Not `shared`. (Changed
   2026-10-13: default `main`, see "Printer names" below M6.)
 - **Done when:** integration tests with a local bare repository cover: first push, continued history on an
@@ -642,6 +643,31 @@ Part 2 (2026-10-13): points 2, 4 and 5.
 
 Backlog: log rotation. printerkeep rotates at 1 MB (`printerkeep.log` → `printerkeep.log.1`). Decide if
 that is enough, or if it should work like Moonraker's own logs.
+
+### Restore from the history (2026-10-14, for v1)
+
+The main case: you edit `printer.cfg`, change your mind, and want an earlier version. One `restore` command
+does all restores:
+
+- `printerkeep restore [<file>] [--at <time>]` works on this printer's history (with a repository, the
+  history includes its changes). `--repository <url>` and `--printer-name` give another place to restore
+  from: another printer, or another repository. On a printer that isn't connected, `--repository` is the
+  restore after a new install (as before): it connects and continues the printer's history.
+- **No pause of the backups.** Restore first runs a backup, so the files now (an edit) are in the history.
+  Then it writes the files, and makes a backup with the message `Restored <file> from the backup of <time>`.
+  The history says what happened; another restore undoes it, and the output gives that command.
+  `--overwrite` is gone: the files from before a restore are always in a backup.
+- **Picking a backup:** `--at` uses git to read the time (`git rev-parse --before=`), so no date crate is
+  needed. printerkeep takes the newest backup at or before that time. When there are 2 or more backups on
+  that day and printerkeep runs on a terminal, it lists them, and Enter takes that one. Without `--at`, a
+  terminal lists the earlier versions; a script gets an error with an example command.
+- `.printerkeep-state.json` comes back only with a new install. `printerkeep.conf` comes back only with a new
+  install, or when the user names it in this printer's own history.
+- **Done when:** integration tests (`tests/restore.rs`) show: one file at a time without a question, the
+  list on a terminal, a script takes the state at that time, a date alone, all files with later files kept,
+  a deleted file, the same content (no backup), unreadable times, a time before the first backup, a file from
+  another printer and from another repository (the connection doesn't change), the state file, and the undo
+  command works. The tests for a restore after a new install use `--repository`.
 
 ## Tests
 

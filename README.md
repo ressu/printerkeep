@@ -204,22 +204,51 @@ printerkeep then continues the klipper-backup history. The files move from `prin
 of the branch, and the older backups stay in the history. git follows the files across the move, so the
 history of each file is complete.
 
+### Go back to an earlier version
+
+Each backup keeps every file, so you can bring back an earlier version. Give the file and the time:
+
+```sh
+printerkeep restore printer.cfg --at "2 days ago"
+```
+
+printerkeep takes the version that the file had at that time. If it made several backups of the file on that
+day, it lists them, and you pick one. Without `--at`, printerkeep lists the earlier versions of the file.
+Without a file name, it restores all files.
+
+`--at` takes times such as `"2 days ago"`, `yesterday`, `2026-10-12`, or `"2026-10-12 14:00"`. A date alone
+means the end of that day.
+
+Before it writes anything, printerkeep makes a backup of the files now, so you can always go back. The
+output gives the exact command for that. After the restore, printerkeep makes a backup that says what it
+restored, and sends it to the repository, if there's one.
+
+A restore only adds and replaces files; it never removes any. It never takes `printerkeep.conf` from an older
+backup unless you name that file. It never takes `.printerkeep-state.json`.
+
+To take a file from another printer in the repository, add `--printer-name`:
+
+```sh
+printerkeep restore macros.cfg --printer-name printer-2
+```
+
+To take files from another repository, add `--repository <url>`. This printer stays connected to its own
+repository.
+
 ### Restore a printer
 
 For example after a new SD card, install Klipper, Moonraker, and printerkeep. Then run:
 
 ```sh
-printerkeep restore https://github.com/<user>/<repository>.git
+printerkeep restore --repository https://github.com/<user>/<repository>.git
 ```
 
 If the repository has several printers, printerkeep asks which one this is. In a script, add
 `--printer-name <printer name>`.
 
-printerkeep writes the files of that printer's last backup into the config folder and continues its history.
-The backups that were only on this printer, such as the first backup that the install made, are set aside.
-
-A restore only adds and replaces files; it never removes any. If a file in the config folder differs from the
-backup, printerkeep stops and lists those files. To replace them with the backup, add `--overwrite`.
+printerkeep connects the printer to the repository, writes the files of that printer's last backup into the
+config folder, and continues its history. The backups that were only on this printer, such as the first
+backup that the install made, are set aside. To restore an earlier backup, add `--at`.
 
 Restart Moonraker and Klipper after a restore.
 

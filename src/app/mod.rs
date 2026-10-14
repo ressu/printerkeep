@@ -2,7 +2,8 @@
 //! files of a backup). The commands are in:
 //!
 //! - `run`: the backup run (`backup`; the other commands run it too),
-//! - `connection`: connect, change-token, restore, rename,
+//! - `connection`: connect, change-token, rename,
+//! - `restore`,
 //! - `shared_files`: follow, stop-following, copy-to-shared, decide,
 //! - `status`.
 //!
@@ -27,14 +28,16 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
 mod connection;
+mod restore;
 mod run;
 mod shared_files;
 mod status;
 
 pub use connection::{
-    Ask, AskToken, ConnectChoices, ConnectReport, RestoreReport, TokenRequest, TokenUse,
-    change_token, connect, rename, restore,
+    Ask, AskToken, ConnectChoices, ConnectReport, TokenRequest, TokenUse, change_token, connect,
+    rename,
 };
+pub use restore::{RestoreChoices, RestoreReport, restore};
 pub use run::{BackupReport, Outcome, backup};
 use run::{COMMAND, Run, backup_and_send};
 pub use shared_files::{Confirm, copy_to_shared, decide, follow, stop_following};
@@ -160,25 +163,50 @@ pub enum Error {
     NothingToRestore,
     #[error(
         "The repository has backups of several printers: {}. To select one, run:\n  printerkeep restore \
-         <url> --printer-name <printer name>",
-        .0.join(", ")
+         --repository {url} --printer-name <printer name>",
+        .printers.join(", ")
     )]
-    SelectPrinter(Vec<String>),
+    SelectPrinter { url: String, printers: Vec<String> },
     #[error(
         "The repository has no printer named '{name}'. Its printers are: {}. To restore one of them, run:\n  \
-         printerkeep restore <url> --printer-name <printer name>",
+         printerkeep restore --repository {url} --printer-name <printer name>",
         .available.join(", ")
     )]
     NoSuchPrinter {
         name: String,
+        url: String,
         available: Vec<String>,
     },
     #[error(
-        "These files in the config folder differ from the backup: {}. printerkeep changed nothing.\n\
-         To replace them with the files from the backup, add --overwrite.",
-        .0.join(", ")
+        "Can't read the time '{0}'. Give a time like one of these:\n  --at \"2 days ago\"\n  --at yesterday\n  \
+         --at \"2026-10-12 14:00\""
     )]
-    RestoreWouldOverwrite(Vec<String>),
+    UnreadableTime(String),
+    #[error("The oldest backup of {what} is from {oldest}. To restore it, run:\n  {command}")]
+    NoBackupThen {
+        what: String,
+        oldest: String,
+        command: String,
+    },
+    #[error("{0} isn't in any backup. Check the path: it starts in the config folder.")]
+    NotInHistory(String),
+    #[error("This printer has no backups yet, so there's nothing to restore.")]
+    NoBackups,
+    #[error("{0} has no earlier version in the backups, so there's nothing to restore.")]
+    NoOtherVersion(String),
+    #[error(
+        "Give the time of the version that you want. Without a terminal, printerkeep can't show the list \
+         of versions. For example:\n  {0}"
+    )]
+    PickVersion(String),
+    #[error("'{0}' isn't one of the numbers in the list. printerkeep changed nothing.")]
+    NotAChoice(String),
+    #[error("You didn't pick a version, so printerkeep changed nothing.")]
+    NoVersionPicked,
+    #[error(
+        "printerkeep keeps {STATE_FILE} up to date itself, so restore never takes it from an older backup."
+    )]
+    CantRestoreState,
     #[error("{context}: {source}")]
     Io {
         context: String,

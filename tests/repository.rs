@@ -158,7 +158,13 @@ fn repository_with_newer_changes_is_never_overwritten() {
 
     // Another install of printer-1 (restored from the repository) sends a newer backup.
     let other = Printer::empty();
-    other.ok(&["restore", &url, "--printer-name", "printer-1"]);
+    other.ok(&[
+        "restore",
+        "--repository",
+        &url,
+        "--printer-name",
+        "printer-1",
+    ]);
     other.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
     other.ok(&["backup"]);
     let newer = remote_tip(&url, "printer-1");
@@ -326,8 +332,11 @@ fn restore_into_an_empty_config_folder() {
     original.ok(&["connect", &url]);
 
     let new = Printer::empty();
-    let output = new.ok(&["restore", &url]);
-    assert!(output.contains("Restored 3 files from the backup of printer-1."));
+    let output = new.ok(&["restore", "--repository", &url]);
+    assert!(
+        output.contains("Restored 3 files from the backup of printer-1 of "),
+        "{output}"
+    );
     assert!(output.contains("sudo systemctl restart moonraker klipper"));
     assert_eq!(new.read("printer.cfg"), "[printer]\nkinematics: corexy\n");
     assert_eq!(new.read("macros/macros.cfg"), "[gcode_macro START]\n");
@@ -350,31 +359,37 @@ fn restore_into_an_empty_config_folder() {
     );
 }
 
+/// A new install has its own default printer.cfg: the restore replaces it, and the install's backup is
+/// set aside. Restore never removes files.
 #[test]
-fn restore_replaces_different_files_only_with_overwrite() {
+fn restore_replaces_the_files_of_a_new_install() {
     let (_dir, url) = repository();
     let original = Printer::named("printer-1");
     original.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     original.ok(&["connect", &url]);
 
-    // A new install has its own default printer.cfg and an extra file.
     let new = Printer::empty();
     new.write("printer.cfg", "# default\n");
     new.write("extra.cfg", "# keep me\n");
+    new.ok(&["backup"]);
 
-    new.command(&["restore", &url])
-        .assert()
-        .failure()
-        .stderr(contains(
-            "These files in the config folder differ from the backup: printer.cfg.",
-        ))
-        .stderr(contains("add --overwrite"));
-    assert_eq!(new.read("printer.cfg"), "# default\n");
-
-    new.ok(&["restore", &url, "--overwrite"]);
+    let output = new.ok(&["restore", "--repository", &url]);
     assert_eq!(new.read("printer.cfg"), "[printer]\nkinematics: corexy\n");
-    // Restore never removes files.
     assert_eq!(new.read("extra.cfg"), "# keep me\n");
+    assert!(
+        output.contains("The backups that were only on this printer stay on it as"),
+        "{output}"
+    );
+    assert_eq!(
+        new.git(&[
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/printerkeep/kept/"
+        ])
+        .lines()
+        .count(),
+        1
+    );
 }
 
 #[test]
@@ -387,17 +402,29 @@ fn restore_asks_which_printer_when_there_are_more() {
     }
 
     let new = Printer::empty();
-    new.command(&["restore", &url])
+    new.command(&["restore", "--repository", &url])
         .assert()
         .failure()
         .stderr(contains(
             "backups of several printers: printer-1, printer-2. To select one",
         ));
-    new.command(&["restore", &url, "--printer-name", "printer-3"])
-        .assert()
-        .failure()
-        .stderr(contains("no printer named 'printer-3'"));
-    new.ok(&["restore", &url, "--printer-name", "printer-2"]);
+    new.command(&[
+        "restore",
+        "--repository",
+        &url,
+        "--printer-name",
+        "printer-3",
+    ])
+    .assert()
+    .failure()
+    .stderr(contains("no printer named 'printer-3'"));
+    new.ok(&[
+        "restore",
+        "--repository",
+        &url,
+        "--printer-name",
+        "printer-2",
+    ]);
     assert_eq!(new.read("printer.cfg"), "# printer-2\n");
     assert!(
         new.read("printerkeep.conf")
@@ -464,7 +491,7 @@ fn readme_is_in_the_repository_but_not_in_the_config_folder() {
     assert!(readme.starts_with("<!-- printerkeep:"), "{readme}");
     assert!(
         readme.contains(&format!(
-            "printerkeep restore {url} --printer-name printer-1"
+            "printerkeep restore --repository {url} --printer-name printer-1"
         )),
         "{readme}"
     );
@@ -478,7 +505,7 @@ fn readme_is_in_the_repository_but_not_in_the_config_folder() {
 
     // A restore does not write it into the config folder.
     let new_install = Printer::empty();
-    new_install.ok(&["restore", &url]);
+    new_install.ok(&["restore", "--repository", &url]);
     assert_eq!(new_install.read("printer.cfg"), "[printer]\n");
     assert!(!new_install.config().join("README.md").exists());
     assert_eq!(

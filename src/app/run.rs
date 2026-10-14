@@ -107,8 +107,8 @@ pub fn backup(paths: &Paths, check_now: bool) -> Result<BackupReport, Error> {
 /// How a run works.
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct Run<'a> {
-    /// Replaces the message of the first backup.
-    pub(super) message: Option<&'a str>,
+    /// The message of the first backup of the run.
+    pub(super) message: backup::Message<'a>,
     /// The backups stay on the printer.
     pub(super) no_send: bool,
     /// Check the repository for changes now, whatever `check_repository` says.
@@ -117,7 +117,7 @@ pub(super) struct Run<'a> {
 
 /// A run of a command: check the repository for changes now.
 pub(super) const COMMAND: Run = Run {
-    message: None,
+    message: backup::Message::Changes,
     no_send: false,
     check_now: true,
 };
@@ -407,7 +407,7 @@ fn take_repository_changes(
                 "The backups that were only on this printer stay on it as {kept}, and aren't sent."
             ));
         }
-        make_backup(paths, files, git, printer_name, None)?;
+        make_backup(paths, files, git, printer_name, backup::Message::Changes)?;
         return Ok(Some(lines));
     };
     let events = repository_changes::apply(git, paths, files.rules, &base, &remote)?;
@@ -426,7 +426,7 @@ fn take_repository_changes(
             &remote,
             "printerkeep: in the repository",
         )?;
-        make_backup(paths, files, git, printer_name, None)?;
+        make_backup(paths, files, git, printer_name, backup::Message::Changes)?;
         return Ok(Some(lines));
     }
     let scan = backup_scan(paths, files)?;
@@ -455,7 +455,7 @@ fn make_backup(
     files: Files,
     git: &Git,
     printer_name: &str,
-    message: Option<&str>,
+    message: backup::Message,
 ) -> Result<(Outcome, Vec<String>), Error> {
     let scan = backup_scan(paths, files)?;
     let reference = branch(printer_name);
@@ -531,7 +531,13 @@ fn follow_shared(
     lines.extend(events.iter().map(FileEvent::line));
     let message = shared::message(&events);
     if let Some(message) = &message {
-        make_backup(paths, files, git, printer_name, Some(message))?;
+        make_backup(
+            paths,
+            files,
+            git,
+            printer_name,
+            backup::Message::Replace(message),
+        )?;
     }
     // Lines that only repeat a status (for example, a file that still needs decision) are not news.
     let news = message.is_some()

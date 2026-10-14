@@ -128,24 +128,42 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
     })
 }
 
-/// Makes the commit for `prepared`, if something changed. Returns the new commit and its message. `message`
-/// replaces the message that lists the changes.
+/// The message of a backup.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Message<'a> {
+    /// A summary of the changes, and all changed files.
+    #[default]
+    Changes,
+    /// This message only.
+    Replace(&'a str),
+    /// This first line, and all changed files.
+    Subject(&'a str),
+}
+
+/// Makes the commit for `prepared`, if something changed. Returns the new commit and its message.
 pub fn commit(
     git: &Git,
     prepared: &Prepared,
     reference: &str,
     index: &Path,
     identity: &Identity,
-    message: Option<&str>,
+    message: Message,
 ) -> Result<Option<(String, String)>, GitError> {
     if prepared.changes.is_empty() && !prepared.generated_changed {
         return Ok(None);
     }
     let tree = git.write_tree(&prepared.tree, index)?;
     let message = match message {
-        Some(message) => format!("{message}\n"),
-        None if prepared.changes.is_empty() => "README.md from printerkeep\n".to_string(),
-        None => prepared.changes.message(
+        Message::Replace(message) => format!("{message}\n"),
+        Message::Subject(subject) => {
+            let listed = prepared.changes.message(false, 0);
+            let files = listed.split_once('\n').map_or("", |(_, files)| files);
+            format!("{subject}\n{files}")
+        }
+        Message::Changes if prepared.changes.is_empty() => {
+            "README.md from printerkeep\n".to_string()
+        }
+        Message::Changes => prepared.changes.message(
             prepared.parent.is_none(),
             prepared.tree.len() - prepared.generated,
         ),

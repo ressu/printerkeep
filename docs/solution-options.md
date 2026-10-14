@@ -163,7 +163,7 @@ Mainsail are a future possibility too: Moonraker has no standard way for an outs
   `printerkeep.conf`**: that file is in the config folder, so the repository would get it. When
   authentication fails (for example, an expired token), the status says so and tells the user to run
   `change-token` (with a key: `connect` again).
-- **S3 Restore:** install printerkeep, then `printerkeep restore <url> [--printer-name <name>]`. This needs a token or
+- **S3 Restore:** install printerkeep, then `printerkeep restore --repository <url> [--printer-name <name>]`. This needs a token or
   a key, the same as S2.
 - **S4 Update printerkeep:** an update_manager entry. How depends on the language (git repository or compiled
   release). It does not depend on the option.
