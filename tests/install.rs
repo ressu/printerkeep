@@ -175,7 +175,9 @@ fn install_again_changes_nothing_twice() {
             "moonraker.conf already has [update_manager printerkeep]",
         ))
         .stdout(contains("Lingering: on for user printer,"))
-        .stdout(contains("No files changed"));
+        // The printer has backups already: no backup run in an install.
+        .stdout(contains("No files changed").not())
+        .stdout(contains("Backup made").not());
     assert_eq!(
         host.moonraker_conf()
             .matches("[update_manager printerkeep]")

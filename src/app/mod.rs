@@ -277,6 +277,16 @@ fn load(paths: &Paths) -> Result<(Settings, String), Error> {
     Ok((settings, name))
 }
 
+/// `true` if this printer has a backup in its history. `false` also when printerkeep can't tell (for
+/// example, printerkeep.conf has an error): then a run shows the problem.
+pub fn has_backups(paths: &Paths) -> bool {
+    let Ok((_, printer_name)) = load(paths) else {
+        return false;
+    };
+    let git = Git::new(&paths.git_dir);
+    git.exists() && matches!(git.resolve(&branch(&printer_name)), Ok(Some(_)))
+}
+
 /// printerkeep's git data. Makes it, with HEAD on the printer's branch, if it does not exist.
 fn open_git(paths: &Paths, printer_name: &str) -> Result<Git, Error> {
     let git = Git::new(&paths.git_dir);

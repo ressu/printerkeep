@@ -179,18 +179,22 @@ pub fn install(
     // Updates through Moonraker.
     lines.extend(add_update_manager(&paths.config.join("moonraker.conf"))?);
 
-    // The first backup.
-    lines.push(String::new());
-    lines.extend(
-        renamed
-            .into_iter()
-            .filter(|l| !l.starts_with("No files changed")),
-    );
-    match crate::app::sync(paths, true) {
-        Ok(report) => lines.extend(report.lines()),
-        Err(error) => lines.push(format!("The first backup failed: {error}")),
+    // The first backup, only when the printer has none yet: a reinstall or an update has nothing to add.
+    let mut section: Vec<String> = renamed
+        .into_iter()
+        .filter(|l| !l.starts_with("No files changed"))
+        .collect();
+    if !crate::app::has_backups(paths) {
+        match crate::app::sync(paths, true) {
+            Ok(report) => section.extend(report.lines()),
+            Err(error) => section.push(format!("The first backup failed: {error}")),
+        }
     }
     lines.push(String::new());
+    if !section.is_empty() {
+        lines.extend(section);
+        lines.push(String::new());
+    }
     lines.push(format!(
         "printerkeep is installed. The log is {}.",
         paths.log.display()
