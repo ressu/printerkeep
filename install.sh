@@ -3,7 +3,7 @@
 # Run it as the printer's user. It does not use sudo.
 #
 # Variables:
-#   VERSION        the release to install, for example v0.5.0 (default: the latest release)
+#   VERSION        the release to install, for example v0.5.1 (default: the latest release)
 #   BINARY_SHA256  the SHA-256 checksum of the program, from the release page on GitHub. The installer then
 #                  does not download the checksum file. "sha256:<hex>" and "<hex>" are both accepted.
 #   PRINTER_DATA   the printer_data folder (default: ~/printer_data)
@@ -38,7 +38,7 @@ esac
 if [ -z "$VERSION" ]; then
   api="https://api.github.com/repos/$REPO/releases/latest"
   VERSION=$(curl -fsSL "$api" | grep '"tag_name"' | head -n 1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-  [ -n "$VERSION" ] || fail "cannot find the latest release. Set VERSION, for example VERSION=v0.5.0."
+  [ -n "$VERSION" ] || fail "cannot find the latest release. Set VERSION, for example VERSION=v0.5.1."
 fi
 
 TMP_DIR=$(mktemp -d)
