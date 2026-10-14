@@ -155,7 +155,7 @@ printerkeep writes it.
 | Command | Does |
 |---|---|
 | `printerkeep sync` | Makes a backup if a file changed, writes the changes from shared and from the repository, and sends new backups. The timer runs this. |
-| `printerkeep backup` | Makes a backup if a file changed, and sends it. Never writes a file in the config folder. (A timer from before `sync` runs `backup`; started by systemd, it does the full run, and `status` says to run `printerkeep install`.) |
+| `printerkeep backup` | Makes a backup if a file changed, and sends it. Never writes a file in the config folder. |
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
 | `printerkeep restore [<file>] [--at <time>] [--repository <url>] [--printer-name <printer name>]` | Puts one file, or all files, back from a backup. It first makes a backup of the files now, and afterward a backup that says what it restored. `--at` takes the backup from that time ("2 days ago", `2026-10-12 14:00`); on a terminal, several backups on that day are listed to pick from. Without `--at`, a terminal lists the earlier versions. `--printer-name` takes the files from another printer. `--repository` takes them from another repository; on a printer that isn't connected (a new install), it connects and continues the printer's history. Never removes files. |
 | `printerkeep connect <url> [--printer-name <printer name>] [--continue] [--from-now]` | Connects the printer to a repository. Shows the printers in it and asks which one this printer is; continues that printer's branch (asks first if its backups are not from this printer) or starts a new one. Without a terminal, the options give the answers. With an `https://` URL it uses the stored token, or asks for a personal access token; with an SSH URL it makes an SSH key and shows the public key. |
@@ -170,7 +170,7 @@ printerkeep writes it.
 
 Commands are verbs. `connect` (decided 2026-10-14) replaces `add-repository`, which replaced the earlier
 `repository`. "Add a repository" sounded like making one, and the printer already has a git repository for
-its history. `add-repository` still works as a hidden alias, so scripts don't break.
+its history. The old names are gone: before 1.0, a rename doesn't keep the old name.
 
 ### In the repository
 

@@ -40,7 +40,6 @@ enum Command {
     ///
     /// printerkeep shows the printers in the repository. If it does not know which one this printer is, it
     /// asks (on a terminal). Without a terminal it never guesses: use the options below.
-    #[command(alias = "add-repository")]
     Connect {
         /// The repository URL, without a token.
         url: String,
@@ -179,13 +178,6 @@ fn main() -> ExitCode {
                 report.lines()
             })
         }
-        // Timers installed before printerkeep sync run `printerkeep backup`: started by systemd, it does the
-        // full run (status tells the user to update the timer).
-        Command::Backup if std::env::var_os("INVOCATION_ID").is_some() => app::sync(&paths, false)
-            .map(|report| {
-                log_only = Some(report.log_lines());
-                report.lines()
-            }),
         Command::Backup => app::backup(&paths).map(|report| {
             log_only = Some(report.log_lines());
             report.lines()

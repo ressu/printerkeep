@@ -61,8 +61,6 @@ impl Printer {
         let mut command = Command::cargo_bin("printerkeep").unwrap();
         command
             .env_remove("XDG_RUNTIME_DIR")
-            // systemd sets it for a service: printerkeep backup then does the full run.
-            .env_remove("INVOCATION_ID")
             .arg("--printer-data")
             .arg(self.dir.path())
             .args(args);

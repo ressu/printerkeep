@@ -29,14 +29,11 @@ fn connect_sends_all_backups_and_stores_only_the_url() {
 }
 
 #[test]
-fn add_repository_still_works_as_the_old_name_of_connect() {
+fn add_repository_is_gone() {
     let (_dir, url) = repository();
     let printer = Printer::named("printer-1");
-    printer.write("printer.cfg", "[printer]\n");
-
-    let output = printer.ok(&["add-repository", &url]);
-    assert!(output.contains(&format!("Connected to the repository {url}.")));
-    assert_eq!(remote_tip(&url, "printer-1"), printer.tip("printer-1"));
+    let error = printer.fails(&["add-repository", &url]);
+    assert!(error.contains("unrecognized subcommand"), "{error}");
 }
 
 #[test]

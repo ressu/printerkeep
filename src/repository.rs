@@ -398,7 +398,8 @@ pub fn send(git: &Git, remote: &Remote, printer_name: &str) -> Result<Sent, Repo
     if let Err(error) = git.push(remote, &branch, printer_name) {
         let error = classify(error, &remote.url);
         if matches!(error, RepositoryError::RepositoryAhead) {
-            // Keep a copy for later (release 0.2 merges it). Errors here do not matter.
+            // The repository's branch, for the run: it merges the changes and sends again. Errors here do
+            // not matter: the repository check of the next run gets the branch.
             let _ = git.fetch(remote, printer_name, &fetched_ref(printer_name));
         }
         return Err(error);

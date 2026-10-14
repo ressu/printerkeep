@@ -63,9 +63,10 @@ fn backup_tells_you_to_sync_when_the_repository_has_changes() {
     assert_eq!(remote_tip(&url, "printer-1"), printer.tip("printer-1"));
 }
 
-/// Timers installed before sync run `printerkeep backup`. Started by systemd, it still does the full run.
+/// `backup` is only a backup, also when systemd starts it (timers from before 0.4.0 ran `backup` and got the
+/// full run; all printers now run `sync`).
 #[test]
-fn an_old_timer_that_runs_backup_still_gets_the_changes() {
+fn backup_from_systemd_is_only_a_backup() {
     let (_dir, url) = repository();
     let printer1 = Printer::connected("printer-1", &url);
     let printer2 = Printer::connected("printer-2", &url);
@@ -81,5 +82,5 @@ fn an_old_timer_that_runs_backup_still_gets_the_changes() {
         .env("INVOCATION_ID", "0123456789abcdef")
         .assert()
         .success();
-    assert_eq!(printer2.read("a.cfg"), A);
+    assert!(!printer2.config().join("a.cfg").exists());
 }

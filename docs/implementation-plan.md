@@ -681,8 +681,9 @@ repository. Now:
 - Getting changes always needs a backup first (printerkeep writes a file only when the current version is in
   the history), so there is no command that only gets changes.
 - Timers installed before 0.4 run `printerkeep backup`, and an update through Moonraker doesn't change the
-  units. Started by systemd (`INVOCATION_ID` is set), `backup` does the full run, and `status` says to run
-  `printerkeep install`, which writes the new unit.
+  units. Started by systemd (`INVOCATION_ID` is set), `backup` did the full run, and `status` said to run
+  `printerkeep install`, which writes the new unit. Both were removed on 2026-10-14, once all our printers
+  had run `printerkeep install`.
 
 **Watch out when the units or the timer's command change (2026-10-14).** An update through Moonraker
 (`type: executable`) only replaces the program in `~/printerkeep`. It runs no command after the update, and

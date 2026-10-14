@@ -369,24 +369,11 @@ pub fn problems(at: &Locations) -> Vec<String> {
         // Not installed with printerkeep install (for example a test copy).
         return Vec::new();
     };
-    let mut problems = Vec::new();
-    // Timers from before printerkeep sync run `printerkeep backup`. main.rs still does the full run for
-    // them, but `printerkeep install` updates the unit.
-    if service
-        .lines()
-        .any(|line| line.starts_with("ExecStart=") && line.trim_end().ends_with(" backup"))
-    {
-        problems.push(
-            "The timer still runs the old command, printerkeep backup. It works, but to update the timer, \
-             run:\n  printerkeep install"
-                .to_string(),
-        );
-    }
     let condition = service
         .lines()
         .find_map(|line| line.strip_prefix("ExecCondition="))
         .map(unit_unquote);
-    problems.extend(match (condition, find_layerlock()) {
+    match (condition, find_layerlock()) {
         (Some(layerlock), _) if !layerlock.exists() => vec![format!(
             "Problem: the backup service uses layerlock at {}, but that file doesn't exist, so systemd \
              skips every backup. To fix the service, run:\n  printerkeep install",
@@ -398,8 +385,7 @@ pub fn problems(at: &Locations) -> Vec<String> {
             layerlock.display()
         )],
         _ => Vec::new(),
-    });
-    problems
+    }
 }
 
 /// The first word of a systemd command line, as written by `unit_quote`.

@@ -85,10 +85,8 @@ rm printerkeep-linux-aarch64
 
 - **Update:** use the update panel in Fluidd or Mainsail. Restart Moonraker once after the install, so that
   the panel shows printerkeep.
-- **Update by hand:** run the install command again, in any of the three ways. It replaces the program and
-  the timer. Your history, login, and settings stay.
-- **After an update in the update panel:** the panel replaces only the program. When a release changes the
-  timer, `printerkeep status` tells you, and you run `printerkeep install` once to update it.
+- **Update by hand:** run the install command again, in any of the three ways. It replaces the program.
+  Your history, login, and settings stay.
 - **Remove:** run `printerkeep uninstall`. It keeps the history, the login for the repository, and the
   settings file.
 

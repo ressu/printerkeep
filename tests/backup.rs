@@ -40,7 +40,6 @@ impl Printer {
     fn printerkeep(&self, command: &str) -> assert_cmd::assert::Assert {
         Command::cargo_bin("printerkeep")
             .unwrap()
-            .env_remove("INVOCATION_ID")
             .arg("--printer-data")
             .arg(self.printer_data())
             .arg(command)
