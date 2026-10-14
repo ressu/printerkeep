@@ -49,7 +49,7 @@ fn backups_are_sent_and_no_change_sends_nothing() {
     printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
     assert_eq!(
         printer.ok(&["backup"]),
-        "Backup made: Changed printer.cfg\nSent 1 backup to the repository.\n"
+        "Backup made: Changed printer.cfg\n"
     );
     assert_eq!(remote_tip(&url, "printer-1"), printer.tip("printer-1"));
 
@@ -273,6 +273,48 @@ fn changes_in_the_repository_get_to_the_printer() {
     );
 }
 
+/// Backups that waited (the repository couldn't be reached) are news: the output and the log say how many
+/// went.
+#[test]
+fn backups_that_waited_are_reported_when_they_are_sent() {
+    let (dir, url) = repository();
+    let printer = Printer::named("printer-1");
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["connect", &url]);
+
+    let moved = dir.path().join("moved.git");
+    fs::rename(&url, &moved).unwrap();
+    for content in ["[printer]\n# 1\n", "[printer]\n# 2\n"] {
+        printer.write("printer.cfg", content);
+        printer.ok(&["backup"]);
+    }
+    fs::rename(&moved, &url).unwrap();
+
+    let output = printer.ok(&["backup"]);
+    assert!(
+        output.contains("Sent 2 backups to the repository."),
+        "{output}"
+    );
+    let log = fs::read_to_string(printer.dir.path().join("logs/printerkeep.log")).unwrap();
+    assert!(log.contains("Sent 2 backups to the repository."), "{log}");
+}
+
+/// Commands that make a backup (here connect) don't log the same symlinks again.
+#[test]
+fn a_command_logs_the_symlinks_only_when_the_list_changes() {
+    let (_dir, url) = repository();
+    let printer = Printer::named("printer-1");
+    printer.write("printer.cfg", "[printer]\n");
+    std::os::unix::fs::symlink("/home/pi/KAMP", printer.config().join("KAMP")).unwrap();
+    printer.ok(&["backup"]);
+
+    let output = printer.ok(&["connect", &url]);
+    assert!(!output.contains("Not backed up"), "{output}");
+    assert!(!output.contains("Sent 1 backup"), "{output}");
+    let log = fs::read_to_string(printer.dir.path().join("logs/printerkeep.log")).unwrap();
+    assert_eq!(log.matches("Not backed up (symlinks)").count(), 1, "{log}");
+}
+
 #[test]
 fn unreachable_repository_keeps_backups_for_later() {
     let (dir, url) = repository();
@@ -344,10 +386,8 @@ fn restore_into_an_empty_config_folder() {
     // The restored printer continues the same history.
     assert_eq!(new.ok(&["backup"]), "No files changed. No backup made.\n");
     new.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
-    assert!(
-        new.ok(&["backup"])
-            .contains("Sent 1 backup to the repository.")
-    );
+    new.ok(&["backup"]);
+    assert_eq!(remote_tip(&url, "printer-1"), new.tip("printer-1"));
     git(
         Path::new(&url),
         &[
@@ -735,8 +775,7 @@ fn the_backup_run_continues_when_the_local_data_was_removed() {
             .contains("printerkeep.conf names this branch, so printerkeep continues its history."),
         "{output}"
     );
-    assert!(output.contains("Sent "), "{output}");
-    assert!(!output.contains("Cannot send"), "{output}");
+    assert!(!output.contains("Can't send"), "{output}");
     let tip = remote_tip(&url, "printer-1");
     git(
         Path::new(&url),

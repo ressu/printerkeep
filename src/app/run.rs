@@ -54,18 +54,16 @@ impl BackupReport {
         if !self.problem_changed {
             lines.retain(|line| !self.problems.contains(line));
         }
-        if !self.skipped_changed {
-            lines.retain(|line| !line.starts_with(SKIPPED));
-        }
         lines
     }
 
-    /// The lines for the terminal.
+    /// The lines for the terminal. The skipped symlinks only when the list changed (`status` shows them
+    /// always), and the sent backups only when backups waited: more than one, or none made in this run.
     pub fn lines(&self) -> Vec<String> {
         let mut lines = match &self.outcome {
             Outcome::Made { summary, .. } => {
                 let mut lines = vec![format!("Backup made: {summary}")];
-                if !self.skipped.is_empty() {
+                if self.skipped_changed && !self.skipped.is_empty() {
                     lines.push(format!("{SKIPPED}{}", self.skipped.join(", ")));
                 }
                 lines
@@ -75,9 +73,14 @@ impl BackupReport {
         };
         lines.extend(self.shared.iter().cloned());
         lines.extend(self.from_repository.iter().cloned());
+        let made = matches!(self.outcome, Outcome::Made { .. });
         match &self.sent {
-            Some(Ok(Sent::Sent(1))) => lines.push("Sent 1 backup to the repository.".to_string()),
-            Some(Ok(Sent::Sent(n))) => lines.push(format!("Sent {n} backups to the repository.")),
+            Some(Ok(Sent::Sent(1))) if !made => {
+                lines.push("Sent 1 backup to the repository.".to_string())
+            }
+            Some(Ok(Sent::Sent(n))) if *n > 1 => {
+                lines.push(format!("Sent {n} backups to the repository."))
+            }
             _ => {}
         }
         lines.extend(self.problems.iter().cloned());

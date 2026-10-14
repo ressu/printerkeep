@@ -165,25 +165,25 @@ fn ignored_files_and_symlinks_are_not_backed_up() {
 }
 
 #[test]
-fn skipped_symlinks_go_to_the_log_only_when_the_list_changes() {
+fn skipped_symlinks_are_shown_only_when_the_list_changes() {
     let printer = Printer::new();
     printer.write("printer.cfg", "[printer]\n");
     std::os::unix::fs::symlink("/home/pi/KAMP", printer.config().join("KAMP")).unwrap();
     printer.backup();
 
-    // The same links at the next backup: the terminal shows them, the log does not get them again.
+    // The same links at the next backup: neither the terminal nor the log names them again.
     printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
+    assert_eq!(printer.backup(), "Backup made: Changed printer.cfg\n");
+    assert_eq!(printer.log().matches("Not backed up (symlinks)").count(), 1);
+
+    // A new link: the terminal and the log get the new list.
+    std::os::unix::fs::symlink("/home/pi/ShakeTune", printer.config().join("K-ShakeTune")).unwrap();
+    printer.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
     assert!(
         printer
             .backup()
-            .contains("Not backed up (symlinks): KAMP\n")
+            .contains("Not backed up (symlinks): K-ShakeTune, KAMP\n")
     );
-    assert_eq!(printer.log().matches("Not backed up (symlinks)").count(), 1);
-
-    // A new link: the log gets the new list.
-    std::os::unix::fs::symlink("/home/pi/ShakeTune", printer.config().join("K-ShakeTune")).unwrap();
-    printer.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
-    printer.backup();
     assert!(
         printer
             .log()
