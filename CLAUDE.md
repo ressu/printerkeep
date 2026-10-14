@@ -57,4 +57,3 @@ Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
 - **No personal names in the repository.** In examples and test fixtures, call printers "printer 1–4".
 - **Behavior first:** for a behavior change or a bug, first write the test that shows the wanted behavior and
   see it fail; then change the code.
-- **Version control is jj** (colocated with git). Start a new change with `jj new` before you edit files.
