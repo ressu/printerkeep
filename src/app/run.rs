@@ -297,6 +297,9 @@ fn send_problem(error: &RepositoryError) -> String {
             the next run."
             .to_string(),
         RepositoryError::LoginFailed { .. } => error.to_string(),
+        RepositoryError::Refused { .. } => format!(
+            "Can't send the backups. {error}\nprinterkeep tries again at the next run."
+        ),
         error => format!(
             "Can't send the backups. {} printerkeep tries again at the next run.",
             sentence(&error.to_string())

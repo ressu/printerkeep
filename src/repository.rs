@@ -30,6 +30,17 @@ pub enum RepositoryError {
     Connection { url: String, message: String },
     #[error("The repository has backups on this printer's branch that aren't on this printer")]
     RepositoryAhead,
+    /// The repository refused a push, for example GitHub's push protection for secrets or a branch rule.
+    /// `says`: the lines of the repository's own message.
+    #[error(
+        "The repository {url} didn't accept what printerkeep sent ({reason}).{}",
+        says_lines(says)
+    )]
+    Refused {
+        url: String,
+        reason: String,
+        says: Vec<String>,
+    },
     #[error(
         "An SSH URL needs ssh-keygen, and it isn't installed. Install it, for example with:\n  \
          sudo apt install openssh-client"
@@ -258,7 +269,13 @@ pub fn classify(error: GitError, url: &str) -> RepositoryError {
     };
     let text = stderr.to_lowercase();
     let any = |words: &[&str]| words.iter().any(|w| text.contains(w));
-    if any(&["non-fast-forward", "fetch first", "[rejected]"]) {
+    if let Some(reason) = remote_rejected(stderr) {
+        RepositoryError::Refused {
+            url: url.to_string(),
+            reason,
+            says: remote_lines(stderr),
+        }
+    } else if any(&["non-fast-forward", "fetch first", "[rejected]"]) {
         RepositoryError::RepositoryAhead
     } else if any(&[
         "authentication failed",
@@ -282,6 +299,38 @@ pub fn classify(error: GitError, url: &str) -> RepositoryError {
             message: main_message(stderr),
         }
     }
+}
+
+/// The reason in git's line `! [remote rejected] <branch> -> <branch> (<reason>)`.
+fn remote_rejected(stderr: &str) -> Option<String> {
+    stderr.lines().find_map(|line| {
+        let rest = line.split_once("[remote rejected]")?.1.trim();
+        let reason = rest
+            .rsplit_once('(')
+            .map_or(rest, |(_, reason)| reason.trim_end_matches(')'));
+        Some(reason.trim().to_string())
+    })
+}
+
+/// The lines of the repository's own message (`remote: …`), without git's padding, empty lines and lines
+/// that only draw a line.
+fn remote_lines(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .filter_map(|line| line.strip_prefix("remote:"))
+        .map(|line| line.strip_prefix(' ').unwrap_or(line).trim_end())
+        .map(|line| line.strip_prefix("error: ").unwrap_or(line))
+        .filter(|line| line.chars().any(char::is_alphanumeric))
+        .map(str::to_string)
+        .collect()
+}
+
+fn says_lines(says: &[String]) -> String {
+    if says.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<String> = says.iter().map(|line| format!("  {line}")).collect();
+    format!("\nThe repository says:\n{}", lines.join("\n"))
 }
 
 /// The line of git's error output that says what went wrong: the first "fatal:" or "error:" line (git adds
@@ -540,6 +589,50 @@ mod tests {
             main_message("ssh: connect to host github.com port 22: Network is unreachable\n"),
             "ssh: connect to host github.com port 22: Network is unreachable"
         );
+    }
+
+    #[test]
+    fn a_refused_push_keeps_the_message_of_the_repository() {
+        let stderr = "remote: error: GH013: Repository rule violations found for refs/heads/printer-1.        \n\
+                      remote: \n\
+                      remote: - GITHUB PUSH PROTECTION        \n\
+                      remote:   \u{2014}\u{2014}\u{2014}\u{2014}\u{2014}        \n\
+                      remote:     - Push cannot contain secrets        \n\
+                      remote:       \u{2014}\u{2014} GitHub Personal Access Token \u{2014}\u{2014}        \n\
+                      remote:          - commit: 0123abcd        \n\
+                      remote:            path: moonraker.conf:12        \n\
+                      remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.\n\
+                      remote:        https://github.com/me/printers/security/secret-scanning/unblock-secret/x        \n\
+                      To https://github.com/me/printers\n \
+                      ! [remote rejected] printer-1 -> printer-1 (push declined due to repository rule violations)\n\
+                      error: failed to push some refs to 'https://github.com/me/printers'\n";
+        let error = classify(
+            GitError::Failed {
+                command: "push".into(),
+                stderr: stderr.into(),
+            },
+            "https://github.com/me/printers",
+        );
+        let RepositoryError::Refused { reason, says, .. } = &error else {
+            panic!("{error:?}");
+        };
+        assert_eq!(reason, "push declined due to repository rule violations");
+        assert_eq!(
+            says[0],
+            "GH013: Repository rule violations found for refs/heads/printer-1."
+        );
+        assert!(
+            says.contains(&"           path: moonraker.conf:12".to_string()),
+            "{says:?}"
+        );
+        assert!(
+            !says
+                .iter()
+                .any(|line| line.trim().starts_with('\u{2014}') && !line.contains("Token"))
+        );
+        let text = error.to_string();
+        assert!(text.contains("unblock-secret/x"), "{text}");
+        assert!(!text.contains("network"), "{text}");
     }
 
     #[test]

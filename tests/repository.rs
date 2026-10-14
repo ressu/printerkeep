@@ -315,6 +315,48 @@ fn a_command_logs_the_symlinks_only_when_the_list_changes() {
     assert_eq!(log.matches("Not backed up (symlinks)").count(), 1, "{log}");
 }
 
+/// The repository refuses a push (on GitHub: push protection for secrets, or branch rules). printerkeep
+/// shows what the repository says, and doesn't blame the network.
+#[test]
+fn a_refused_push_shows_what_the_repository_says() {
+    let (_dir, url) = repository();
+    let printer = Printer::named("printer-1");
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["connect", &url]);
+
+    let hook = Path::new(&url).join("hooks/pre-receive");
+    fs::write(
+        &hook,
+        "#!/bin/sh\n\
+         echo 'error: GH013: Repository rule violations found for refs/heads/printer-1.' >&2\n\
+         echo '- Push cannot contain secrets' >&2\n\
+         echo '   path: moonraker.conf:12' >&2\n\
+         exit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+
+    printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
+    let output = printer.ok(&["backup"]);
+    assert!(
+        output.contains(&format!(
+            "The repository {url} didn't accept what printerkeep sent (pre-receive hook declined)."
+        )),
+        "{output}"
+    );
+    assert!(
+        output.contains("  GH013: Repository rule violations found"),
+        "{output}"
+    );
+    assert!(output.contains("     path: moonraker.conf:12"), "{output}");
+    assert!(!output.contains("network connection"), "{output}");
+    assert!(
+        printer
+            .ok(&["status"])
+            .contains("didn't accept what printerkeep sent"),
+    );
+}
+
 #[test]
 fn unreachable_repository_keeps_backups_for_later() {
     let (dir, url) = repository();
