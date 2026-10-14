@@ -23,7 +23,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Make a backup of the config folder, if a file changed, and send new backups to the repository.
+    /// Make a backup, get the changes from shared and the repository, and send new backups to the repository.
+    ///
+    /// The timer runs this every 5 minutes.
+    Sync,
+    /// Make a backup of the config folder, if a file changed, and send it to the repository.
+    ///
+    /// Never changes your files: changes from shared and the repository wait for printerkeep sync.
     Backup,
     /// Show the status of the printer and its backups.
     Status,
@@ -94,7 +100,7 @@ enum Command {
     },
     /// Make the shared version of files equal to the version on this printer, and follow the files.
     ///
-    /// Other printers that follow a file get the changes at their next backup.
+    /// Other printers that follow a file get the changes at their next sync.
     ///
     /// printerkeep shows the changes that go to shared, and asks first.
     CopyToShared {
@@ -108,7 +114,7 @@ enum Command {
     /// Finish files that need a decision, without editing them.
     ///
     /// Usually you edit the file in Fluidd or Mainsail: keep the lines that you want and delete the ####
-    /// lines. printerkeep records the decision at the next backup.
+    /// lines. printerkeep records the decision at the next sync.
     Decide {
         /// The paths in the config folder. The same choice applies to each file.
         #[arg(required = true, value_name = "FILE")]
@@ -165,14 +171,25 @@ fn main() -> ExitCode {
     // changes or is solved. No write to the SD card for a run that repeats the last one.
     let mut log_only: Option<Vec<String>> = None;
     let result = match &cli.command {
-        Command::Backup => {
+        Command::Sync => {
             // By hand (on a terminal), check the repository now. The timer follows check_repository.
             let check_now = std::io::stdin().is_terminal();
-            app::backup(&paths, check_now).map(|report| {
+            app::sync(&paths, check_now).map(|report| {
                 log_only = Some(report.log_lines());
                 report.lines()
             })
         }
+        // Timers installed before printerkeep sync run `printerkeep backup`: started by systemd, it does the
+        // full run (status tells the user to update the timer).
+        Command::Backup if std::env::var_os("INVOCATION_ID").is_some() => app::sync(&paths, false)
+            .map(|report| {
+                log_only = Some(report.log_lines());
+                report.lines()
+            }),
+        Command::Backup => app::backup(&paths).map(|report| {
+            log_only = Some(report.log_lines());
+            report.lines()
+        }),
         Command::Status => app::status(&paths).map(|status| {
             print!("{status}");
             if let Ok(at) = install::Locations::from_env() {

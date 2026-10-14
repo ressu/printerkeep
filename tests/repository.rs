@@ -13,7 +13,7 @@ fn connect_sends_all_backups_and_stores_only_the_url() {
     let (_dir, url) = repository();
     let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
 
     let output = printer.ok(&["connect", &url]);
     assert!(output.contains(&format!("Connected to the repository {url}.")));
@@ -47,17 +47,11 @@ fn backups_are_sent_and_no_change_sends_nothing() {
     printer.ok(&["connect", &url]);
 
     printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
-    assert_eq!(
-        printer.ok(&["backup"]),
-        "Backup made: Changed printer.cfg\n"
-    );
+    assert_eq!(printer.ok(&["sync"]), "Backup made: Changed printer.cfg\n");
     assert_eq!(remote_tip(&url, "printer-1"), printer.tip("printer-1"));
 
     // No change: no backup, nothing sent.
-    assert_eq!(
-        printer.ok(&["backup"]),
-        "No files changed. No backup made.\n"
-    );
+    assert_eq!(printer.ok(&["sync"]), "No files changed. No backup made.\n");
     assert!(
         printer
             .ok(&["status"])
@@ -76,7 +70,7 @@ fn a_printer_never_takes_over_the_branch_of_another_printer() {
     // A second printer (or a new install) with the same name and its own backups.
     let second = Printer::named("printer-1");
     second.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
-    second.ok(&["backup"]);
+    second.ok(&["sync"]);
     let error = second
         .command(&["connect", &url])
         .assert()
@@ -131,7 +125,7 @@ fn a_new_repository_with_a_readme_is_joined() {
     // No printer_name: the printer is "main".
     let printer = Printer::empty();
     printer.write("printer.cfg", "[printer]\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
     let output = printer.ok(&["connect", &url]);
     assert!(
         output.contains("has no configuration yet, so printerkeep continues from it"),
@@ -166,12 +160,12 @@ fn repository_with_newer_changes_is_never_overwritten() {
         "printer-1",
     ]);
     other.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
-    other.ok(&["backup"]);
+    other.ok(&["sync"]);
     let newer = remote_tip(&url, "printer-1");
 
     // Both changed the same line: the file needs decision (M6). The newer backup stays in the history.
     first.write("printer.cfg", "[printer]\nmax_velocity: 200\n");
-    let output = first.ok(&["backup"]);
+    let output = first.ok(&["sync"]);
     assert!(
         output.starts_with("Backup made: Changed printer.cfg\n"),
         "{output}"
@@ -238,7 +232,7 @@ fn changes_in_the_repository_get_to_the_printer() {
         "printer.cfg",
         "[printer]\nmax_velocity: 250\nmax_accel: 3000\n",
     );
-    let output = printer.ok(&["backup"]);
+    let output = printer.ok(&["sync"]);
     assert!(
         output.contains(
             "printer.cfg: wrote the changes from the repository. The changes on this printer stay."
@@ -286,11 +280,11 @@ fn backups_that_waited_are_reported_when_they_are_sent() {
     fs::rename(&url, &moved).unwrap();
     for content in ["[printer]\n# 1\n", "[printer]\n# 2\n"] {
         printer.write("printer.cfg", content);
-        printer.ok(&["backup"]);
+        printer.ok(&["sync"]);
     }
     fs::rename(&moved, &url).unwrap();
 
-    let output = printer.ok(&["backup"]);
+    let output = printer.ok(&["sync"]);
     assert!(
         output.contains("Sent 2 backups to the repository."),
         "{output}"
@@ -306,7 +300,7 @@ fn a_command_logs_the_symlinks_only_when_the_list_changes() {
     let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n");
     std::os::unix::fs::symlink("/home/pi/KAMP", printer.config().join("KAMP")).unwrap();
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
 
     let output = printer.ok(&["connect", &url]);
     assert!(!output.contains("Not backed up"), "{output}");
@@ -337,7 +331,7 @@ fn a_refused_push_shows_what_the_repository_says() {
     fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 
     printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
-    let output = printer.ok(&["backup"]);
+    let output = printer.ok(&["sync"]);
     assert!(
         output.contains(&format!(
             "The repository {url} didn't accept what printerkeep sent (pre-receive hook declined)."
@@ -368,7 +362,7 @@ fn unreachable_repository_keeps_backups_for_later() {
     let moved = dir.path().join("moved.git");
     fs::rename(&url, &moved).unwrap();
     printer.write("printer.cfg", "[printer]\nkinematics: corexy\n");
-    let output = printer.ok(&["backup"]);
+    let output = printer.ok(&["sync"]);
     assert!(output.contains("Can't send the backups. "), "{output}");
     assert!(
         output.contains("Check the printer's network connection")
@@ -378,7 +372,7 @@ fn unreachable_repository_keeps_backups_for_later() {
 
     // The same problem at the next runs: the terminal shows it, the log does not get it again.
     for _ in 0..2 {
-        let output = printer.ok(&["backup"]);
+        let output = printer.ok(&["sync"]);
         assert!(output.contains("Can't send the backups. "), "{output}");
     }
     assert_eq!(
@@ -394,7 +388,7 @@ fn unreachable_repository_keeps_backups_for_later() {
     );
 
     fs::rename(&moved, &url).unwrap();
-    let output = printer.ok(&["backup"]);
+    let output = printer.ok(&["sync"]);
     assert!(
         output.contains("Sent 1 backup to the repository."),
         "{output}"
@@ -426,9 +420,9 @@ fn restore_into_an_empty_config_folder() {
     assert_eq!(new.read("macros/macros.cfg"), "[gcode_macro START]\n");
 
     // The restored printer continues the same history.
-    assert_eq!(new.ok(&["backup"]), "No files changed. No backup made.\n");
+    assert_eq!(new.ok(&["sync"]), "No files changed. No backup made.\n");
     new.write("printer.cfg", "[printer]\nkinematics: cartesian\n");
-    new.ok(&["backup"]);
+    new.ok(&["sync"]);
     assert_eq!(remote_tip(&url, "printer-1"), new.tip("printer-1"));
     git(
         Path::new(&url),
@@ -453,7 +447,7 @@ fn restore_replaces_the_files_of_a_new_install() {
     let new = Printer::empty();
     new.write("printer.cfg", "# default\n");
     new.write("extra.cfg", "# keep me\n");
-    new.ok(&["backup"]);
+    new.ok(&["sync"]);
 
     let output = new.ok(&["restore", "--repository", &url]);
     assert_eq!(new.read("printer.cfg"), "[printer]\nkinematics: corexy\n");
@@ -591,13 +585,13 @@ fn readme_is_in_the_repository_but_not_in_the_config_folder() {
     assert_eq!(new_install.read("printer.cfg"), "[printer]\n");
     assert!(!new_install.config().join("README.md").exists());
     assert_eq!(
-        new_install.ok(&["backup"]),
+        new_install.ok(&["sync"]),
         "No files changed. No backup made.\n"
     );
 
     // The user's own README.md wins.
     printer.write("README.md", "# My printer notes\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
     assert_eq!(
         git(Path::new(&url), &["show", "printer-1:README.md"]),
         "# My printer notes"
@@ -611,7 +605,7 @@ fn rename_moves_the_history_to_a_new_branch() {
     printer.write("printer.cfg", "[printer]\n");
     printer.ok(&["connect", &url]);
     printer.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
     let old_tip = remote_tip(&url, "main");
 
     let output = printer.ok(&["rename", "printer-1"]);
@@ -645,7 +639,7 @@ fn rename_moves_the_history_to_a_new_branch() {
         "printerkeep.conf",
         &format!("[printerkeep]\nprinter_name: printer-3\nrepository: {url}\n"),
     );
-    other.ok(&["backup"]);
+    other.ok(&["sync"]);
     let error = other
         .command(&["rename", "printer-1"])
         .assert()
@@ -700,7 +694,7 @@ fn a_klipper_backup_branch_is_continued() {
     // The printer has the default name main, and its own first backup.
     let printer = Printer::empty();
     printer.write("printer.cfg", "[printer]\nmax_velocity: 250\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
     let output = printer.ok(&["connect", &url, "--continue"]);
     assert!(
         output.contains("The branch main has backups from klipper-backup."),
@@ -811,7 +805,7 @@ fn the_backup_run_continues_when_the_local_data_was_removed() {
     // The real case: printerkeep's data was removed; printerkeep.conf (with the repository) stays.
     fs::remove_dir_all(printer.dir.path().join("printerkeep")).unwrap();
     printer.write("printer.cfg", "[printer]\nmax_velocity: 300\n");
-    let output = printer.ok(&["backup"]);
+    let output = printer.ok(&["sync"]);
     assert!(
         output
             .contains("printerkeep.conf names this branch, so printerkeep continues its history."),
@@ -827,8 +821,5 @@ fn the_backup_run_continues_when_the_local_data_was_removed() {
         show(&url, "printer-1", "printer.cfg"),
         "[printer]\nmax_velocity: 300\n"
     );
-    assert_eq!(
-        printer.ok(&["backup"]),
-        "No files changed. No backup made.\n"
-    );
+    assert_eq!(printer.ok(&["sync"]), "No files changed. No backup made.\n");
 }

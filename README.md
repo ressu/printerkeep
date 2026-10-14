@@ -110,13 +110,15 @@ rm printerkeep-linux-aarch64
 
 ### Backups
 
-After the install, printerkeep checks the config folder every 5 minutes and makes a backup when a file
-changed. The history is on the printer, in `printer_data/printerkeep`. Each backup has a message that says
+After the install, printerkeep runs `printerkeep sync` every 5 minutes. It makes a backup when a file
+changed, writes the changes from shared and from the repository, and sends new backups to the repository.
+You only need it by hand to get the changes now. The history is on the printer, in `printer_data/printerkeep`. Each backup has a message that says
 which files changed, for example `Changed printer.cfg, added macros/new.cfg` or
 `SAVE_CONFIG changed printer.cfg`.
 
 ```sh
-printerkeep backup     # make a backup now
+printerkeep sync       # all of it now: a backup, the changes, send
+printerkeep backup     # only a backup and send; never changes your files, for example before you try something
 printerkeep status     # the last backup, the changes since then, and the repository
 ```
 
@@ -279,7 +281,7 @@ ignore:
     *.csv
     timelapse/
 # How often printerkeep checks the repository for changes: off, or a time such as 5m, 1h, or 1d.
-# The default is 5m, that is, each run of the timer. printerkeep backup by hand always checks.
+# The default is 5m, that is, each run of the timer. printerkeep sync by hand always checks.
 check_repository: 1h
 ```
 

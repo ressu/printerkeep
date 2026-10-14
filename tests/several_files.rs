@@ -140,7 +140,7 @@ fn decide_several_files() {
     printer1.write("a.cfg", &A.replace("M118 a", "M118 shared"));
     printer1.write("b.cfg", &B.replace("M118 b", "M118 shared"));
     printer1.ok(&["copy-to-shared", "--yes", "a.cfg", "b.cfg"]);
-    printer2.ok(&["backup"]);
+    printer2.ok(&["sync"]);
     assert!(printer2.read("a.cfg").contains("####"));
     assert!(printer2.read("b.cfg").contains("####"));
 

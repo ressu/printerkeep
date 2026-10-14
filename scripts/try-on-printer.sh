@@ -13,11 +13,11 @@
 #             only if there is no test copy.
 #   --disconnect  close the SSH connection. Without it, the connection closes 10 minutes after the last run.
 #
-# The command after the host is given to printerkeep as one command. The default is "backup".
+# The command after the host is given to printerkeep as one command. The default is "sync".
 # The binary is built and copied only if it changed.
 #
 # Examples:
-#   scripts/try-on-printer.sh pi@printer-1                    # runs "printerkeep backup"
+#   scripts/try-on-printer.sh pi@printer-1                    # runs "printerkeep sync"
 #   scripts/try-on-printer.sh pi@printer-1 status
 #   scripts/try-on-printer.sh --copy pi@printer-1             # take in new changes from the real config
 #   scripts/try-on-printer.sh --reset pi@printer-1            # start again with an empty history
@@ -66,7 +66,7 @@ fi
 host=$1
 shift
 if [ $# -eq 0 ]; then
-  set -- backup
+  set -- sync
 fi
 # Quote each argument for the shell on the printer.
 command=$(printf '%q ' "$@")

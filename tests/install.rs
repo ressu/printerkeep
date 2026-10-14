@@ -95,6 +95,7 @@ impl Host {
             .env("FAKE_LOG", self.dir.path().join("log"))
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("PRINTERKEEP_PRINTER_DATA")
+            .env_remove("INVOCATION_ID")
             .args(args);
         command
     }
@@ -141,7 +142,7 @@ fn install_puts_everything_in_the_home_folder() {
     // The units: user units, the program in the home folder, no layerlock.
     let service = fs::read_to_string(host.units().join("printerkeep.service")).unwrap();
     assert!(service.contains(&format!(
-        "ExecStart=\"{}\" --printer-data \"{}\" backup",
+        "ExecStart=\"{}\" --printer-data \"{}\" sync",
         program.display(),
         host.printer_data().display()
     )));
@@ -207,6 +208,26 @@ fn install_uses_layerlock_when_it_is_installed() {
     host.run(&["status"]).assert().success().stdout(contains(
         "but that file doesn't exist, so systemd skips every backup.",
     ));
+}
+
+/// A timer from before printerkeep sync runs `printerkeep backup`. It still works, and status says how to
+/// update it.
+#[test]
+fn status_tells_when_the_timer_runs_the_old_command() {
+    let host = Host::new();
+    host.run(&["install"]).assert().success();
+    let service = host.units().join("printerkeep.service");
+    let text = fs::read_to_string(&service).unwrap();
+    fs::write(&service, text.replace("\" sync\n", "\" backup\n")).unwrap();
+    host.run(&["status"]).assert().success().stdout(contains(
+        "The timer still runs the old command, printerkeep backup. It works, but to update the timer, \
+         run:\n  printerkeep install",
+    ));
+    host.run(&["install"]).assert().success();
+    host.run(&["status"])
+        .assert()
+        .success()
+        .stdout(contains("old command").not());
 }
 
 #[test]

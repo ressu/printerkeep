@@ -111,6 +111,7 @@ impl<'a> Printer<'a> {
         let mut command = Command::cargo_bin("printerkeep").unwrap();
         command
             .env_remove("XDG_RUNTIME_DIR")
+            .env_remove("INVOCATION_ID")
             .env("GIT_SSL_CAINFO", self.server.cert())
             .arg("--printer-data")
             .arg(self.dir.path())
@@ -196,7 +197,7 @@ fn change_token_after_the_token_expired() {
     )
     .unwrap();
     printer
-        .command(&["backup"])
+        .command(&["sync"])
         .assert()
         .success()
         .stdout(contains("printerkeep change-token"));

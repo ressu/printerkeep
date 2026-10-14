@@ -26,12 +26,13 @@ sometimes backwards English, so the skill replaces it; the skill keeps the usefu
 | **printer** | One machine running Klipper, with its own config folder. | machine, host, node |
 | **printer name** | The name that identifies a printer in the repository (its branch name). | id, hostname |
 | **config folder** | The printer's Klipper config directory (Moonraker's config root, normally `~/printer_data/config`). The tool's scope is exactly this folder. | config dir, printer_data |
-| **backup** (noun and verb) | Save the current files of the config folder to the history. A backup is made only when a file changed. | snapshot, commit, sync |
+| **backup** (noun and verb) | Save the current files of the config folder to the history. A backup is made only when a file changed. | snapshot, commit, sync (that's the full run) |
 | **history** | All backups of a printer. | log, commits |
 | **restore** | Put files back from a backup: from this printer's history (for example, to undo an edit), from another printer, or from the repository after a new install. | recover, clone, revert, undo |
 | **repository** | The git repository on a git host (GitHub, Gitea, a NAS, …) that printerkeep sends backups to. It's never on the printer: the printer's own backups are its **history**. | remote, origin, repo (in messages) |
 | **connect** | Link the printer to a repository that already exists, so printerkeep sends backups to it. Nothing is created. | add (sounds like making a repository), link, set up |
-| **send** | Copy new backups from the printer to the repository. printerkeep never overwrites the repository. | push, upload, sync |
+| **send** | Copy new backups from the printer to the repository. printerkeep never overwrites the repository. | push, upload, sync (that's the full run) |
+| **sync** | The full run, in both directions: a backup, the changes from shared and from the repository, and send. The timer runs it. Only for the whole run, never for one direction. | update (reserved for updates of the tool itself), pull, refresh |
 | **settings file** | The one file in the config folder where the user changes the tool's settings. | manifest, config file (ambiguous with Klipper config) |
 
 ### Users with more printers
@@ -113,8 +114,8 @@ platforms). The data paths are per `printer_data` folder, so more instances per 
 | Program folder | `~/printerkeep/`, with the binary (named as its release asset, for example `printerkeep-linux-aarch64`) and `release_info.json` (update_manager `path`). `~/.local/bin/printerkeep` is a link to the binary. |
 | Installer | `install.sh`, a release asset. It downloads and checks the program, then runs `printerkeep install`. |
 | update_manager entry | `[update_manager printerkeep]` with `type: executable` |
-| systemd units | systemd user units in `~/.config/systemd/user/`: `printerkeep.service` (`Type=oneshot`, runs `printerkeep backup`) and `printerkeep.timer`. layerlock connects with `ExecCondition=` in the service. |
-| Klipper macro (optional, not yet) | `PRINTERKEEP_BACKUP`. For now, the manual start is `printerkeep backup`. |
+| systemd units | systemd user units in `~/.config/systemd/user/`: `printerkeep.service` (`Type=oneshot`, runs `printerkeep sync`) and `printerkeep.timer`. layerlock connects with `ExecCondition=` in the service. |
+| Klipper macro (optional, not yet) | `PRINTERKEEP_BACKUP`. For now, the manual start is `printerkeep sync`. |
 
 ### Files on the printer
 
@@ -153,7 +154,8 @@ printerkeep writes it.
 
 | Command | Does |
 |---|---|
-| `printerkeep backup` | Makes a backup if a file changed, and applies changes from shared. The timer runs this. |
+| `printerkeep sync` | Makes a backup if a file changed, writes the changes from shared and from the repository, and sends new backups. The timer runs this. |
+| `printerkeep backup` | Makes a backup if a file changed, and sends it. Never writes a file in the config folder. (A timer from before `sync` runs `backup`; started by systemd, it does the full run, and `status` says to run `printerkeep install`.) |
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
 | `printerkeep restore [<file>] [--at <time>] [--repository <url>] [--printer-name <printer name>]` | Puts one file, or all files, back from a backup. It first makes a backup of the files now, and afterward a backup that says what it restored. `--at` takes the backup from that time ("2 days ago", `2026-10-12 14:00`); on a terminal, several backups on that day are listed to pick from. Without `--at`, a terminal lists the earlier versions. `--printer-name` takes the files from another printer. `--repository` takes them from another repository; on a printer that isn't connected (a new install), it connects and continues the printer's history. Never removes files. |
 | `printerkeep connect <url> [--printer-name <printer name>] [--continue] [--from-now]` | Connects the printer to a repository. Shows the printers in it and asks which one this printer is; continues that printer's branch (asks first if its backups are not from this printer) or starts a new one. Without a terminal, the options give the answers. With an `https://` URL it uses the stored token, or asks for a personal access token; with an SSH URL it makes an SSH key and shows the public key. |

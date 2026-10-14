@@ -91,12 +91,12 @@ fn line_ends_and_unrelated_files_with_the_same_path() {
     p2.write(path, &changed);
     p2.ok(&["copy-to-shared", "--yes", path]);
     for printer in [p3, p4] {
-        printer.ok(&["backup"]);
+        printer.ok(&["sync"]);
         assert_eq!(printer.read(path), changed.replace('\n', "\r\n"));
     }
 
     // Printer 1 has a different file at the same path. It does not follow it: nothing changes.
-    p1.ok(&["backup"]);
+    p1.ok(&["sync"]);
     assert_eq!(p1.read(path), fixture(1, path));
     assert!(!p1.ok(&["status"]).contains("Followed files"));
 }
@@ -134,7 +134,7 @@ fn kamp_values_stay_on_each_printer() {
     p2.write(path, &shared);
     p2.ok(&["copy-to-shared", "--yes", path]);
     for (n, printer) in [(1, p1), (3, p3), (4, p4)] {
-        printer.ok(&["backup"]);
+        printer.ok(&["sync"]);
         assert_eq!(
             printer.read(path),
             fixture(n, path).replace("purge_height: 0.8", "purge_height: 0.6"),
@@ -149,16 +149,16 @@ fn kamp_values_stay_on_each_printer() {
         "variable_purge_margin: 20   # printerkeep: override",
     );
     p1.write(path, &p1_marked);
-    p1.ok(&["backup"]);
+    p1.ok(&["sync"]);
     p2.write(
         path,
         &shared.replace("purge_margin: 15", "purge_margin: 12"),
     );
     p2.ok(&["copy-to-shared", "--yes", path]);
-    p1.ok(&["backup"]);
+    p1.ok(&["sync"]);
     assert_eq!(p1.read(path), p1_marked);
     for printer in [p3, p4] {
-        let output = printer.ok(&["backup"]);
+        let output = printer.ok(&["sync"]);
         assert!(
             output.contains("KAMP_Settings.cfg: needs a decision."),
             "{output}"
@@ -195,7 +195,7 @@ fn commented_out_lines_for_missing_hardware_stay() {
     p2.write(path, &improved(&fixture(2, path)));
     p2.ok(&["copy-to-shared", "--yes", path]);
     for (n, printer) in [(3, p3), (4, p4)] {
-        printer.ok(&["backup"]);
+        printer.ok(&["sync"]);
         let expected = improved(&fixture(n, path)).replace('\n', "\r\n");
         assert_eq!(printer.read(path), expected, "printer {n}");
         assert!(expected.contains("# _RUNOUT_OFF") && expected.contains("# _RUNOUT_ON"));
@@ -237,15 +237,15 @@ fn an_improvement_reaches_the_other_printers() {
     edit_shared(&url, path, retract);
 
     // Printer 2 had no local changes; printer 3 keeps its own PRINT_START and LOAD_FILAMENT.
-    p2.ok(&["backup"]);
+    p2.ok(&["sync"]);
     assert_eq!(p2.read(path), retract(fixture(2, path)));
-    p3.ok(&["backup"]);
+    p3.ok(&["sync"]);
     assert_eq!(
         p3.read(path),
         retract(fixture(3, path)).replace('\n', "\r\n")
     );
     // Printer 4 has the improvement already, with its commented-out lines: nothing to write.
-    let output = p4.ok(&["backup"]);
+    let output = p4.ok(&["sync"]);
     assert!(!output.contains(path), "{output}");
     assert_eq!(p4.read(path), fixture(4, path).replace('\n', "\r\n"));
     assert_eq!(p4.status_of(path), "local changes");

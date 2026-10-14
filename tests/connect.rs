@@ -69,7 +69,7 @@ fn a_reinstalled_printer_continues_its_branch_after_a_yes() {
 
     let printer = Printer::named("printer-1");
     printer.write("printer.cfg", "[printer]\n# printer-1\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
 
     let ask = Answers {
         confirm: Some(true),
@@ -93,7 +93,7 @@ fn a_reinstalled_printer_continues_its_branch_after_a_yes() {
     // No: nothing changes, and the error names both ways.
     let other = Printer::named("printer-1");
     other.write("printer.cfg", "[printer]\n");
-    other.ok(&["backup"]);
+    other.ok(&["sync"]);
     let ask = Answers {
         confirm: Some(false),
         ..Answers::default()
@@ -122,7 +122,7 @@ fn install_as_main_then_connect_as_an_existing_printer() {
 
     let printer = Printer::empty();
     printer.write("printer.cfg", "[printer]\n# new install\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
     let ask = Answers {
         confirm: Some(true),
         text: Some("foobar".to_string()),
@@ -209,7 +209,7 @@ fn from_now_sends_only_the_files_of_now() {
     let printer = Printer::named("printer-1");
     for n in 0..3 {
         printer.write("printer.cfg", &format!("[printer]\n# {n}\n"));
-        printer.ok(&["backup"]);
+        printer.ok(&["sync"]);
     }
     let choices = ConnectChoices {
         from_now: true,
@@ -226,7 +226,7 @@ fn from_now_sends_only_the_files_of_now() {
     let other = Printer::named("printer-2");
     for n in 0..2 {
         other.write("printer.cfg", &format!("[printer]\n# {n}\n"));
-        other.ok(&["backup"]);
+        other.ok(&["sync"]);
     }
     let ask = Answers {
         confirm: Some(false),
@@ -256,7 +256,7 @@ fn restore_asks_which_printer_and_sets_the_install_backup_aside() {
 
     let printer = Printer::empty();
     printer.write("printer.cfg", "[printer]\n# default\n");
-    printer.ok(&["backup"]);
+    printer.ok(&["sync"]);
     let ask = Answers {
         text: Some("printer-2".to_string()),
         ..Answers::default()

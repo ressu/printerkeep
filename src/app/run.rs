@@ -1,4 +1,5 @@
-//! The backup run: a backup, changes from shared and from the repository, and send (`printerkeep backup`).
+//! The run: a backup, changes from shared and from the repository, and send (`printerkeep sync`). Without
+//! the changes, only a backup and send (`printerkeep backup`).
 
 use super::*;
 
@@ -91,9 +92,10 @@ impl BackupReport {
     }
 }
 
-/// Makes a backup if a file changed, and sends new backups to the repository. `check_now`: check the
-/// repository for changes whatever `check_repository` says (for a run by hand).
-pub fn backup(paths: &Paths, check_now: bool) -> Result<BackupReport, Error> {
+/// The full run: makes a backup if a file changed, writes the changes from shared and from the repository,
+/// and sends new backups to the repository. `check_now`: check the repository for changes whatever
+/// `check_repository` says (for a run by hand).
+pub fn sync(paths: &Paths, check_now: bool) -> Result<BackupReport, Error> {
     let (settings, printer_name) = load(paths)?;
     let _lock = lock(paths)?;
     backup_and_send(
@@ -102,6 +104,22 @@ pub fn backup(paths: &Paths, check_now: bool) -> Result<BackupReport, Error> {
         &printer_name,
         Run {
             check_now,
+            ..Run::default()
+        },
+    )
+}
+
+/// Makes a backup if a file changed, and sends new backups to the repository. Never writes a file in the
+/// config folder: changes from shared and from the repository wait for `sync`.
+pub fn backup(paths: &Paths) -> Result<BackupReport, Error> {
+    let (settings, printer_name) = load(paths)?;
+    let _lock = lock(paths)?;
+    backup_and_send(
+        paths,
+        &settings,
+        &printer_name,
+        Run {
+            only_backup: true,
             ..Run::default()
         },
     )
@@ -116,6 +134,8 @@ pub(super) struct Run<'a> {
     pub(super) no_send: bool,
     /// Check the repository for changes now, whatever `check_repository` says.
     pub(super) check_now: bool,
+    /// Only a backup and send: no changes from shared or from the repository, so no file is written.
+    pub(super) only_backup: bool,
 }
 
 /// A run of a command: check the repository for changes now.
@@ -123,6 +143,7 @@ pub(super) const COMMAND: Run = Run {
     message: backup::Message::Changes,
     no_send: false,
     check_now: true,
+    only_backup: false,
 };
 
 /// The backup run: a backup of the config folder, then changes from shared and from the repository, then
@@ -157,7 +178,7 @@ pub(super) fn backup_and_send(
     // What the repository has now. `None`: no check in this run.
     let mut problems = Vec::new();
     let heads = match &remote {
-        Some(remote) if run.check_now || check_due(settings, paths) => {
+        Some(remote) if !run.only_backup && (run.check_now || check_due(settings, paths)) => {
             mark_checked(paths);
             match git.remote_heads(remote, &[SHARED_BRANCH, printer_name]) {
                 Ok(heads) => Some(heads),
@@ -172,15 +193,19 @@ pub(super) fn backup_and_send(
         }
         _ => None,
     };
-    let (shared, shared_news, shared_problem) = follow_shared(
-        paths,
-        settings,
-        files,
-        &git,
-        printer_name,
-        remote.as_ref(),
-        heads.as_ref(),
-    )?;
+    let (shared, shared_news, shared_problem) = if run.only_backup {
+        (Vec::new(), false, None)
+    } else {
+        follow_shared(
+            paths,
+            settings,
+            files,
+            &git,
+            printer_name,
+            remote.as_ref(),
+            heads.as_ref(),
+        )?
+    };
     problems.extend(shared_problem);
     // printerkeep.conf names this printer (connect and restore write it): the printer was connected
     // to this branch before. If their histories have no common backup, the run continues the repository's.
@@ -215,6 +240,7 @@ pub(super) fn backup_and_send(
     // The repository has changes on this printer's branch that the check did not see: merge them, then
     // send again.
     if let Some(Err(RepositoryError::RepositoryAhead)) = &sent
+        && !run.only_backup
         && let Some(lines) =
             take_repository_changes(paths, files, &git, printer_name, continue_unrelated)?
     {
@@ -223,7 +249,15 @@ pub(super) fn backup_and_send(
     }
     // The problems of this run, as one text. status has no network: it shows the text of the last run. The
     // log gets a problem when it starts, when it changes and when it is solved, not at each run.
-    if let Some(Err(error)) = &sent {
+    if run.only_backup
+        && let Some(Err(RepositoryError::RepositoryAhead)) = &sent
+    {
+        problems.push(
+            "The repository has changes on this printer's branch, so printerkeep didn't send the backup. \
+             To get the changes and send it, run:\n  printerkeep sync"
+                .to_string(),
+        );
+    } else if let Some(Err(error)) = &sent {
         // The repository cannot be reached: the check found the same. One line says it.
         if matches!(error, RepositoryError::Connection { .. }) {
             problems.retain(|p| !p.starts_with("Can't check the repository for changes."));

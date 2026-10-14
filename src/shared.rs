@@ -329,7 +329,7 @@ impl FileStatus {
         match self {
             FileStatus::UpToDate => "up to date",
             FileStatus::LocalChanges => "local changes",
-            FileStatus::ChangesWaiting => "changes waiting. The next backup applies them",
+            FileStatus::ChangesWaiting => "changes waiting. The next sync applies them",
             FileStatus::NeedsDecision => {
                 "needs decision. Open the file and look for the #### lines"
             }

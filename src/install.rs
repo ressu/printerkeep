@@ -163,8 +163,8 @@ pub fn install(
     systemctl(&["daemon-reload"])?;
     systemctl(&["enable", "--now", TIMER])?;
     lines.push(
-        "- Timer: printerkeep.timer (a systemd user unit) makes a backup every 5 minutes, \
-         when a file changed."
+        "- Timer: printerkeep.timer (a systemd user unit) runs printerkeep sync every 5 minutes: a backup \
+         when a file changed, and the changes from shared and the repository."
             .to_string(),
     );
     lines.push(match &layerlock {
@@ -186,7 +186,7 @@ pub fn install(
             .into_iter()
             .filter(|l| !l.starts_with("No files changed")),
     );
-    match crate::app::backup(paths, true) {
+    match crate::app::sync(paths, true) {
         Ok(report) => lines.extend(report.lines()),
         Err(error) => lines.push(format!("The first backup failed: {error}")),
     }
@@ -365,11 +365,24 @@ pub fn problems(at: &Locations) -> Vec<String> {
         // Not installed with printerkeep install (for example a test copy).
         return Vec::new();
     };
+    let mut problems = Vec::new();
+    // Timers from before printerkeep sync run `printerkeep backup`. main.rs still does the full run for
+    // them, but `printerkeep install` updates the unit.
+    if service
+        .lines()
+        .any(|line| line.starts_with("ExecStart=") && line.trim_end().ends_with(" backup"))
+    {
+        problems.push(
+            "The timer still runs the old command, printerkeep backup. It works, but to update the timer, \
+             run:\n  printerkeep install"
+                .to_string(),
+        );
+    }
     let condition = service
         .lines()
         .find_map(|line| line.strip_prefix("ExecCondition="))
         .map(unit_unquote);
-    match (condition, find_layerlock()) {
+    problems.extend(match (condition, find_layerlock()) {
         (Some(layerlock), _) if !layerlock.exists() => vec![format!(
             "Problem: the backup service uses layerlock at {}, but that file doesn't exist, so systemd \
              skips every backup. To fix the service, run:\n  printerkeep install",
@@ -381,7 +394,8 @@ pub fn problems(at: &Locations) -> Vec<String> {
             layerlock.display()
         )],
         _ => Vec::new(),
-    }
+    });
+    problems
 }
 
 /// The first word of a systemd command line, as written by `unit_quote`.
@@ -422,12 +436,12 @@ fn service_unit(program: &Path, printer_data: &Path, layerlock: Option<&Path>) -
     format!(
         "# Made by printerkeep install. printerkeep install replaces this file.\n\
          [Unit]\n\
-         Description=printerkeep backup of the printer configuration\n\
+         Description=printerkeep sync of the printer configuration\n\
          \n\
          [Service]\n\
          Type=oneshot\n\
          {condition}\
-         ExecStart={} --printer-data {} backup\n\
+         ExecStart={} --printer-data {} sync\n\
          Nice=10\n\
          IOSchedulingClass=idle\n",
         unit_quote(program),
@@ -437,7 +451,7 @@ fn service_unit(program: &Path, printer_data: &Path, layerlock: Option<&Path>) -
 
 const TIMER_UNIT: &str = "# Made by printerkeep install. printerkeep install replaces this file.
 [Unit]
-Description=printerkeep backup every 5 minutes
+Description=printerkeep sync every 5 minutes
 
 [Timer]
 OnCalendar=*:0/5
@@ -694,7 +708,7 @@ mod tests {
         );
         assert!(unit.contains(
             "ExecStart=\"/home/pi/printerkeep/printerkeep-linux-aarch64\" --printer-data \
-             \"/home/pi/printer 50%%\" backup\n"
+             \"/home/pi/printer 50%%\" sync\n"
         ));
         assert!(!unit.contains("ExecCondition"));
     }

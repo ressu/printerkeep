@@ -72,7 +72,7 @@ fn copy_to_shared_and_follow_keep_local_changes() {
     let improved = MACROS.replace("G1 X10 Y10 F6000", "G1 X10 Y10 F9000");
     printer1.write("macros/macros.cfg", &improved);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(
         output
             .contains("macros/macros.cfg: wrote the changes from shared. The local changes stay."),
@@ -87,7 +87,7 @@ fn copy_to_shared_and_follow_keep_local_changes() {
         "Changes from shared: macros/macros.cfg"
     );
     // Printer 3 has no local changes: it gets the shared version.
-    let output = printer3.ok(&["backup"]);
+    let output = printer3.ok(&["sync"]);
     assert!(
         output.contains("macros/macros.cfg: wrote the changes from shared."),
         "{output}"
@@ -95,7 +95,7 @@ fn copy_to_shared_and_follow_keep_local_changes() {
     assert_eq!(printer3.read("macros/macros.cfg"), improved);
 
     // Nothing new: no backup, no change.
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(
         output.contains("No files changed. No backup made."),
         "{output}"
@@ -146,7 +146,7 @@ fn needs_decision_waits_for_the_user() {
         &MACROS.replace("variable_temp: 230", "variable_temp: 240"),
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(
         output.contains(
             "macros/macros.cfg: needs a decision. Open the file and look for the #### lines."
@@ -186,7 +186,7 @@ fn needs_decision_waits_for_the_user() {
             .replace("G1 E50 F300", "G1 E60 F300"),
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(output.contains("needs a decision"), "{output}");
     assert_eq!(printer2.read("macros/macros.cfg"), with_block);
 
@@ -202,7 +202,7 @@ fn needs_decision_waits_for_the_user() {
         MACROS.replace("variable_temp: 230", "variable_temp: 240")
     );
     printer2.write("macros/macros.cfg", &decided);
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(
         output.contains("macros/macros.cfg: decision recorded."),
         "{output}"
@@ -235,7 +235,7 @@ fn line_endings_of_the_printer_stay() {
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    printer2.ok(&["backup"]);
+    printer2.ok(&["sync"]);
     assert_eq!(
         printer2.read("macros/macros.cfg"),
         crlf.replace("G1 E50 F300", "G1 E60 F300")
@@ -269,7 +269,7 @@ fn stop_following_keeps_the_file() {
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    printer2.ok(&["backup"]);
+    printer2.ok(&["sync"]);
     assert_eq!(printer2.read("macros/macros.cfg"), MACROS);
 
     let error = printer2.fails(&["stop-following", "macros/macros.cfg"]);
@@ -293,7 +293,7 @@ fn follow_in_the_settings_file_works_without_a_command() {
         "printerkeep.conf",
         &format!("{settings}follow:\n  macros/macros.cfg\n  missing.cfg\n"),
     );
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(
         output.contains("Now follows macros/macros.cfg, and wrote the shared version."),
         "{output}"
@@ -375,7 +375,7 @@ fn override_lines_never_travel() {
     );
     assert_eq!(printer3.read("sensor.cfg"), in_shared);
     printer3.write("sensor.cfg", &SENSOR.replace("^PG12", "^PA3"));
-    printer3.ok(&["backup"]);
+    printer3.ok(&["sync"]);
 
     let printer2_sensor = SENSOR.replace("^PG12", "^PA1");
     printer2.write("sensor.cfg", &printer2_sensor);
@@ -395,12 +395,12 @@ fn override_lines_never_travel() {
         show(&url, "shared", "sensor.cfg"),
         in_shared.replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n")
     );
-    printer1.ok(&["backup"]);
+    printer1.ok(&["sync"]);
     assert_eq!(
         printer1.read("sensor.cfg"),
         SENSOR.replace("    PAUSE\n", "    PAUSE\n    M117 Runout\n")
     );
-    let output = printer3.ok(&["backup"]);
+    let output = printer3.ok(&["sync"]);
     assert!(
         output.contains("sensor.cfg: wrote the changes from shared."),
         "{output}"
@@ -413,7 +413,7 @@ fn override_lines_never_travel() {
     );
 
     // Printer 2's own copy: nothing to write, no needs decision.
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(!output.contains("sensor.cfg"), "{output}");
     assert_eq!(printer2.read("sensor.cfg"), improved);
 }
@@ -458,7 +458,7 @@ fn decide_and_status_of_followed_files() {
         status.contains("  macros/macros.cfg: local changes\n"),
         "{status}"
     );
-    printer2.ok(&["backup"]);
+    printer2.ok(&["sync"]);
     let status = printer2.ok(&["status"]);
     assert!(
         status.contains(
@@ -499,7 +499,7 @@ fn decide_and_status_of_followed_files() {
             .replace("G90", "G91"),
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
-    printer2.ok(&["backup"]);
+    printer2.ok(&["sync"]);
     assert_eq!(
         printer2.read("macros/macros.cfg"),
         MACROS
@@ -535,12 +535,12 @@ fn a_run_with_no_change_writes_nothing() {
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
-    printer2.ok(&["backup"]);
+    printer2.ok(&["sync"]);
 
     // The repository is checked (each run, without XDG_RUNTIME_DIR), but nothing is new.
     let before = file_times(printer2.dir.path());
     std::thread::sleep(std::time::Duration::from_millis(20));
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert_eq!(output, "No files changed. No backup made.\n");
     assert_eq!(file_times(printer2.dir.path()), before);
 }
@@ -562,7 +562,7 @@ fn check_repository_sets_how_often_printerkeep_checks() {
     let runtime = tempfile::tempdir().unwrap();
     let timer_run = || {
         let output = printer2
-            .command(&["backup"])
+            .command(&["sync"])
             .env("XDG_RUNTIME_DIR", runtime.path())
             .assert()
             .success()
@@ -604,7 +604,7 @@ fn a_web_edit_gets_to_a_printer_without_changes() {
     });
     let web_tip = git(Path::new(&url), &["rev-parse", "printer-1"]);
 
-    let output = printer.ok(&["backup"]);
+    let output = printer.ok(&["sync"]);
     assert!(
         output.contains("printer.cfg: wrote the changes from the repository."),
         "{output}"
@@ -621,10 +621,7 @@ fn a_web_edit_gets_to_a_printer_without_changes() {
         ),
         web_tip
     );
-    assert_eq!(
-        printer.ok(&["backup"]),
-        "No files changed. No backup made.\n"
-    );
+    assert_eq!(printer.ok(&["sync"]), "No files changed. No backup made.\n");
 }
 
 #[test]
@@ -648,7 +645,7 @@ fn shared_has_a_static_readme() {
         "macros/macros.cfg",
         &MACROS.replace("variable_temp: 230", "variable_temp: 250"),
     );
-    printer2.ok(&["backup"]);
+    printer2.ok(&["sync"]);
     assert_eq!(
         git(Path::new(&url), &["log", "--format=%s", "shared"]),
         "Copied macros/macros.cfg from printer-1"
@@ -692,13 +689,13 @@ fn a_printer_that_was_offline_gets_all_changes_in_one_merge() {
         (&printer3, "G1 E50 F300", "G1 E60 F300"),
         (&printer1, "G1 X10 Y10 F6000", "G1 X20 Y20 F6000"),
     ] {
-        printer.ok(&["backup"]);
+        printer.ok(&["sync"]);
         version = version.replace(from, to);
         printer.write("macros/macros.cfg", &version);
         printer.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     }
 
-    let output = printer2.ok(&["backup"]);
+    let output = printer2.ok(&["sync"]);
     assert!(
         output
             .contains("macros/macros.cfg: wrote the changes from shared. The local changes stay."),

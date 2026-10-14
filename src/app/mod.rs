@@ -1,7 +1,7 @@
 //! The commands. This module has the errors and what all commands use (settings, printer name, lock, the
 //! files of a backup). The commands are in:
 //!
-//! - `run`: the backup run (`backup`; the other commands run it too),
+//! - `run`: the run (`sync`, and `backup` without the changes; the other commands run it too),
 //! - `connection`: connect, change-token, rename,
 //! - `restore`,
 //! - `shared_files`: follow, stop-following, copy-to-shared, decide,
@@ -38,7 +38,7 @@ pub use connection::{
     rename,
 };
 pub use restore::{RestoreChoices, RestoreReport, restore};
-pub use run::{BackupReport, Outcome, backup};
+pub use run::{BackupReport, Outcome, backup, sync};
 use run::{COMMAND, Run, backup_and_send};
 pub use shared_files::{Confirm, copy_to_shared, decide, follow, stop_following};
 pub use status::{LastBackup, Status, status};
@@ -96,7 +96,7 @@ pub enum Error {
     FileNeedsDecision(String),
     #[error(
         "Another printer changed {0} in shared at the same time. To get its changes, run:\n  \
-         printerkeep backup\nThen try again."
+         printerkeep sync\nThen try again."
     )]
     SharedChanged(String),
     #[error(

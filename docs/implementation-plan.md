@@ -669,6 +669,21 @@ does all restores:
   another printer and from another repository (the connection doesn't change), the state file, and the undo
   command works. The tests for a restore after a new install use `--repository`.
 
+### sync and backup (2026-10-14)
+
+`printerkeep backup` did more than its name said: it also wrote the changes from shared and from the
+repository. Now:
+
+- `printerkeep sync` is the full run (a backup, the changes, send). The timer runs it.
+- `printerkeep backup` makes a backup and sends it, and never writes a file in the config folder. When the
+  repository has changes on the printer's branch, it keeps the backup on the printer and says to run
+  `printerkeep sync`.
+- Getting changes always needs a backup first (printerkeep writes a file only when the current version is in
+  the history), so there is no command that only gets changes.
+- Timers installed before 0.4 run `printerkeep backup`, and an update through Moonraker doesn't change the
+  units. Started by systemd (`INVOCATION_ID` is set), `backup` does the full run, and `status` says to run
+  `printerkeep install`, which writes the new unit.
+
 ## Tests
 
 | Kind | What |
