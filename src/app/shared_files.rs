@@ -1,4 +1,4 @@
-//! The commands for shared files: follow, stop-following, copy-to-shared and decide.
+//! The commands for shared files: follow, unfollow, copy-to-shared and decide.
 
 use super::*;
 
@@ -94,7 +94,7 @@ pub fn follow(paths: &Paths, files: &[String]) -> Result<Vec<String>, Error> {
 }
 
 /// Stops following shared files. The files stay on the printer.
-pub fn stop_following(paths: &Paths, files: &[String]) -> Result<Vec<String>, Error> {
+pub fn unfollow(paths: &Paths, files: &[String]) -> Result<Vec<String>, Error> {
     let (settings, printer_name) = load(paths)?;
     let _lock = lock(paths)?;
     let names = config_paths(paths, files, |path| {

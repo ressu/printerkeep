@@ -4,7 +4,7 @@
 //! - `run`: the run (`sync`, and `backup` without the changes; the other commands run it too),
 //! - `connection`: connect, change-token, rename,
 //! - `restore`,
-//! - `shared_files`: follow, stop-following, copy-to-shared, decide,
+//! - `shared_files`: follow, unfollow, copy-to-shared, decide,
 //! - `status`.
 //!
 //! The command modules `use super::*`: the imports below are also theirs.
@@ -40,7 +40,7 @@ pub use connection::{
 pub use restore::{RestoreChoices, RestoreReport, restore};
 pub use run::{BackupReport, Outcome, backup, sync};
 use run::{COMMAND, Run, backup_and_send};
-pub use shared_files::{Confirm, copy_to_shared, decide, follow, stop_following};
+pub use shared_files::{Confirm, copy_to_shared, decide, follow, unfollow};
 pub use status::{LastBackup, Status, status};
 
 #[derive(Debug, thiserror::Error)]

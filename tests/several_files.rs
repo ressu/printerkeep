@@ -96,7 +96,7 @@ fn one_file_that_cant_be_used_stops_the_copy() {
 }
 
 #[test]
-fn follow_and_stop_following_several_files() {
+fn follow_and_unfollow_several_files() {
     let (_dir, url) = repository();
     let printer1 = Printer::connected("printer-1", &url);
     let printer2 = Printer::connected("printer-2", &url);
@@ -114,7 +114,7 @@ fn follow_and_stop_following_several_files() {
     assert_eq!(printer2.read("macros/b.cfg"), B);
     assert!(follows(&printer2).contains("follow:\n  a.cfg\n  macros/b.cfg\n"));
 
-    printer2.ok(&["stop-following", "a.cfg", "macros/b.cfg"]);
+    printer2.ok(&["unfollow", "a.cfg", "macros/b.cfg"]);
     assert!(
         !follows(&printer2).contains("  a.cfg\n"),
         "{}",

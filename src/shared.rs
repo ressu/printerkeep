@@ -94,7 +94,7 @@ impl FileEvent {
             Event::NotInShared => not_in_shared(path),
             Event::MissingOnPrinter => format!(
                 "{path}: printerkeep follows it, but it isn't in the config folder. \
-                 To stop following it, run:\n  printerkeep stop-following {path}"
+                 To stop following it, run:\n  printerkeep unfollow {path}"
             ),
             Event::Invalid(reason) => format!("printerkeep can't follow {path}: {reason}"),
             Event::Stopped => format!("Stopped following {path}."),

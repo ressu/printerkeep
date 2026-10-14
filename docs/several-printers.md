@@ -51,11 +51,11 @@ follow:
 To stop following a file, run the command below. The file stays on the printer.
 
 ```sh
-printerkeep stop-following macros/macros.cfg
+printerkeep unfollow macros/macros.cfg
 ```
 
 You can give several files at once, for example `printerkeep copy-to-shared macros.cfg leds.cfg`. The same
-goes for `follow`, `stop-following`, and `decide`. printerkeep checks all the files first. If one can't be
+goes for `follow`, `unfollow`, and `decide`. printerkeep checks all the files first. If one can't be
 used, it changes nothing and tells you why. A symlink can't be shared, because printerkeep doesn't back up
 symlinks.
 

@@ -40,7 +40,7 @@ sometimes backwards English, so the skill replaces it; the skill keeps the usefu
 | Term | Meaning | Avoid |
 |---|---|---|
 | **shared** (noun and adjective) | The set of files that printers can follow. A file in shared is a **shared file**; its content there is the **shared version**. Printers use only the shared files they follow. | pool, library, common, "share" as a verb |
-| **follow** | A printer that follows a shared file gets changes to it from shared. Stopping is **stop following**. | subscribe, track, use, link |
+| **follow** | A printer that follows a shared file gets changes to it from shared. Stopping is **stop following**; the command is `unfollow`. | subscribe, track, use, link |
 | **copy to shared** | Make the shared version of a file equal to this printer's version. Used to add a file to shared and to send an improvement to other printers. | share, promote, publish, push, adopt, upload |
 | **local changes** | The differences between this printer's file and the shared version. They stay on this printer unless the user copies the file to shared. | deviation, drift, diff, patch |
 | **override** | A line marked so that it never leaves this printer and is never changed by shared, for example pin lines. Marked with the inline comment `# printerkeep: override`. | pin (means GPIO pins in Klipper), fix, force, local line |
@@ -163,7 +163,7 @@ printerkeep writes it.
 | `printerkeep install [--printer-name <printer name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--printer-name` sets the printer name. |
 | `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |
 | `printerkeep follow <file>...` | Starts to follow shared files. |
-| `printerkeep stop-following <file>...` | Stops following shared files. The files stay on the printer. |
+| `printerkeep unfollow <file>...` | Stops following shared files. The files stay on the printer. (`stop-following` is the old name, and still works.) |
 | `printerkeep rename <printer name>` | Gives the printer a new name. The history moves to the new branch; the repository keeps the old branch. |
 | `printerkeep copy-to-shared <file>... [--yes]` | Makes the shared version equal to this printer's version, except override lines. All files go to shared in one copy. Shows the changes and asks first; `--yes` does not ask. |
 | `printerkeep decide <file>... --use-shared\|--keep-mine` | Finishes needs-decision files without editing them, with the same choice for each. |

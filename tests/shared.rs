@@ -243,7 +243,7 @@ fn line_endings_of_the_printer_stay() {
 }
 
 #[test]
-fn stop_following_keeps_the_file() {
+fn unfollow_keeps_the_file() {
     let (_dir, url) = repository();
     let printer1 = Printer::connected("printer-1", &url);
     let printer2 = Printer::connected("printer-2", &url);
@@ -251,7 +251,7 @@ fn stop_following_keeps_the_file() {
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
     printer2.ok(&["follow", "macros/macros.cfg"]);
 
-    let output = printer2.ok(&["stop-following", "macros/macros.cfg"]);
+    let output = printer2.ok(&["unfollow", "macros/macros.cfg"]);
     assert!(
         output.contains("Stopped following macros/macros.cfg."),
         "{output}"
@@ -272,10 +272,19 @@ fn stop_following_keeps_the_file() {
     printer2.ok(&["sync"]);
     assert_eq!(printer2.read("macros/macros.cfg"), MACROS);
 
-    let error = printer2.fails(&["stop-following", "macros/macros.cfg"]);
+    let error = printer2.fails(&["unfollow", "macros/macros.cfg"]);
     assert!(
         error.contains("This printer doesn't follow macros/macros.cfg"),
         "{error}"
+    );
+
+    // The old name still works.
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+    printer2.ok(&["stop-following", "macros/macros.cfg"]);
+    assert!(
+        !printer2
+            .read("printerkeep.conf")
+            .contains("  macros/macros.cfg")
     );
 }
 
