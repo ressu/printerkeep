@@ -684,6 +684,19 @@ repository. Now:
   units. Started by systemd (`INVOCATION_ID` is set), `backup` does the full run, and `status` says to run
   `printerkeep install`, which writes the new unit.
 
+**Watch out when the units or the timer's command change (2026-10-14).** An update through Moonraker
+(`type: executable`) only replaces the program in `~/printerkeep`. It runs no command after the update, and
+with `is_system_service: False` it restarts nothing. So the units stay as the last `printerkeep install` wrote
+them, on every installed printer, until the user runs `printerkeep install` again. Each change to the units, or
+to what the timer's command does, must:
+
+- keep the old units working (as `backup` under systemd does now), and
+- make `printerkeep status` say that the timer is out of date, with `printerkeep install` as the fix.
+
+Decided for now: users run `printerkeep install` by hand. A possible later fix: the run that the timer starts
+rewrites its own unit when it's out of date (only units with printerkeep's first line, and only when
+different), then runs `systemctl --user daemon-reload`.
+
 ## Tests
 
 | Kind | What |
