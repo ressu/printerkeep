@@ -278,14 +278,10 @@ fn unfollow_keeps_the_file() {
         "{error}"
     );
 
-    // The old name still works.
+    // The old name is gone.
     printer2.ok(&["follow", "macros/macros.cfg"]);
-    printer2.ok(&["stop-following", "macros/macros.cfg"]);
-    assert!(
-        !printer2
-            .read("printerkeep.conf")
-            .contains("  macros/macros.cfg")
-    );
+    let error = printer2.fails(&["stop-following", "macros/macros.cfg"]);
+    assert!(error.contains("unrecognized subcommand"), "{error}");
 }
 
 #[test]

@@ -93,7 +93,6 @@ enum Command {
         files: Vec<String>,
     },
     /// Stop following shared files. The files stay on this printer.
-    #[command(alias = "stop-following")]
     Unfollow {
         /// The paths in the config folder.
         #[arg(required = true, value_name = "FILE")]
