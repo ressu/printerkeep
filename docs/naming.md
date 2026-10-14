@@ -160,11 +160,11 @@ printerkeep writes it.
 | `printerkeep change-token` | Replaces the token of the repository, for example when it expired. The new token replaces the old one only if the repository accepts it. |
 | `printerkeep install [--printer-name <printer name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--printer-name` sets the printer name. |
 | `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |
-| `printerkeep follow <file>` | Starts to follow a shared file. |
-| `printerkeep stop-following <file>` | Stops following a shared file. The file stays on the printer. |
+| `printerkeep follow <file>...` | Starts to follow shared files. |
+| `printerkeep stop-following <file>...` | Stops following shared files. The files stay on the printer. |
 | `printerkeep rename <printer name>` | Gives the printer a new name. The history moves to the new branch; the repository keeps the old branch. |
-| `printerkeep copy-to-shared <file> [--yes]` | Makes the shared version equal to this printer's version, except override lines. Shows the changes and asks first; `--yes` does not ask. |
-| `printerkeep decide <file> --use-shared\|--keep-mine` | Finishes a needs-decision file without editing it. |
+| `printerkeep copy-to-shared <file>... [--yes]` | Makes the shared version equal to this printer's version, except override lines. All files go to shared in one copy. Shows the changes and asks first; `--yes` does not ask. |
+| `printerkeep decide <file>... --use-shared\|--keep-mine` | Finishes needs-decision files without editing them, with the same choice for each. |
 
 Commands are verbs. `connect` (decided 2026-10-14) replaces `add-repository`, which replaced the earlier
 `repository`. "Add a repository" sounded like making one, and the printer already has a git repository for

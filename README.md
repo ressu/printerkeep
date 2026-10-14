@@ -338,6 +338,11 @@ printerkeep copy-to-shared macros/macros.cfg
 This makes the shared version the same as this printer's version, and this printer then follows the file.
 Run it again later to send an improvement to the other printers.
 
+You can give several files at once, for example `printerkeep copy-to-shared macros.cfg leds.cfg`. The same
+goes for `follow`, `stop-following` and `decide`. printerkeep checks all the files first: if one can't be
+used, it changes nothing and tells you why. A symlink can't be shared, because printerkeep doesn't back up
+symlinks.
+
 Before it copies, printerkeep shows the changes that will go to the other printers and asks you to confirm.
 Look for lines that belong to this printer only, for example lines that you commented out because this
 printer lacks some hardware. If you find such lines, answer no. Then make only the improvement in the shared

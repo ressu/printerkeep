@@ -78,37 +78,41 @@ enum Command {
         #[arg(long, value_name = "PRINTER_NAME")]
         printer_name: Option<String>,
     },
-    /// Start to follow a shared file. printerkeep then writes the changes from shared into it.
+    /// Start to follow shared files. printerkeep then writes the changes from shared into them.
     ///
-    /// If the file is on this printer, its differences from the shared version stay as local changes.
+    /// If a file is on this printer, its differences from the shared version stay as local changes.
     Follow {
-        /// The path in the config folder, for example macros/macros.cfg.
-        file: String,
+        /// The paths in the config folder, for example macros/macros.cfg.
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<String>,
     },
-    /// Stop following a shared file. The file stays on this printer.
+    /// Stop following shared files. The files stay on this printer.
     StopFollowing {
-        /// The path in the config folder.
-        file: String,
+        /// The paths in the config folder.
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<String>,
     },
-    /// Make the shared version of a file equal to the version on this printer, and follow the file.
+    /// Make the shared version of files equal to the version on this printer, and follow the files.
     ///
-    /// Other printers that follow the file get the changes at their next backup.
+    /// Other printers that follow a file get the changes at their next backup.
     ///
     /// printerkeep shows the changes that go to shared, and asks first.
     CopyToShared {
-        /// The path in the config folder.
-        file: String,
+        /// The paths in the config folder. All files go to shared in one copy.
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<String>,
         /// Do not ask. Necessary when printerkeep does not run on a terminal.
         #[arg(long)]
         yes: bool,
     },
-    /// Finish a file that needs decision, without editing it.
+    /// Finish files that need a decision, without editing them.
     ///
     /// Usually you edit the file in Fluidd or Mainsail: keep the lines that you want and delete the ####
     /// lines. printerkeep records the decision at the next backup.
     Decide {
-        /// The path in the config folder.
-        file: String,
+        /// The paths in the config folder. The same choice applies to each file.
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<String>,
         /// Use the shared lines.
         #[arg(
             long,
@@ -206,15 +210,15 @@ fn main() -> ExitCode {
             app::restore(&paths, &choices, &read_token, &Terminal).map(|report| report.lines())
         }
         Command::ChangeToken => app::change_token(&paths, &read_token),
-        Command::Follow { file } => app::follow(&paths, file),
-        Command::StopFollowing { file } => app::stop_following(&paths, file),
-        Command::CopyToShared { file, yes } => {
+        Command::Follow { files } => app::follow(&paths, files),
+        Command::StopFollowing { files } => app::stop_following(&paths, files),
+        Command::CopyToShared { files, yes } => {
             let confirm = |preview: &str| confirm_copy(preview, *yes);
-            app::copy_to_shared(&paths, file, &confirm)
+            app::copy_to_shared(&paths, files, &confirm)
         }
         Command::Decide {
-            file, use_shared, ..
-        } => app::decide(&paths, file, *use_shared),
+            files, use_shared, ..
+        } => app::decide(&paths, files, *use_shared),
         Command::Rename { printer_name } => app::rename(&paths, printer_name),
         Command::Install { printer_name } => install::Locations::from_env()
             .and_then(|at| install::install(&paths, &at, printer_name.as_deref()))

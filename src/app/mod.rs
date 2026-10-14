@@ -68,6 +68,16 @@ pub enum Error {
     CannotUseFile { file: String, reason: String },
     #[error("{0} isn't in the config folder. Check the path: it starts in the config folder.")]
     NoSuchFile(String),
+    #[error(
+        "{0} is a symlink. printerkeep doesn't back up symlinks, so it can't share or follow one. To share \
+         the file, copy it into the config folder in place of the symlink."
+    )]
+    Symlink(String),
+    #[error(
+        "Nothing changed, because some files can't be used:\n{}",
+        .0.iter().map(|e| format!("- {e}")).collect::<Vec<_>>().join("\n")
+    )]
+    Several(Vec<Error>),
     #[error("{0} isn't in shared yet. To add it to shared, run:\n  printerkeep copy-to-shared {0}")]
     NotInShared(String),
     #[error("This printer doesn't follow {0}, so there's nothing to stop.")]
