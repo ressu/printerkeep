@@ -130,10 +130,10 @@ problem.
 ### Send backups to a repository
 
 A repository keeps a copy of your backups away from the printer, for example for when the SD card fails.
-Make an **empty, private** repository, for example on GitHub. Then run:
+Make an **empty, private** repository, for example on GitHub. Then connect the printer to it:
 
 ```sh
-printerkeep add-repository https://github.com/<user>/<repository>.git
+printerkeep connect https://github.com/<user>/<repository>.git
 ```
 
 Replace `<user>` and `<repository>` with your GitHub user name and the name of the repository.
@@ -189,7 +189,7 @@ Use the same repository:
 1. Stop and remove klipper-backup on the printer, as its documentation describes. If it keeps running, it
    sends its backups to the same branch.
 2. Make a new token for printerkeep.
-3. Run `printerkeep add-repository` as described above.
+3. Run `printerkeep connect` as described above.
 4. Select the klipper-backup branch of this printer: `main`, or the `branch_name` that you gave
    klipper-backup.
 5. Answer yes to continue its history.
@@ -197,7 +197,7 @@ Use the same repository:
 In a script, give the answers as options:
 
 ```sh
-printerkeep add-repository <url> --printer-name <branch> --continue
+printerkeep connect <url> --printer-name <branch> --continue
 ```
 
 printerkeep then continues the klipper-backup history. The files move from `printer_data/config` to the top
@@ -243,7 +243,7 @@ printerkeep works without settings. To change its behavior, use the settings fil
 # The printer name, which is also its branch in the repository. The default is main.
 # To change it, run printerkeep rename <name> (see "Printer name"), because the history must move too.
 printer_name: printer-1
-# Written by add-repository and restore.
+# Written by connect and restore.
 repository: https://github.com/<user>/<repository>.git
 # Files that printerkeep skips, one rule per line, like .gitignore rules.
 ignore:
@@ -273,7 +273,7 @@ What `rename` does:
   no longer need it.
 - If the repository already has a branch with the new name, from another printer or from klipper-backup,
   `rename` stops. It never takes over a branch. To make this printer continue that branch, run
-  `printerkeep add-repository <url>` and select that printer. In a script, add
+  `printerkeep connect <url>` and select that printer. In a script, add
   `--printer-name <branch> --continue`.
 
 ### Files that printerkeep skips
@@ -292,7 +292,7 @@ printerkeep always skips these files, in addition to your `ignore` rules:
 
 All printers use the same repository, and each printer has its own branch. Give each printer its own name
 (see [Printer name](#printer-name)); one printer can keep the default name `main`. printerkeep never takes
-over the branch of another printer with the same name: `add-repository` stops and tells you what to do.
+over the branch of another printer with the same name: `connect` stops and tells you what to do.
 
 Files that several printers use can be **shared**. A printer that **follows** a shared file gets the changes
 to it and keeps its own changes to the file, its **local changes**. Each printer follows only the files

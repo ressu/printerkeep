@@ -38,7 +38,7 @@ impl Printer {
     pub fn connected(name: &str, url: &str) -> Self {
         let printer = Self::named(name);
         printer.write("printer.cfg", &format!("[printer]\n# {name}\n"));
-        printer.ok(&["add-repository", url]);
+        printer.ok(&["connect", url]);
         printer
     }
 

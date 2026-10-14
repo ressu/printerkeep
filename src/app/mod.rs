@@ -2,7 +2,7 @@
 //! files of a backup). The commands are in:
 //!
 //! - `run`: the backup run (`backup`; the other commands run it too),
-//! - `connection`: add-repository, change-token, restore, rename,
+//! - `connection`: connect, change-token, restore, rename,
 //! - `shared_files`: follow, stop-following, copy-to-shared, decide,
 //! - `status`.
 //!
@@ -32,8 +32,8 @@ mod shared_files;
 mod status;
 
 pub use connection::{
-    AddReport, Ask, AskToken, Connect, RestoreReport, TokenRequest, TokenUse, add_repository,
-    change_token, rename, restore,
+    Ask, AskToken, ConnectChoices, ConnectReport, RestoreReport, TokenRequest, TokenUse,
+    change_token, connect, rename, restore,
 };
 pub use run::{BackupReport, Outcome, backup};
 use run::{COMMAND, Run, backup_and_send};
@@ -57,8 +57,8 @@ pub enum Error {
     #[error(transparent)]
     Shared(#[from] SharedError),
     #[error(
-        "Shared files need a repository, and this printer doesn't have one yet. To add one, run:\n  \
-         printerkeep add-repository <url>"
+        "Shared files need a repository, and this printer isn't connected to one yet. To connect it, run:\n  \
+         printerkeep connect <url>"
     )]
     SharedNeedsRepository,
     #[error("Can't use {file}: {reason}.")]
@@ -115,12 +115,12 @@ pub enum Error {
     )]
     TokenRefused { url: String },
     #[error(
-        "This printer doesn't have a repository yet. To add one, run:\n  printerkeep add-repository <url>"
+        "This printer isn't connected to a repository yet. To connect it, run:\n  printerkeep connect <url>"
     )]
     NoRepository,
     #[error(
         "The repository {0} uses an SSH key, not a token. If the repository refuses the key, run:\n  \
-         printerkeep add-repository {0}"
+         printerkeep connect {0}"
     )]
     NoTokenForUrl(String),
     #[error(
@@ -133,29 +133,29 @@ pub enum Error {
     #[error(
         "The branch {name} in the repository has backups that have no history in common with this \
          printer's backups.\nprinterkeep didn't continue it, and changed nothing.\n\
-         To continue that branch on this printer, run:\n  printerkeep add-repository {url} --printer-name \
-         {name} --continue\nTo use a different branch, run:\n  printerkeep add-repository {url} \
+         To continue that branch on this printer, run:\n  printerkeep connect {url} --printer-name \
+         {name} --continue\nTo use a different branch, run:\n  printerkeep connect {url} \
          --printer-name <another name>"
     )]
     NameInUse { name: String, url: String },
     #[error(
         "The repository has these printers: {}. This printer has the default name main, so printerkeep \
          can't tell which printer this is, and it doesn't guess.\nIf it's one of them, run:\n  \
-         printerkeep add-repository {url} --printer-name <its name>\nFor a new printer, run:\n  \
-         printerkeep add-repository {url} --printer-name <new name>",
+         printerkeep connect {url} --printer-name <its name>\nFor a new printer, run:\n  \
+         printerkeep connect {url} --printer-name <new name>",
         .printers.join(", ")
     )]
     WhichPrinter { url: String, printers: Vec<String> },
     #[error(
         "The repository already has a branch named '{name}', from another printer or from klipper-backup. \
          rename never takes over a branch in the repository, so choose a different name.\nTo make this \
-         printer continue that branch instead, run:\n  printerkeep add-repository {url} --printer-name \
+         printer continue that branch instead, run:\n  printerkeep connect {url} --printer-name \
          {name} --continue"
     )]
     NameTaken { name: String, url: String },
     #[error(
         "The repository has no printer backups yet. Check the URL. To send backups to it, run this on the \
-         printer that has them:\n  printerkeep add-repository <url>"
+         printer that has them:\n  printerkeep connect <url>"
     )]
     NothingToRestore,
     #[error(

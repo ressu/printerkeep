@@ -29,7 +29,8 @@ sometimes backwards English, so the skill replaces it; the skill keeps the usefu
 | **backup** (noun and verb) | Save the current files of the config folder to the history. A backup is made only when a file changed. | snapshot, commit, sync |
 | **history** | All backups of a printer. | log, commits |
 | **restore** | Put a printer's files back from the repository, for example after a new install. | recover, clone |
-| **repository** | The git repository where backups are stored (for example on GitHub). | remote, origin, repo (in messages) |
+| **repository** | The git repository on a git host (GitHub, Gitea, a NAS, …) that printerkeep sends backups to. It's never on the printer: the printer's own backups are its **history**. | remote, origin, repo (in messages) |
+| **connect** | Link the printer to a repository that already exists, so printerkeep sends backups to it. Nothing is created. | add (sounds like making a repository), link, set up |
 | **send** | Copy new backups from the printer to the repository. printerkeep never overwrites the repository. | push, upload, sync |
 | **settings file** | The one file in the config folder where the user changes the tool's settings. | manifest, config file (ambiguous with Klipper config) |
 
@@ -121,7 +122,7 @@ platforms). The data paths are per `printer_data` folder, so more instances per 
 |---|---|---|
 | Settings file | `printerkeep.conf` in the config folder | Moonraker style (see below). Never `.cfg`: `[include *.cfg]` would make Klipper load it. |
 | State | `.printerkeep-state.json` in the config folder | printerkeep writes it. Backups include it, so it is on the printer's branch and comes back with a restore. Fluidd hides dotfiles. |
-| Log and status | `printer_data/logs/printerkeep.log` | Fluidd and Mainsail show the logs folder. Each run writes the status of each followed file and, after `add-repository`, the public key. Not in the config folder, so it never causes a backup. |
+| Log and status | `printer_data/logs/printerkeep.log` | Fluidd and Mainsail show the logs folder. Each run writes the status of each followed file and, after `connect`, the public key. Not in the config folder, so it never causes a backup. |
 | Git data | `printer_data/printerkeep/repo.git` | Outside the config folder (C1). |
 
 ### Settings file format
@@ -145,7 +146,7 @@ check_repository: 1h
 
 `printer_name` is optional. The default is `main` (decided 2026-10-13: never the host name, which is often an
 image default such as `mainsail` or `raspberrypi`, or set by DHCP). A user with one printer and no repository does not
-need this file. When the user runs `add-repository`,
+need this file. When the user runs `connect`,
 printerkeep writes it.
 
 ### Commands
@@ -155,7 +156,7 @@ printerkeep writes it.
 | `printerkeep backup` | Makes a backup if a file changed, and applies changes from shared. The timer runs this. |
 | `printerkeep status` | Shows the status of the printer and of each followed file. |
 | `printerkeep restore <url> [--printer-name <printer name>]` | Restores a printer from the repository. `--printer-name` selects the printer when the repository has several. |
-| `printerkeep add-repository <url> [--printer-name <printer name>] [--continue] [--from-now]` | Connects the printer to a repository. Shows the printers in it and asks which one this printer is; continues that printer's branch (asks first if its backups are not from this printer) or starts a new one. Without a terminal, the options give the answers. With an `https://` URL it uses the stored token, or asks for a personal access token; with an SSH URL it makes an SSH key and shows the public key. |
+| `printerkeep connect <url> [--printer-name <printer name>] [--continue] [--from-now]` | Connects the printer to a repository. Shows the printers in it and asks which one this printer is; continues that printer's branch (asks first if its backups are not from this printer) or starts a new one. Without a terminal, the options give the answers. With an `https://` URL it uses the stored token, or asks for a personal access token; with an SSH URL it makes an SSH key and shows the public key. |
 | `printerkeep change-token` | Replaces the token of the repository, for example when it expired. The new token replaces the old one only if the repository accepts it. |
 | `printerkeep install [--printer-name <printer name>]` | Installs printerkeep for this user, or updates the installation. No root access. `--printer-name` sets the printer name. |
 | `printerkeep uninstall` | Removes what `install` made. Keeps the history, the login and `printerkeep.conf`. |
@@ -165,7 +166,9 @@ printerkeep writes it.
 | `printerkeep copy-to-shared <file> [--yes]` | Makes the shared version equal to this printer's version, except override lines. Shows the changes and asks first; `--yes` does not ask. |
 | `printerkeep decide <file> --use-shared\|--keep-mine` | Finishes a needs-decision file without editing it. |
 
-Commands are verbs. `add-repository` replaces the earlier `repository`.
+Commands are verbs. `connect` (decided 2026-10-14) replaces `add-repository`, which replaced the earlier
+`repository`. "Add a repository" sounded like making one, and the printer already has a git repository for
+its history. `add-repository` still works as a hidden alias, so scripts don't break.
 
 ### In the repository
 

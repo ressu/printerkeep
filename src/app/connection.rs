@@ -1,10 +1,10 @@
-//! The repository commands: add-repository, change-token, restore and rename.
+//! The repository commands: connect, change-token, restore and rename.
 
 use super::*;
 
-/// What `add-repository` did.
+/// What `connect` did.
 #[derive(Debug)]
-pub struct AddReport {
+pub struct ConnectReport {
     pub url: String,
     pub token: TokenUse,
     pub printer_name: String,
@@ -16,7 +16,7 @@ pub struct AddReport {
     pub backup: BackupReport,
 }
 
-impl AddReport {
+impl ConnectReport {
     pub fn lines(&self) -> Vec<String> {
         let mut lines = vec![format!("Connected to the repository {}.", self.url)];
         match self.token {
@@ -95,7 +95,7 @@ pub enum TokenUse {
     New,
 }
 
-/// The questions that add-repository and restore ask on a terminal. Each returns `None` when there is no
+/// The questions that connect and restore ask on a terminal. Each returns `None` when there is no
 /// terminal: then printerkeep does not guess, and the caller gets an error that names the options. A
 /// question is short lines: the explanation first, the question itself on the last line.
 pub trait Ask {
@@ -107,7 +107,7 @@ pub trait Ask {
 
 /// What a script (or the command line) decided without questions.
 #[derive(Debug, Default, Clone)]
-pub struct Connect {
+pub struct ConnectChoices {
     /// `--printer-name`: this printer's name in the repository.
     pub printer_name: Option<String>,
     /// `--continue`: continue the repository's branch, also when its history is not this printer's.
@@ -138,13 +138,13 @@ fn printer_branches(git: &Git, remote: &git::Remote) -> Result<Vec<String>, Erro
 /// Connects the printer to a repository: finds which printer in the repository this is (asks, or uses
 /// `choices`), continues that printer's branch or starts a new one, and sends the backups. `token` is called
 /// only for an https:// URL without a stored token that works.
-pub fn add_repository(
+pub fn connect(
     paths: &Paths,
     url: &str,
-    choices: &Connect,
+    choices: &ConnectChoices,
     token: AskToken,
     ask: &dyn Ask,
-) -> Result<AddReport, Error> {
+) -> Result<ConnectReport, Error> {
     let (settings, current) = load(paths)?;
     // A name in printerkeep.conf or --printer-name is the user's choice; the default main is not.
     let chosen = choices.printer_name.is_some() || settings.printer_name.is_some();
@@ -155,7 +155,7 @@ pub fn add_repository(
     let _lock = lock(paths)?;
 
     let git = open_git(paths, &current)?;
-    let connection = connect(&git, paths, url, kind, &current, token)?;
+    let connection = log_in(&git, paths, url, kind, &current, token)?;
     let remote = connection.remote;
     let printers = printer_branches(&git, &remote)?;
 
@@ -268,7 +268,7 @@ pub fn add_repository(
         _ => None,
     };
     let backup = backup_and_send(paths, &settings, &target, Run { message, ..COMMAND })?;
-    Ok(AddReport {
+    Ok(ConnectReport {
         url: url.to_string(),
         token: connection.token,
         renamed_from: (target != current).then_some(current),
@@ -336,7 +336,7 @@ struct Connection {
 /// Connects to the repository and tests the login. For https://, printerkeep uses the stored token, and
 /// asks for a new one only if there is no stored token or the repository does not accept it. For SSH,
 /// printerkeep makes its key, and shows it if the repository does not accept it.
-fn connect(
+fn log_in(
     git: &Git,
     paths: &Paths,
     url: &str,
@@ -345,7 +345,7 @@ fn connect(
     token: AskToken,
 ) -> Result<Connection, Error> {
     match kind {
-        UrlKind::Https => connect_with_token(git, paths, url, printer_name, token, false),
+        UrlKind::Https => log_in_with_token(git, paths, url, printer_name, token, false),
         UrlKind::Ssh => {
             repository::ensure_ssh_key(paths, printer_name)?;
             let remote = repository::remote(url, paths)?;
@@ -375,7 +375,7 @@ fn connect(
 }
 
 /// `replace`: do not use the stored token, ask for a new one.
-fn connect_with_token(
+fn log_in_with_token(
     git: &Git,
     paths: &Paths,
     url: &str,
@@ -447,7 +447,7 @@ pub fn change_token(paths: &Paths, token: AskToken) -> Result<Vec<String>, Error
     let printer_name = printer_name(&settings)?;
     let _lock = lock(paths)?;
     let git = open_git(paths, &printer_name)?;
-    connect_with_token(&git, paths, &url, &printer_name, token, true)?;
+    log_in_with_token(&git, paths, &url, &printer_name, token, true)?;
     let mut lines = vec![format!(
         "The repository {url} accepted the new token. printerkeep uses it from now on."
     )];
@@ -502,7 +502,7 @@ pub fn restore(
     let _lock = lock(paths)?;
 
     let git = open_git(paths, &current)?;
-    let remote = connect(&git, paths, url, kind, &current, token)?.remote;
+    let remote = log_in(&git, paths, url, kind, &current, token)?.remote;
     let available = printer_branches(&git, &remote)?;
     let printer_name = match printer {
         Some(name) if available.iter().any(|b| b == name) => name.to_string(),

@@ -180,7 +180,7 @@ impl fmt::Display for Status {
             None => writeln!(
                 f,
                 "Repository: none. The history is on this printer only. \
-                 To add one: printerkeep add-repository <url>"
+                 To connect it to a repository: printerkeep connect <url>"
             ),
         }
     }

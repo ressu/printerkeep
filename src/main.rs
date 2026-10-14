@@ -34,7 +34,8 @@ enum Command {
     ///
     /// printerkeep shows the printers in the repository. If it does not know which one this printer is, it
     /// asks (on a terminal). Without a terminal it never guesses: use the options below.
-    AddRepository {
+    #[command(alias = "add-repository")]
+    Connect {
         /// The repository URL, without a token.
         url: String,
         /// This printer's name in the repository. If the repository has a branch with this name, printerkeep
@@ -168,19 +169,18 @@ fn main() -> ExitCode {
             }
             Vec::new()
         }),
-        Command::AddRepository {
+        Command::Connect {
             url,
             printer_name,
             continue_history,
             from_now,
         } => {
-            let choices = app::Connect {
+            let choices = app::ConnectChoices {
                 printer_name: printer_name.clone(),
                 continue_history: *continue_history,
                 from_now: *from_now,
             };
-            app::add_repository(&paths, url, &choices, &read_token, &Terminal)
-                .map(|report| report.lines())
+            app::connect(&paths, url, &choices, &read_token, &Terminal).map(|report| report.lines())
         }
         Command::Restore {
             url,

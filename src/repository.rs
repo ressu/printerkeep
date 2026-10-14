@@ -194,9 +194,7 @@ fn login_failed(url: &str) -> String {
         "If the token expired or was removed, make a new token, then run:\n  printerkeep change-token"
             .to_string()
     } else {
-        format!(
-            "If the key was removed from the repository, run:\n  printerkeep add-repository {url}"
-        )
+        format!("If the key was removed from the repository, run:\n  printerkeep connect {url}")
     };
     format!("The repository {url} refused the login, or the URL is wrong.\n{what}")
 }

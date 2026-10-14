@@ -71,7 +71,7 @@ src/
   main.rs               command line (clap), token and confirm prompts, log lines
   app/                  the commands: errors, settings, printer name, lock (mod.rs)
     run.rs              the backup run: backup, changes from shared and the repository, send
-    connection.rs       add-repository, change-token, restore, rename
+    connection.rs       connect, change-token, restore, rename
     shared_files.rs     follow, stop-following, copy-to-shared, decide
     status.rs           printerkeep status
   settings.rs           printerkeep.conf: strict Moonraker-style subset (C3)
@@ -139,7 +139,7 @@ Each milestone ends with working, tested software.
 
 ### M2. Repository and restore (S2, S3)
 
-- `add-repository <url>`, two kinds of authentication (the URL selects):
+- `connect <url>`, two kinds of authentication (the URL selects):
   - `https://`: personal access token, from a prompt or standard input. Stored with
     `git -c credential.helper="store --file=printer_data/printerkeep/credentials"` (mode 600). Show the
     GitHub steps for a fine-grained token (one repository, "Contents: read and write").
@@ -170,7 +170,7 @@ Each milestone ends with working, tested software.
 - **Tokens (changed 2026-10-11, after the first live test):**
   - The token is stored per `printer_data` folder (`printer_data/printerkeep/credentials`), not per user. A
     test copy in another folder has its own token.
-  - `add-repository` uses the stored token. It asks for a token only if there is none, or if the repository
+  - `connect` uses the stored token. It asks for a token only if there is none, or if the repository
     does not accept it.
   - `change-token` replaces the token. A new token goes to `credentials.new` first. It replaces the old token
     only after the repository accepts it, so a wrong token never breaks a working login.
@@ -187,7 +187,7 @@ Each milestone ends with working, tested software.
 - `backup` exits with 0 when the backup worked, also when sending failed. The output, the log and `status`
   show the problem. A printer that is offline for a short time is not a failed service.
 - A URL with a token in it is refused, because printerkeep.conf (which is backed up) would contain it.
-- `add-repository` and `restore` write `printer_name` and `repository` to printerkeep.conf, so a new host
+- `connect` and `restore` write `printer_name` and `repository` to printerkeep.conf, so a new host
   name does not start a new history.
 
 ### M3. Installer and updates (S4, S5)
@@ -255,8 +255,8 @@ Each milestone ends with working, tested software.
 
 ### M4. First release
 
-- User README: install, first backup, add a repository, restore.
-- People who move from klipper-backup use the same repository: `add-repository` continues the
+- User README: install, first backup, connect a repository, restore.
+- People who move from klipper-backup use the same repository: `connect` continues the
   klipper-backup history (see "Move from klipper-backup").
 - **Done when:** the authors' printers run the first release.
 
@@ -473,7 +473,7 @@ later, if users need it.
 
 The host name was the default printer name. That is a poor choice: image defaults (`mainsail`,
 `raspberrypi`, `fluiddpi`) are common, DHCP can change the name, and the name was fixed only by
-`add-repository`. Worst case: two printers with the same name, and the second `add-repository` continued the
+`connect`. Worst case: two printers with the same name, and the second `connect` continued the
 first printer's history (it kept its own backups only as a local reference).
 
 - The default name is `main`, the usual name of a repository's first branch. An empty `printer_name` means
@@ -483,7 +483,7 @@ first printer's history (it kept its own backups only as a local reference).
 - `printerkeep rename <name>` moves the local history (the branch, and the sent and fetched references) to
   the new name and sends it. The repository keeps the old branch (the output says so). It refuses a name that
   the repository has already. The "change the name only before the first send" warning is gone.
-- `add-repository` with a branch of the same name in the repository:
+- `connect` with a branch of the same name in the repository:
   - common history: continue it (as before);
   - no common history, and the branch has `.cfg` files: stop. It is another printer, a new install of this
     printer (use `restore`), or a klipper-backup branch. printerkeep never takes over that history by itself;
@@ -492,7 +492,7 @@ first printer's history (it kept its own backups only as a local reference).
     backups after that.
 - klipper-backup branches: see "Move from klipper-backup".
 - Command line (decided 2026-10-13): the printer name is always `--printer-name <name>` (`install`,
-  `restore`, and `add-repository` with M7), the same words as `PRINTER_NAME` and `printer_name:`. The rule:
+  `restore`, and `connect` with M7), the same words as `PRINTER_NAME` and `printer_name:`. The rule:
   the main thing a command acts on is positional, and things that change how it acts are flags. Thus only
   `rename <printer name>` has it as a positional argument: the name is what it acts on. Not both forms for one
   command: two ways to write the same thing are harder to learn and to read. `install --name` and `restore
@@ -500,7 +500,7 @@ first printer's history (it kept its own backups only as a local reference).
 
 ### Move from klipper-backup (2026-10-13)
 
-Built into `add-repository` (decided with the user; replaces the postponed migration guide and the idea of a
+Built into `connect` (decided with the user; replaces the postponed migration guide and the idea of a
 script):
 
 - If the branch with the printer name has no common history with the printer and its README.md starts with
@@ -522,7 +522,7 @@ script):
 ### M7. Connect to a repository, and tell the user about problems
 
 Found in a test on a real printer (2026-10-13). The user removed printerkeep's local data, installed again,
-and wanted to run `add-repository` (and to test the klipper-backup conversion). What happened:
+and wanted to run `connect` (and to test the klipper-backup conversion). What happened:
 
 - `uninstall` keeps `printerkeep.conf`, so the new install was still connected (`repository:` and
   `printer_name:`, from an old test build). Its first backup tried to send at once. The install output did
@@ -535,7 +535,7 @@ and wanted to run `add-repository` (and to test the klipper-backup conversion). 
   and `send-problem`.
 
 The cause behind it: printerkeep expects the user to know hidden state (the name and the repository in
-`printerkeep.conf`) and to select the right command among `add-repository`, `restore` and `rename`. The user
+`printerkeep.conf`) and to select the right command among `connect`, `restore` and `rename`. The user
 thinks "which printer in the repository is this?"; printerkeep thinks "is there a branch with my exact name?".
 
 Terms: to **continue** a history = the printer's branch is set to the repository's last backup, and the next
@@ -543,7 +543,7 @@ backup is made on top of it from the files in the config folder. Backups that we
 not deleted and not sent: they are **set aside** (`refs/printerkeep/kept/<name>-<time>`). Continue never
 changes files.
 
-1. **`add-repository` and `restore` ask which printer this is.**
+1. **`connect` and `restore` ask which printer this is.**
    - Both first show what they found: the printer name (and where it comes from: `printerkeep.conf` or the
      default `main`), and the printer branches in the repository.
    - A branch with this printer's name and a different history: "Continue that history on this printer?"
@@ -554,11 +554,11 @@ changes files.
      This rename must work although the repository has the name (`rename` refuses that today, as a guard).
      Users expect `rename` to rename the branch in the repository; it does not (it makes a new branch and
      leaves the old one). The README explains this since 2026-10-13. With M7, "make this printer continue
-     that branch" is a question of `add-repository`, not a manual edit of `printerkeep.conf`.
+     that branch" is a question of `connect`, not a manual edit of `printerkeep.conf`.
    - A new branch, and the local history has more than the install's first backup: "Send the backups made
      on this printer, or start the history in the repository from now?" From now: one backup of the current
      files; the local history is set aside.
-   - **`--printer-name` for both commands:** `add-repository <url> --printer-name <name>`, the same as
+   - **`--printer-name` for both commands:** `connect <url> --printer-name <name>`, the same as
      `install` and `restore` (a user expected add-repository to take a printer name). With a name, this
      printer takes that name: if the repository has that branch, it continues it (after the question); if
      not, it starts a new branch with that name. This replaces the manual edit of `printer_name:`.
@@ -575,7 +575,7 @@ changes files.
 4. **Messages:** each problem says what happened, why, and the exact command or step that fixes it. Review
    all user-facing errors for this. For example: "The branch <name> in the repository has backups with no
    common history with this printer's backups. printerkeep sends nothing, so nothing in the repository is
-   overwritten. If this printer was set up again: printerkeep add-repository <url> (and answer yes). If it
+   overwritten. If this printer was set up again: printerkeep connect <url> (and answer yes). If it
    is a different printer: printerkeep rename <name>."
 5. **Log changes, not states:** a problem is logged when it starts, when it changes and when it is solved
    ("Sending works again: sent 3 backups"). Runs in between are quiet, and `send-problem` is written only
@@ -597,7 +597,7 @@ the repository's `main` not read or changed); the klipper-backup per-printer bra
 now"; no terminal (stops with the options); each problem logged once.
 
 **Done when:** on a real printer, a reinstall and a reconnect, a klipper-backup conversion with a branch per
-printer, and a restore after a new install all work with `add-repository` or `restore` and its questions,
+printer, and a restore after a new install all work with `connect` or `restore` and its questions,
 without hidden state. A problem shows once in the log, with its fix, and in `printerkeep status`.
 
 Part 1 (2026-10-13): points 1 and 3 (`app::Ask`, `app::Connect`, `repository::set_aside` and
@@ -626,7 +626,7 @@ Part 1 (2026-10-13): points 1 and 3 (`app::Ask`, `app::Connect`, `repository::se
 Part 2 (2026-10-13): points 2, 4 and 5.
 
 - The backup run continues the repository's history by itself when the send is refused, the histories
-  have no common backup, and `printerkeep.conf` names this printer (`add-repository` and `restore` always
+  have no common backup, and `printerkeep.conf` names this printer (`connect` and `restore` always
   write it). One line says so, with the reference where the local backups were set aside. Tested with the
   real case: local data removed, `printerkeep.conf` kept.
 - All problems of a run (send, repository check, changes from shared) are one text in `send-problem`. The

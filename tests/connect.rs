@@ -1,10 +1,10 @@
-//! M7: add-repository and restore find which printer in the repository this is. These tests call the library
+//! M7: connect and restore find which printer in the repository this is. These tests call the library
 //! with fixed answers, because a test has no terminal.
 
 mod common;
 
 use common::*;
-use printerkeep::app::{self, Ask, Connect, Error, TokenRequest};
+use printerkeep::app::{self, Ask, ConnectChoices, Error, TokenRequest};
 use printerkeep::paths::Paths;
 use std::cell::RefCell;
 use std::path::Path;
@@ -40,10 +40,10 @@ fn paths(printer: &Printer) -> Paths {
 fn add(
     printer: &Printer,
     url: &str,
-    choices: &Connect,
+    choices: &ConnectChoices,
     ask: &Answers,
-) -> Result<app::AddReport, Error> {
-    app::add_repository(&paths(printer), url, choices, &no_token, ask)
+) -> Result<app::ConnectReport, Error> {
+    app::connect(&paths(printer), url, choices, &no_token, ask)
 }
 
 fn kept_refs(printer: &Printer) -> Vec<String> {
@@ -75,7 +75,7 @@ fn a_reinstalled_printer_continues_its_branch_after_a_yes() {
         confirm: Some(true),
         ..Answers::default()
     };
-    let report = add(&printer, &url, &Connect::default(), &ask).unwrap();
+    let report = add(&printer, &url, &ConnectChoices::default(), &ask).unwrap();
     assert!(ask.asked.borrow()[0].contains("Continue that history on this printer?"));
     assert!(
         report
@@ -98,7 +98,7 @@ fn a_reinstalled_printer_continues_its_branch_after_a_yes() {
         confirm: Some(false),
         ..Answers::default()
     };
-    let error = add(&other, &url, &Connect::default(), &ask)
+    let error = add(&other, &url, &ConnectChoices::default(), &ask)
         .unwrap_err()
         .to_string();
     assert!(
@@ -128,7 +128,7 @@ fn install_as_main_then_connect_as_an_existing_printer() {
         text: Some("foobar".to_string()),
         ..Answers::default()
     };
-    let report = add(&printer, &url, &Connect::default(), &ask).unwrap();
+    let report = add(&printer, &url, &ConnectChoices::default(), &ask).unwrap();
     let asked = ask.asked.borrow();
     assert!(
         asked[0].starts_with(
@@ -167,7 +167,13 @@ fn without_a_terminal_printerkeep_does_not_guess() {
 
     let printer = Printer::empty();
     printer.write("printer.cfg", "[printer]\n");
-    let error = add(&printer, &url, &Connect::default(), &Answers::default()).unwrap_err();
+    let error = add(
+        &printer,
+        &url,
+        &ConnectChoices::default(),
+        &Answers::default(),
+    )
+    .unwrap_err();
     assert!(matches!(error, Error::WhichPrinter { .. }));
     let error = error.to_string();
     assert!(
@@ -178,13 +184,19 @@ fn without_a_terminal_printerkeep_does_not_guess() {
 
     let named = Printer::named("printer-2");
     named.write("printer.cfg", "[printer]\n");
-    add(&named, &url, &Connect::default(), &Answers::default()).unwrap();
+    add(
+        &named,
+        &url,
+        &ConnectChoices::default(),
+        &Answers::default(),
+    )
+    .unwrap();
     assert_eq!(remote_tip(&url, "printer-2").len(), 40);
 
     // --printer-name gives the name without printerkeep.conf.
-    let choices = Connect {
+    let choices = ConnectChoices {
         printer_name: Some("printer-3".to_string()),
-        ..Connect::default()
+        ..ConnectChoices::default()
     };
     add(&printer, &url, &choices, &Answers::default()).unwrap();
     assert_eq!(remote_tip(&url, "printer-3").len(), 40);
@@ -199,9 +211,9 @@ fn from_now_sends_only_the_files_of_now() {
         printer.write("printer.cfg", &format!("[printer]\n# {n}\n"));
         printer.ok(&["backup"]);
     }
-    let choices = Connect {
+    let choices = ConnectChoices {
         from_now: true,
-        ..Connect::default()
+        ..ConnectChoices::default()
     };
     add(&printer, &url, &choices, &Answers::default()).unwrap();
     assert_eq!(
@@ -221,7 +233,7 @@ fn from_now_sends_only_the_files_of_now() {
         text: Some(String::new()),
         ..Answers::default()
     };
-    add(&other, &url, &Connect::default(), &ask).unwrap();
+    add(&other, &url, &ConnectChoices::default(), &ask).unwrap();
     let asked = ask.asked.borrow();
     assert!(asked[0].contains("Which printer is this?"), "{asked:?}");
     assert!(

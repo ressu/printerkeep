@@ -205,7 +205,7 @@ pub fn install(
         Some(url) => {
             lines.push(format!(
                 "This printer is connected to {url} as {name} (from printerkeep.conf). To connect it \
-                 differently: printerkeep add-repository <url> --printer-name <name>"
+                 differently: printerkeep connect <url> --printer-name <name>"
             ));
         }
         None => {
@@ -215,9 +215,8 @@ pub fn install(
                 "the default"
             };
             lines.push(format!("Printer name: {name} ({source})."));
-            lines.push(
-                "To send the backups to a repository: printerkeep add-repository <url>".to_string(),
-            );
+            lines
+                .push("To send the backups to a repository: printerkeep connect <url>".to_string());
         }
     }
     lines.push("To remove printerkeep: printerkeep uninstall".to_string());

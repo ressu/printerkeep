@@ -21,7 +21,7 @@
 #   scripts/try-on-printer.sh pi@printer-1 status
 #   scripts/try-on-printer.sh --copy pi@printer-1             # take in new changes from the real config
 #   scripts/try-on-printer.sh --reset pi@printer-1            # start again with an empty history
-#   scripts/try-on-printer.sh pi@printer-1 add-repository https://github.com/me/printerkeep-test.git
+#   scripts/try-on-printer.sh pi@printer-1 connect https://github.com/me/printerkeep-test.git
 #
 # Repository tests: use a NEW, EMPTY test repository. If the repository already has a branch with the
 # printer's name (for example from klipper-backup), printerkeep continues that branch and adds commits to it.
@@ -142,7 +142,7 @@ ssh "${terminal[@]}" "$host" "set -e
     copy=1
   fi
   if [ \$copy = 1 ]; then
-    # Keep the test copy's printerkeep.conf (for example the repository from add-repository).
+    # Keep the test copy's printerkeep.conf (for example the repository from connect).
     keep=$test_dir/printer_data/printerkeep.conf.keep
     rm -f \$keep
     if [ -f $test_dir/printer_data/config/printerkeep.conf ]; then

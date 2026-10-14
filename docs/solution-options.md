@@ -150,7 +150,7 @@ Mainsail are a future possibility too: Moonraker has no standard way for an outs
 
 ### C8. Repository, restore, update
 
-- **S2 Add a repository:** one command on the printer, `printerkeep add-repository <url>`. The URL selects
+- **S2 Connect a repository:** one command on the printer, `printerkeep connect <url>`. The URL selects
   the authentication:
   - `https://…`: a **personal access token** (for GitHub: a fine-grained token for this one repository, with
     "Contents: read and write"). printerkeep asks for the token, or reads it from standard input. One token
@@ -162,7 +162,7 @@ Mainsail are a future possibility too: Moonraker has no standard way for an outs
   `printer_data/printerkeep/credentials` (mode 600), outside the config folder. **A token or key never goes in
   `printerkeep.conf`**: that file is in the config folder, so the repository would get it. When
   authentication fails (for example, an expired token), the status says so and tells the user to run
-  `change-token` (with a key: `add-repository` again).
+  `change-token` (with a key: `connect` again).
 - **S3 Restore:** install printerkeep, then `printerkeep restore <url> [--printer-name <name>]`. This needs a token or
   a key, the same as S2.
 - **S4 Update printerkeep:** an update_manager entry. How depends on the language (git repository or compiled
@@ -264,7 +264,7 @@ for A, B and C.
 | Scenario | 0 Current | A Branches + shared | B Folders | C Repositories + shared |
 |---|---|---|---|---|
 | S1 Backup only on change | ✗ empty commits | ✓ core | ✓ core | ✓ core |
-| S2 Add a repository later | ~ edit `.env` | ✓ core | ✓ core | ~ two repositories to authorise |
+| S2 Connect a repository later | ~ edit `.env` | ✓ core | ✓ core | ~ two repositories to authorise |
 | S3 Restore | ~ manual | ✓ check out branch | ✓ check out folder | ✓ clone repository |
 | S4 Update printerkeep | ✓ | ✓ core | ✓ core | ✓ core |
 | S5 Busy printer | ~ | ✓ core | ✓ core | ✓ core |

@@ -179,7 +179,7 @@ pub(super) fn backup_and_send(
         heads.as_ref(),
     )?;
     problems.extend(shared_problem);
-    // printerkeep.conf names this printer (add-repository and restore write it): the printer was connected
+    // printerkeep.conf names this printer (connect and restore write it): the printer was connected
     // to this branch before. If their histories have no common backup, the run continues the repository's.
     let continue_unrelated = settings.printer_name.is_some();
 
@@ -501,8 +501,8 @@ fn follow_shared(
     let mut problem = None;
     let Some(remote) = remote else {
         lines.push(
-            "printerkeep.conf has files to follow, but this printer has no repository. \
-             To add one: printerkeep add-repository <url>"
+            "printerkeep.conf has files to follow, but this printer isn't connected to a \
+             repository. To connect it: printerkeep connect <url>"
                 .to_string(),
         );
         return Ok((lines, false, None));

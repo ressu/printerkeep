@@ -57,8 +57,8 @@ includes these.
 
 - **S1 Backup.** printerkeep makes a backup only when a file changed. The backup has a useful message. A timer
   starts it. The user can also start it manually.
-- **S2 Add a repository later.** A user with only local history adds a repository (any git host; GitHub is
-  the most likely). printerkeep guides the user through authentication. A personal access token (HTTPS) and
+- **S2 Connect a repository later.** A user with only local history connects the printer to a repository (any
+  git host; GitHub is the most likely). printerkeep guides the user through authentication. A personal access token (HTTPS) and
   an SSH key both work. With a token, one token can serve all printers.
 - **S3 Restore.** The SD card fails. The user installs Klipper again and restores the configuration from the
   repository.

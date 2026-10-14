@@ -28,7 +28,7 @@ fn printer(n: u8, url: &str) -> Printer {
     let printer = Printer::named(&format!("printer-{n}"));
     let source = Path::new(FIXTURES).join(format!("printer-{n}"));
     copy_folder(&source, &source, &printer.config(), n);
-    printer.ok(&["add-repository", url]);
+    printer.ok(&["connect", url]);
     printer
 }
 

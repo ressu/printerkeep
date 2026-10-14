@@ -140,7 +140,7 @@ fn stored_token_is_used_again() {
     let url = server.url();
 
     printer
-        .command(&["add-repository", &url])
+        .command(&["connect", &url])
         .write_stdin("token-1\n")
         .assert()
         .success()
@@ -150,7 +150,7 @@ fn stored_token_is_used_again() {
 
     // No token on standard input: printerkeep must not ask.
     printer
-        .command(&["add-repository", &url])
+        .command(&["connect", &url])
         .write_stdin("")
         .assert()
         .success()
@@ -162,7 +162,7 @@ fn wrong_token_is_refused_and_not_stored() {
     let server = Server::start("token-1");
     let printer = Printer::new(&server);
     printer
-        .command(&["add-repository", &server.url()])
+        .command(&["connect", &server.url()])
         .write_stdin("wrong\n")
         .assert()
         .failure()
@@ -183,7 +183,7 @@ fn change_token_after_the_token_expired() {
     let server = Server::start("token-1");
     let printer = Printer::new(&server);
     printer
-        .command(&["add-repository", &server.url()])
+        .command(&["connect", &server.url()])
         .write_stdin("token-1\n")
         .assert()
         .success();
@@ -240,19 +240,19 @@ fn change_token_after_the_token_expired() {
 }
 
 #[test]
-fn add_repository_asks_again_when_the_stored_token_is_refused() {
+fn connect_asks_again_when_the_stored_token_is_refused() {
     let server = Server::start("token-1");
     let printer = Printer::new(&server);
     let url = server.url();
     printer
-        .command(&["add-repository", &url])
+        .command(&["connect", &url])
         .write_stdin("token-1\n")
         .assert()
         .success();
 
     server.accept_only("token-2");
     printer
-        .command(&["add-repository", &url])
+        .command(&["connect", &url])
         .write_stdin("token-2\n")
         .assert()
         .success()
@@ -268,7 +268,9 @@ fn change_token_needs_an_https_repository() {
         .command(&["change-token"])
         .assert()
         .failure()
-        .stderr(contains("This printer doesn't have a repository yet."));
+        .stderr(contains(
+            "This printer isn't connected to a repository yet.",
+        ));
 
     fs::write(
         printer.dir.path().join("config/printerkeep.conf"),
