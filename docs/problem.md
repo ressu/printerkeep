@@ -186,6 +186,12 @@ Not in version 1 and not designed for. But the design must not make them impossi
   warnings can be added only inside Moonraker, and Fluidd and Mainsail do not show agent events. Possible
   ways later: a feature request to Moonraker (agents that add announcements), or if Fluidd and Mainsail
   start to show agent events. Users who want push messages can set up Moonraker's `[notifier]` themselves.
+- **Back up a file that a default rule skips** (2026-10-14). The `ignore` rules work like `.gitignore`
+  rules without `!`, so a user can add rules but can't undo a default rule (for example to back up a file
+  that ends in `~`). A `!` rule (`!printer.cfg~`), as in `.gitignore`, would do it. Until then, the default
+  rules must stay narrow: each one is a file that no user wants in a backup. A file that only some users
+  want to skip (for example `moonraker.conf.backup`) belongs in their own `ignore` rules, not in the
+  defaults.
 - **Status of all printers in one command** (working name `printerkeep repo status`; the final name must
   follow naming.md, which avoids "repo"). It shows the status of the followed files of every printer branch.
   This needs no coordination between printers: each printer branch has `printerkeep.conf` (the follow list)
