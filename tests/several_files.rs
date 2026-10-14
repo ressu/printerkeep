@@ -21,9 +21,14 @@ fn copy_several_files_to_shared_at_once() {
     printer.write("macros/b.cfg", B);
 
     let output = printer.ok(&["copy-to-shared", "--yes", "a.cfg", "macros/b.cfg"]);
-    assert!(
-        output.contains("Copied a.cfg to shared. Other printers can now follow it."),
-        "{output}"
+    assert_eq!(
+        output,
+        "a.cfg isn't in shared yet. It goes to shared with 3 lines.\n\
+         macros/b.cfg isn't in shared yet. It goes to shared with 3 lines.\n\
+         Backup made: Added 2 files\n\
+         Copied a.cfg to shared. Other printers can now follow it.\n\
+         Copied macros/b.cfg to shared. Other printers can now follow it.\n\
+         Sent 2 backups to the repository.\n"
     );
     assert!(
         output.contains("Copied macros/b.cfg to shared. Other printers can now follow it."),
@@ -144,4 +149,29 @@ fn decide_several_files() {
     assert!(output.contains("b.cfg: used the shared lines."), "{output}");
     assert_eq!(printer2.read("a.cfg"), A.replace("M118 a", "M118 shared"));
     assert_eq!(printer2.read("b.cfg"), B.replace("M118 b", "M118 shared"));
+}
+
+/// The first file is already in shared: the other files still go to shared.
+#[test]
+fn a_file_already_in_shared_doesnt_stop_the_others() {
+    let (_dir, url) = repository();
+    let printer = Printer::connected("printer-1", &url);
+    printer.write("a.cfg", A);
+    printer.ok(&["copy-to-shared", "--yes", "a.cfg"]);
+    printer.write("b.cfg", B);
+
+    let output = printer.ok(&["copy-to-shared", "--yes", "a.cfg", "b.cfg"]);
+    assert!(
+        output.contains("a.cfg in shared is already the same as on this printer."),
+        "{output}"
+    );
+    assert!(!output.contains("isn't in shared. To add it"), "{output}");
+    assert_eq!(show(&url, "shared", "b.cfg"), B);
+    assert_eq!(
+        git(
+            std::path::Path::new(&url),
+            &["log", "-1", "--format=%s", "shared"]
+        ),
+        "Copied b.cfg from printer-1"
+    );
 }

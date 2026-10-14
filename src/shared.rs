@@ -397,14 +397,15 @@ pub fn copy_commit(
         Some(tip) => git.read_tree(tip)?,
         None => Tree::new(),
     };
-    let Some((path, entry)) = files.first() else {
-        return Ok(None);
-    };
-    if tree.get(path.as_bytes()) == Some(entry) {
-        return Ok(None);
-    }
+    let mut changed = false;
     for (path, entry) in files {
-        tree.insert(path.as_bytes().to_vec(), entry);
+        if tree.get(path.as_bytes()) != Some(&entry) {
+            tree.insert(path.as_bytes().to_vec(), entry);
+            changed = true;
+        }
+    }
+    if !changed {
+        return Ok(None);
     }
     let tree = git.write_tree(&tree, &paths.index())?;
     git.commit(&tree, tip.as_slice(), message, identity)

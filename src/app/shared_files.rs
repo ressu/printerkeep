@@ -192,7 +192,6 @@ pub fn copy_to_shared(
 
     let git = Git::new(&paths.git_dir);
     let all = names.join(", ");
-    let message = format!("Copied {all} from {printer_name}");
     let mut attempts = 0;
     let (commit, copied) = loop {
         attempts += 1;
@@ -250,7 +249,7 @@ pub fn copy_to_shared(
         }
         // The changes that go to the other printers: the user sees them before they are sent (C6).
         if attempts == 1 && !previews.is_empty() {
-            let yes = confirm(&previews.join("\n")).map_err(|source| Error::Io {
+            let yes = confirm(&previews.concat()).map_err(|source| Error::Io {
                 context: "Can't copy to shared".into(),
                 source,
             })?;
@@ -261,13 +260,23 @@ pub fn copy_to_shared(
                 }]);
             }
         }
-        // The README of shared: when shared has none, or printerkeep's README is not up to date.
+        // Only the files that change go into the commit and its message.
+        let changed: Vec<&str> = copied
+            .iter()
+            .filter(|file| file.changed)
+            .map(|file| file.path.as_str())
+            .collect();
+        entries.retain(|(path, _)| changed.contains(path));
+        let message = format!("Copied {} from {printer_name}", changed.join(", "));
+        // The README of shared, with a copy: when shared has none, or printerkeep's README is not up to date.
         let shared_readme = branch_readme::shared_content(remote.url.as_str());
         let readme_in_shared = match &tip {
             Some(tip) => shared::content_at(&git, tip, branch_readme::README_FILE)?,
             None => None,
         };
-        if branch_readme::shared_needs_write(readme_in_shared.as_deref(), &shared_readme) {
+        if !changed.is_empty()
+            && branch_readme::shared_needs_write(readme_in_shared.as_deref(), &shared_readme)
+        {
             entries.push((
                 branch_readme::README_FILE,
                 git::TreeEntry {
