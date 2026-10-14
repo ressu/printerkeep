@@ -331,7 +331,12 @@ pub fn copy_to_shared(
             ..COMMAND
         },
     )?;
-    lines.retain(|line| line != "No files changed. No backup made.");
+    // A followed file that isn't in shared yet: the copy is what the notice asks for.
+    let notices: Vec<String> = names
+        .iter()
+        .map(|path| shared::not_in_shared(path))
+        .collect();
+    lines.retain(|line| line != "No files changed. No backup made." && !notices.contains(line));
     // With several files, each override line names its file.
     let prefix = |path: &str| {
         if names.len() > 1 {

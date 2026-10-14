@@ -175,3 +175,20 @@ fn a_file_already_in_shared_doesnt_stop_the_others() {
         "Copied b.cfg from printer-1"
     );
 }
+
+/// A followed file that isn't in shared yet (for example after a copy that didn't work): copying it doesn't
+/// tell you to copy it.
+#[test]
+fn copying_a_followed_file_that_isnt_in_shared_has_no_notice() {
+    let (_dir, url) = repository();
+    let printer = Printer::connected("printer-1", &url);
+    printer.write("a.cfg", A);
+    printer.write(
+        "printerkeep.conf",
+        &format!("[printerkeep]\nprinter_name: printer-1\nrepository: {url}\nfollow:\n  a.cfg\n"),
+    );
+
+    let output = printer.ok(&["copy-to-shared", "--yes", "a.cfg"]);
+    assert!(!output.contains("To add it, run:"), "{output}");
+    assert!(output.contains("Copied a.cfg to shared."), "{output}");
+}

@@ -91,9 +91,7 @@ impl FileEvent {
                 format!("{path}: needs a decision. Open the file and look for the #### lines.")
             }
             Event::Decided => format!("{path}: decision recorded."),
-            Event::NotInShared => format!(
-                "{path} isn't in shared. To add it, run:\n  printerkeep copy-to-shared {path}"
-            ),
+            Event::NotInShared => not_in_shared(path),
             Event::MissingOnPrinter => format!(
                 "{path}: printerkeep follows it, but it isn't in the config folder. \
                  To stop following it, run:\n  printerkeep stop-following {path}"
@@ -128,6 +126,11 @@ pub fn message(events: &[FileEvent]) -> Option<String> {
         })
         .collect();
     (!parts.is_empty()).then(|| parts.join(". "))
+}
+
+/// The notice for a followed file that isn't in shared.
+pub fn not_in_shared(path: &str) -> String {
+    format!("{path} isn't in shared. To add it, run:\n  printerkeep copy-to-shared {path}")
 }
 
 /// Gets the `shared` branch from the repository. Returns its commit, or `None` if it does not exist.
