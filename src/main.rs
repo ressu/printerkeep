@@ -48,7 +48,8 @@ enum Command {
         #[arg(long, value_name = "PRINTER_NAME")]
         printer_name: Option<String>,
         /// Continue the repository's branch also when its history is not this printer's (a new install of
-        /// this printer, or its klipper-backup branch). Your files do not change; local backups are set aside.
+        /// this printer, or its klipper-backup branch). Your files don't change. The backups that printerkeep
+        /// made on this printer so far stay here and aren't sent.
         #[arg(long = "continue")]
         continue_history: bool,
         /// For a new branch: send only a backup of the files now, not the backups made on this printer
@@ -289,6 +290,8 @@ impl app::Ask for Terminal {
         eprint!("{question}: ");
         let mut answer = String::new();
         stdin.lock().read_line(&mut answer).ok()?;
+        // An empty line after the answer: what follows is a group of its own.
+        eprintln!();
         Some(answer.trim().to_string())
     }
 }

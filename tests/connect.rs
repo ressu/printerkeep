@@ -76,12 +76,21 @@ fn a_reinstalled_printer_continues_its_branch_after_a_yes() {
         ..Answers::default()
     };
     let report = add(&printer, &url, &ConnectChoices::default(), &ask).unwrap();
-    assert!(ask.asked.borrow()[0].contains("Continue that history on this printer?"));
+    assert_eq!(
+        ask.asked.borrow()[0],
+        "The repository has a branch printer-1 with backups that this printer doesn't have.\n\
+         They may be this printer's backups from before a new install, or another printer's with the same \
+         name.\n\
+         If you continue that history, printerkeep's backups go on top of them. Your config files stay as \
+         they are.\n\
+         Continue the history of printer-1 on this printer?"
+    );
     assert!(
         report
             .lines()
-            .iter()
-            .any(|l| l.contains("printerkeep continues that history"))
+            .contains(&"Continued the history of printer-1 from the repository.".to_string()),
+        "{:?}",
+        report.lines()
     );
     let tip = remote_tip(&url, "printer-1");
     git(
@@ -107,6 +116,44 @@ fn a_reinstalled_printer_continues_its_branch_after_a_yes() {
     );
     assert!(error.contains("--printer-name <another name>"), "{error}");
     assert_eq!(remote_tip(&url, "printer-1"), tip);
+}
+
+/// A klipper-backup branch: the question says so. The backups that printerkeep made on this printer are
+/// named only when there is more than the install's first backup.
+#[test]
+fn the_question_names_klipper_backup() {
+    let (_dir, url) = repository();
+    klipper_backup_branch(&url, "printer-1");
+    let question = "The repository has a branch printer-1 with backups from klipper-backup.\n\
+                    printerkeep can continue that history: its backups go on top of them.\n\
+                    Your config files on this printer stay as they are.\n";
+    let last = "Continue the klipper-backup history on this printer?";
+    let local =
+        "The backups that printerkeep made on this printer so far stay here and aren't sent.\n";
+
+    let printer = Printer::named("printer-1");
+    printer.write("printer.cfg", "[printer]\n");
+    printer.ok(&["sync"]);
+    let ask = Answers {
+        confirm: Some(true),
+        ..Answers::default()
+    };
+    add(&printer, &url, &ConnectChoices::default(), &ask).unwrap();
+    assert_eq!(ask.asked.borrow()[0], format!("{question}{last}"));
+
+    let (_dir, url) = repository();
+    klipper_backup_branch(&url, "printer-1");
+    let printer = Printer::named("printer-1");
+    for n in 0..2 {
+        printer.write("printer.cfg", &format!("[printer]\n# {n}\n"));
+        printer.ok(&["sync"]);
+    }
+    let ask = Answers {
+        confirm: Some(true),
+        ..Answers::default()
+    };
+    add(&printer, &url, &ConnectChoices::default(), &ask).unwrap();
+    assert_eq!(ask.asked.borrow()[0], format!("{question}{local}{last}"));
 }
 
 /// Installed as main, then connected as foobar by the answer to the question. Only foobar is on the
@@ -136,10 +183,14 @@ fn install_as_main_then_connect_as_an_existing_printer() {
         ),
         "{asked:?}"
     );
+    // The printer wasn't connected before: the default name main means nothing to the user.
     assert!(
-        report
+        !report
             .lines()
-            .contains(&"This printer's name is now foobar (it was main).".to_string())
+            .iter()
+            .any(|l| l.contains("This printer's name is now")),
+        "{:?}",
+        report.lines()
     );
 
     let branches = printer.git(&["for-each-ref", "--format=%(refname)", "refs/heads/"]);

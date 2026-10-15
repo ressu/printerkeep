@@ -14,16 +14,18 @@ pub struct ConnectReport {
     pub printers: Vec<String>,
     pub history: History,
     pub backup: BackupReport,
+    /// klipper-backup is still set up on this printer (after printerkeep continued its history).
+    pub klipper_backup_installed: bool,
 }
 
 impl ConnectReport {
     pub fn lines(&self) -> Vec<String> {
-        let mut lines = vec![format!("Connected to the repository {}.", self.url)];
-        match self.token {
-            TokenUse::Stored => lines.push("Used the stored token.".to_string()),
-            TokenUse::New => lines.push("Stored the token.".to_string()),
-            TokenUse::None => {}
-        }
+        let url = &self.url;
+        let mut lines = vec![match self.token {
+            TokenUse::Stored => format!("Connected to the repository {url} with the stored token."),
+            TokenUse::New => format!("Connected to the repository {url} and stored the token."),
+            TokenUse::None => format!("Connected to the repository {url}."),
+        }];
         if let Some(old) = &self.renamed_from {
             lines.push(format!(
                 "This printer's name is now {} (it was {old}).",
@@ -36,26 +38,17 @@ impl ConnectReport {
                 self.printer_name
             )),
             History::Same => {}
-            History::KlipperBackup => {
-                lines.push(format!(
-                    "The branch {} has backups from klipper-backup. printerkeep continues that history: \
-                     the files of the config folder are now at the top of the branch, and the older backups \
-                     stay in the history.",
-                    self.printer_name
-                ));
-                lines.push(
-                    "Important: stop klipper-backup on this printer (its timer, services and update_manager \
-                     section). If it still runs, it sends its backups to the same branch."
-                        .to_string(),
-                );
-            }
+            History::KlipperBackup => lines.push(format!(
+                "Continued the klipper-backup history on the branch {}.",
+                self.printer_name
+            )),
             History::Joined => lines.push(format!(
                 "The branch {} in the repository has no configuration yet, so printerkeep continues from it.",
                 self.printer_name
             )),
             History::Continued { kept } => {
                 lines.push(format!(
-                    "The repository has backups of {}, and printerkeep continues that history.",
+                    "Continued the history of {} from the repository.",
                     self.printer_name
                 ));
                 if let Some(kept) = kept {
@@ -66,9 +59,22 @@ impl ConnectReport {
             }
         }
         lines.extend(self.backup.lines());
+        if self.klipper_backup_installed {
+            lines.extend([
+                String::new(),
+                "klipper-backup is still set up on this printer. printerkeep makes the backups from now on."
+                    .to_string(),
+                "To keep klipper-backup's runs from failing, remove it. The user guide shows how:".to_string(),
+                format!("  {KLIPPER_BACKUP_REMOVAL}"),
+            ]);
+        }
         lines
     }
 }
+
+/// The user guide's steps to remove klipper-backup.
+const KLIPPER_BACKUP_REMOVAL: &str =
+    "https://github.com/ressu/printerkeep/blob/main/docs/user-guide.md#remove-klipper-backup";
 
 /// Why printerkeep asks for a token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,6 +152,7 @@ pub fn connect(
     ask: &dyn Ask,
 ) -> Result<ConnectReport, Error> {
     let (settings, current) = load(paths)?;
+    let connected_before = settings.repository.is_some();
     // A name in printerkeep.conf or --printer-name is the user's choice; the default main is not.
     let chosen = choices.printer_name.is_some() || settings.printer_name.is_some();
     if let Some(name) = &choices.printer_name {
@@ -212,13 +219,39 @@ pub fn connect(
             join_history(&git, paths, &target, &commit)?
         } else {
             // Another history with configuration: this printer's from before a new install, klipper-backup's,
-            // or another printer's with the same name. Only the user knows which; the same question for all.
-            let question = format!(
-                "The branch {target} in the repository has backups that aren't on this printer.\n\
-                 If you continue that history, your files do not change, and the backups made on this \
-                 printer are set aside.\n\
-                 Continue that history on this printer?"
-            );
+            // or another printer's with the same name. Only the user knows which. klipper-backup's README tells
+            // that one apart.
+            let klipper_backup = is_klipper_backup(&git, &commit)?;
+            let mut question = if klipper_backup {
+                format!(
+                    "The repository has a branch {target} with backups from klipper-backup.\n\
+                     printerkeep can continue that history: its backups go on top of them.\n\
+                     Your config files on this printer stay as they are.\n"
+                )
+            } else {
+                format!(
+                    "The repository has a branch {target} with backups that this printer doesn't have.\n\
+                     They may be this printer's backups from before a new install, or another printer's with \
+                     the same name.\n\
+                     If you continue that history, printerkeep's backups go on top of them. Your config files \
+                     stay as they are.\n"
+                )
+            };
+            // The install's first backup has the same files as now: nothing to say about it.
+            let local_backups = match git.resolve(&branch(&target))? {
+                Some(local) => git.count_commits(&local)?,
+                None => 0,
+            };
+            if local_backups > 1 {
+                question.push_str(
+                    "The backups that printerkeep made on this printer so far stay here and aren't sent.\n",
+                );
+            }
+            question.push_str(&if klipper_backup {
+                "Continue the klipper-backup history on this printer?".to_string()
+            } else {
+                format!("Continue the history of {target} on this printer?")
+            });
             let yes = choices.continue_history || ask.confirm(&question).unwrap_or(false);
             if !yes {
                 return Err(Error::NameInUse {
@@ -227,8 +260,7 @@ pub fn connect(
                 });
             }
             let continued = repository::continue_history(&git, &target, &commit)?;
-            // klipper-backup still runs on the printer, if the user did not stop it: the report says so.
-            if is_klipper_backup(&git, &commit)? {
+            if klipper_backup {
                 History::KlipperBackup
             } else {
                 continued
@@ -271,7 +303,10 @@ pub fn connect(
     Ok(ConnectReport {
         url: url.to_string(),
         token: connection.token,
-        renamed_from: (target != current).then_some(current),
+        // Before the first connection, the name (often the default main) means nothing to the user yet.
+        renamed_from: (target != current && connected_before).then_some(current),
+        klipper_backup_installed: matches!(history, History::KlipperBackup)
+            && klipper_backup_installed(paths),
         printer_name: target,
         printers,
         history,
@@ -283,6 +318,18 @@ pub fn connect(
 fn is_klipper_backup(git: &Git, commit: &str) -> Result<bool, Error> {
     Ok(shared::content_at(git, commit, branch_readme::README_FILE)?
         .is_some_and(|content| content.starts_with(b"# klipper-backup")))
+}
+
+/// `true` if klipper-backup is still set up on the printer: its folder next to `printer_data` (its installer
+/// puts it in the home folder), or its update_manager section in moonraker.conf.
+fn klipper_backup_installed(paths: &Paths) -> bool {
+    let folder = paths
+        .printer_data
+        .parent()
+        .is_some_and(|home| home.join("klipper-backup").exists());
+    folder
+        || std::fs::read_to_string(paths.config.join("moonraker.conf"))
+            .is_ok_and(|conf| conf.contains("[update_manager klipper-backup]"))
 }
 
 /// `true` if the commit has configuration files (`.cfg`), anywhere in the tree.

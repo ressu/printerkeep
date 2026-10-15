@@ -144,7 +144,7 @@ fn stored_token_is_used_again() {
         .write_stdin("token-1\n")
         .assert()
         .success()
-        .stdout(contains("Stored the token."));
+        .stdout(contains("and stored the token."));
     assert_eq!(server.branch("printer-1"), Some(printer.sent()));
     assert!(printer.credentials().contains(":token-1@127.0.0.1:"));
 
@@ -154,7 +154,7 @@ fn stored_token_is_used_again() {
         .write_stdin("")
         .assert()
         .success()
-        .stdout(contains("Used the stored token."));
+        .stdout(contains("with the stored token."));
 }
 
 #[test]
@@ -256,7 +256,7 @@ fn connect_asks_again_when_the_stored_token_is_refused() {
         .write_stdin("token-2\n")
         .assert()
         .success()
-        .stdout(contains("Stored the token."));
+        .stdout(contains("and stored the token."));
     assert!(printer.credentials().contains(":token-2@"));
 }
 

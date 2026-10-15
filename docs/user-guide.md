@@ -145,9 +145,10 @@ use an SSH URL instead of a token (see below).
 If the repository already has printers, printerkeep lists them and asks which one this printer is. Type its
 name, or type a new name to start a new branch.
 
-If that branch has backups that aren't from this printer, printerkeep asks before it continues that history.
-This happens, for example, after you set the printer up again. Continuing doesn't change your files. The
-backups that were only on this printer stay on it, set aside, and aren't sent.
+If that branch has backups that this printer doesn't have, printerkeep asks before it continues that history.
+This happens, for example, after you set the printer up again, or when you move from klipper-backup. If you
+continue, printerkeep's backups go on top of the ones in the repository, and your config files stay as they
+are. The backups that printerkeep made on this printer before stay here and aren't sent.
 
 If the branch is new and the printer already has several backups, printerkeep asks whether to send them all
 or to start the history in the repository from now.
@@ -186,15 +187,24 @@ More about the repository:
 
 ## Move from klipper-backup
 
-Use the same repository:
+printerkeep can continue the history that klipper-backup made, in the same repository. Your older backups
+stay in it.
 
-1. Remove klipper-backup from the printer (see the steps below). If it keeps running, it sends its backups
-   to the same branch.
+printerkeep backs up only the config folder (`printer_data/config`). klipper-backup can also back up other
+folders in your home folder: they're listed in `backupPaths` in `~/klipper-backup/.env`. After the move,
+printerkeep doesn't back up files outside the config folder. Their older versions stay in the history.
+
+To move:
+
+1. Check `backupPaths` in `~/klipper-backup/.env`, and keep your own copy of any file outside the config
+   folder that you still want backed up.
 2. Make a new token for printerkeep.
 3. Run `printerkeep connect`, as described in [Send backups to a repository](#send-backups-to-a-repository).
 4. Select the klipper-backup branch of this printer: `main`, or the `branch_name` that you gave
    klipper-backup.
 5. Answer yes to continue its history.
+6. Remove klipper-backup from the printer (see the steps below). printerkeep makes the backups from now on,
+   and klipper-backup's runs would fail on the moved branch.
 
 In a script, give the answers as options:
 
@@ -202,9 +212,8 @@ In a script, give the answers as options:
 printerkeep connect <url> --printer-name <branch> --continue
 ```
 
-printerkeep then continues the klipper-backup history. The files move from `printer_data/config` to the top
-of the branch, and the older backups stay in the history. git follows the files across the move, so the
-history of each file is complete.
+In the repository, the files move from `printer_data/config` to the top of the branch. git follows the files
+across the move, so the history of each file is complete. On the printer, nothing moves.
 
 ### Remove klipper-backup
 

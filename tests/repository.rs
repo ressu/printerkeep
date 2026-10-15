@@ -654,38 +654,7 @@ fn rename_moves_the_history_to_a_new_branch() {
 #[test]
 fn a_klipper_backup_branch_is_continued() {
     let (_dir, url) = repository();
-    // A repository as klipper-backup makes it: its README, and the config folder in printer_data/config.
-    web_commit(
-        &url,
-        "main",
-        "New backup from 01/10/26 - 10:00:00",
-        |work| {
-            fs::create_dir_all(work.join("printer_data/config")).unwrap();
-            fs::write(
-            work.join("README.md"),
-            "# klipper-backup 💾 \nKlipper backup script for manual or automated GitHub backups \n",
-        )
-        .unwrap();
-            fs::write(work.join(".gitignore"), "*.swp\n").unwrap();
-            fs::write(
-                work.join("printer_data/config/printer.cfg"),
-                "[printer]\nmax_velocity: 200\n",
-            )
-            .unwrap();
-        },
-    );
-    web_commit(
-        &url,
-        "main",
-        "printer.cfg modified - 02/10/26 - 10:00:00",
-        |work| {
-            fs::write(
-                work.join("printer_data/config/printer.cfg"),
-                "[printer]\nmax_velocity: 250\n",
-            )
-            .unwrap();
-        },
-    );
+    klipper_backup_branch(&url, "main");
     let klipper_backup = remote_tip(&url, "main");
 
     // The printer has the default name main, and its own first backup.
@@ -694,11 +663,14 @@ fn a_klipper_backup_branch_is_continued() {
     printer.ok(&["sync"]);
     let output = printer.ok(&["connect", &url, "--continue"]);
     assert!(
-        output.contains("The branch main has backups from klipper-backup."),
+        output.contains("Continued the klipper-backup history on the branch main."),
         "{output}"
     );
+    // The output doesn't describe the repository's layout: readers take it for the printer's folder.
+    assert!(!output.contains("printer_data/config"), "{output}");
+    // klipper-backup isn't set up on this printer: no note about it.
     assert!(
-        output.contains("Important: stop klipper-backup on this printer"),
+        !output.contains("klipper-backup is still set up"),
         "{output}"
     );
 
@@ -742,6 +714,53 @@ fn a_klipper_backup_branch_is_continued() {
     );
 }
 
+/// klipper-backup is still set up on the printer: its folder in the home folder, or its update_manager
+/// section in moonraker.conf. printerkeep says that it makes the backups now, and how to remove klipper-backup.
+#[test]
+fn a_klipper_backup_that_is_still_set_up_gets_a_note() {
+    let note = "klipper-backup is still set up on this printer. printerkeep makes the backups from now on.\n\
+                To keep klipper-backup's runs from failing, remove it. The user guide shows how:\n  \
+                https://github.com/ressu/printerkeep/blob/main/docs/user-guide.md#remove-klipper-backup\n";
+
+    // Its folder next to printer_data, as its installer makes it in the home folder.
+    let (_dir, url) = repository();
+    klipper_backup_branch(&url, "main");
+    let home = tempfile::tempdir().unwrap();
+    let printer_data = home.path().join("printer_data");
+    fs::create_dir_all(printer_data.join("config")).unwrap();
+    fs::write(printer_data.join("config/printer.cfg"), "[printer]\n").unwrap();
+    fs::create_dir_all(home.path().join("klipper-backup")).unwrap();
+    let run = |args: &[&str]| {
+        let output = assert_cmd::Command::cargo_bin("printerkeep")
+            .unwrap()
+            .env_remove("XDG_RUNTIME_DIR")
+            .arg("--printer-data")
+            .arg(&printer_data)
+            .args(args)
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        String::from_utf8(output.stdout).unwrap()
+    };
+    run(&["sync"]);
+    let output = run(&["connect", &url, "--continue"]);
+    assert!(output.ends_with(note), "{output}");
+
+    // Its section in moonraker.conf.
+    let (_dir, url) = repository();
+    klipper_backup_branch(&url, "main");
+    let printer = Printer::empty();
+    printer.write("printer.cfg", "[printer]\n");
+    printer.write(
+        "moonraker.conf",
+        "[update_manager klipper-backup]\ntype: git_repo\npath: ~/klipper-backup\n",
+    );
+    printer.ok(&["sync"]);
+    let output = printer.ok(&["connect", &url, "--continue"]);
+    assert!(output.ends_with(note), "{output}");
+}
+
 #[test]
 fn rename_refuses_a_klipper_backup_branch_and_the_documented_way_continues_it() {
     let (_dir, url) = repository();
@@ -779,7 +798,7 @@ fn rename_refuses_a_klipper_backup_branch_and_the_documented_way_continues_it() 
         "{output}"
     );
     assert!(
-        output.contains("The branch printer-1 has backups from klipper-backup."),
+        output.contains("Continued the klipper-backup history on the branch printer-1."),
         "{output}"
     );
     let tip = remote_tip(&url, "printer-1");

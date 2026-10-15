@@ -162,6 +162,37 @@ pub fn web_edit(url: &str, branch: &str, change: impl FnOnce(&Path)) {
     web_commit(url, branch, "web edit", change);
 }
 
+/// A branch as klipper-backup makes it: its README, and the config folder in printer_data/config. Two
+/// backups; the last has `max_velocity: 250` in printer.cfg.
+pub fn klipper_backup_branch(url: &str, branch: &str) {
+    web_commit(url, branch, "New backup from 01/10/26 - 10:00:00", |work| {
+        fs::create_dir_all(work.join("printer_data/config")).unwrap();
+        fs::write(
+            work.join("README.md"),
+            "# klipper-backup 💾 \nKlipper backup script for manual or automated GitHub backups \n",
+        )
+        .unwrap();
+        fs::write(work.join(".gitignore"), "*.swp\n").unwrap();
+        fs::write(
+            work.join("printer_data/config/printer.cfg"),
+            "[printer]\nmax_velocity: 200\n",
+        )
+        .unwrap();
+    });
+    web_commit(
+        url,
+        branch,
+        "printer.cfg modified - 02/10/26 - 10:00:00",
+        |work| {
+            fs::write(
+                work.join("printer_data/config/printer.cfg"),
+                "[printer]\nmax_velocity: 250\n",
+            )
+            .unwrap();
+        },
+    );
+}
+
 /// Like `web_edit`, with a commit message.
 pub fn web_commit(url: &str, branch: &str, message: &str, change: impl FnOnce(&Path)) {
     let dir = tempfile::tempdir().unwrap();

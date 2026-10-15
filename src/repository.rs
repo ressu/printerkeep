@@ -28,7 +28,7 @@ pub enum RepositoryError {
          repository URL in printerkeep.conf."
     )]
     Connection { url: String, message: String },
-    #[error("The repository has backups on this printer's branch that aren't on this printer")]
+    #[error("The repository has backups of this printer that this printer doesn't have")]
     RepositoryAhead,
     /// The repository refused a push, for example GitHub's push protection for secrets or a branch rule.
     /// `says`: the lines of the repository's own message.
