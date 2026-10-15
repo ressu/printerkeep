@@ -469,6 +469,15 @@ changes that go to shared (a diff against the shared version) and the override l
 first. Without a terminal it needs `--yes`. A begin/end override form for gcode lines stays a possibility for
 later, if users need it.
 
+**Follow-up, 2026-10-15:** a printer that fixes a macro also sends its own `variable_*` values. A printer
+whose lines still equal the base takes them in without a question; a printer with its own values gets needs
+decision. Decided: after the preview, `copy-to-shared` asks how to copy: all changes, change by change, or
+cancel. Change by change uses the parts of `git diff -U0` (`changes.rs`): send the change, keep it (a local
+change; asked again at the next copy), or keep it always (adds the override mark; only for `option: value`
+lines that shared has too, never for lines in `gcode:` or the `gcode:` line). Shared gets its own version with
+only the sent changes. `--yes` still copies all. Not done, to keep it small: reading other printers'
+branches, editing or splitting a change.
+
 
 ### Printer names (2026-10-13)
 

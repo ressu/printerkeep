@@ -40,7 +40,9 @@ pub use connection::{
 pub use restore::{RestoreChoices, RestoreReport, restore};
 pub use run::{BackupReport, Outcome, backup, sync};
 use run::{COMMAND, Run, backup_and_send};
-pub use shared_files::{Confirm, copy_to_shared, decide, follow, unfollow};
+pub use shared_files::{
+    ChangeQuestion, CopyChoice, How, Pick, copy_to_shared, decide, follow, unfollow,
+};
 pub use status::{LastBackup, Status, status};
 
 #[derive(Debug, thiserror::Error)]

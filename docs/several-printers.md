@@ -27,10 +27,27 @@ printerkeep copy-to-shared macros/macros.cfg
 This makes the shared version the same as this printer's version, and this printer then follows the file.
 Run it again later to send an improvement to the other printers.
 
-Before it copies, printerkeep shows the changes that go to the other printers and asks you to confirm. Look
-for lines that belong to this printer only, for example lines that you commented out because this printer
-lacks some hardware. If you find such lines, answer no. Then make only the improvement in the shared file, in
-the web editor of the repository. In a script, `--yes` skips the question.
+Before it copies, printerkeep shows the changes that go to the other printers. Look for lines that belong
+to this printer only, for example its own macro values, or lines that you commented out because this printer
+lacks some hardware. Then choose:
+
+```
+  1  Copy all changes
+  2  Choose change by change
+  3  Cancel
+How do you want to copy to shared? [1/2/3]
+```
+
+With 2, printerkeep asks about each change:
+
+- `y` copies the change to shared.
+- `n` keeps it on this printer. It stays a local change, and you're asked again at the next copy.
+- `o` keeps it on this printer always: printerkeep marks its lines as override lines (see
+  [Lines for one printer only](#lines-for-one-printer-only)). You get `o` only for `option: value` lines that
+  shared has too, such as `variable_temp: 250`. Lines in `gcode:` can't be override lines, so for those you
+  choose `y` or `n`.
+
+In a script, `--yes` copies all changes without questions.
 
 On each other printer, run:
 

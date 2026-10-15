@@ -106,7 +106,7 @@ pub fn protect(mine: &[u8], other: &[u8]) -> Vec<u8> {
 }
 
 /// The content that copy to shared sends.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForShared {
     pub content: Vec<u8>,
     /// Override lines where shared keeps its own line.
@@ -163,6 +163,57 @@ pub fn for_shared(mine: &[u8], shared: Option<&[u8]>) -> ForShared {
         content.into_bytes()
     };
     result
+}
+
+/// The `[section]` that line `line` (from 0) of a text is in.
+pub fn section_at(text: &[u8], line: usize) -> Option<String> {
+    let text = String::from_utf8_lossy(text);
+    let mut section = None;
+    for content in text.lines().take(line + 1) {
+        if let Some(rest) = content.strip_prefix('[')
+            && let Some(end) = rest.find(']')
+        {
+            section = Some(rest[..end].trim().to_string());
+        }
+    }
+    section
+}
+
+/// The keys of `count` lines from line `start` (from 0), if each of them is an `option: value` line that
+/// can be an override. `None` for other lines: comments, empty lines, and lines in a `gcode:` value, which
+/// have no option name. The `gcode:` line itself is not an override either: its value goes on in the lines
+/// below it.
+pub fn keys_at(text: &[u8], start: usize, count: usize) -> Option<Vec<Key>> {
+    let text = String::from_utf8(merge::to_lf(text)).ok()?;
+    let lines = keyed_lines(&text);
+    lines
+        .get(start..start + count)?
+        .iter()
+        .map(|(key, _)| key.clone().filter(|k| k.option != "gcode"))
+        .collect()
+}
+
+/// The printer's file with the override mark on each line with one of the keys.
+pub fn mark(mine: &[u8], keys: &[Key]) -> Vec<u8> {
+    let crlf = merge::uses_crlf(mine);
+    let Ok(text) = String::from_utf8(merge::to_lf(mine)) else {
+        return mine.to_vec();
+    };
+    let content: String = keyed_lines(&text)
+        .into_iter()
+        .map(|(key, line)| match key {
+            Some(key) if keys.contains(&key) && !is_override(line) => {
+                let end = &line[line.trim_end_matches('\n').len()..];
+                format!("{}   # printerkeep: override{end}", line.trim_end())
+            }
+            _ => line.to_string(),
+        })
+        .collect();
+    if crlf {
+        merge::to_crlf(content.as_bytes())
+    } else {
+        content.into_bytes()
+    }
 }
 
 /// The number of override lines with the placeholder value.
@@ -253,6 +304,33 @@ mod tests {
         assert_eq!(result.placeholders[0].to_string(), "pin in [fan]");
         assert_eq!(placeholders(&result.content), 2);
         assert_eq!(placeholders(MINE.as_bytes()), 0);
+    }
+
+    #[test]
+    fn keys_and_sections_of_lines() {
+        let text = b"[gcode_macro LOAD]\nvariable_temp: 230\ngcode:\n    G1 E50\n# note\n";
+        assert_eq!(section_at(text, 3).as_deref(), Some("gcode_macro LOAD"));
+        assert_eq!(section_at(text, 0).as_deref(), Some("gcode_macro LOAD"));
+        let keys = keys_at(text, 1, 1).unwrap();
+        assert_eq!(keys[0].to_string(), "variable_temp in [gcode_macro LOAD]");
+        // Lines in gcode, the gcode: line, and comments can't be overrides.
+        assert_eq!(keys_at(text, 3, 1), None);
+        assert_eq!(keys_at(text, 2, 1), None);
+        assert_eq!(keys_at(text, 1, 3), None);
+        assert_eq!(keys_at(text, 4, 1), None);
+        assert_eq!(keys_at(text, 9, 1), None);
+    }
+
+    #[test]
+    fn mark_adds_the_override_comment() {
+        let text = "[gcode_macro LOAD]\r\nvariable_temp: 230 \r\nvariable_speed: 5\r\n";
+        let keys = keys_at(text.as_bytes(), 1, 1).unwrap();
+        let marked = String::from_utf8(mark(text.as_bytes(), &keys)).unwrap();
+        assert_eq!(
+            marked,
+            "[gcode_macro LOAD]\r\nvariable_temp: 230   # printerkeep: override\r\nvariable_speed: 5\r\n"
+        );
+        assert_eq!(mark(marked.as_bytes(), &keys), marked.as_bytes());
     }
 
     #[test]

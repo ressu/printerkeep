@@ -199,11 +199,18 @@ impl Git {
         Ok(line(&stdout))
     }
 
-    /// The changes from blob `old` to blob `new`, as unified diff parts (from the first `@@` line).
-    pub fn diff_blobs(&self, old: &str, new: &str) -> Result<String, GitError> {
+    /// The changes from blob `old` to blob `new`, as unified diff parts (from the first `@@` line), with
+    /// `context` unchanged lines around each change.
+    pub fn diff_blobs(&self, old: &str, new: &str, context: usize) -> Result<String, GitError> {
         let output = output(
-            self.command()
-                .args(["diff", "--no-color", "--no-ext-diff", "-U2", old, new]),
+            self.command().args([
+                "diff",
+                "--no-color",
+                "--no-ext-diff",
+                &format!("-U{context}"),
+                old,
+                new,
+            ]),
             None,
         )?;
         if !output.status.success() {

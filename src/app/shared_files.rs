@@ -120,8 +120,53 @@ pub fn unfollow(paths: &Paths, files: &[String]) -> Result<Vec<String>, Error> {
     Ok(lines)
 }
 
-/// Shows the changes that a copy to shared sends (the text), and returns `true` if the user wants them sent.
-pub type Confirm<'a> = &'a dyn Fn(&str) -> std::io::Result<bool>;
+/// How to copy files to shared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum How {
+    /// Copy all changes.
+    All,
+    /// Choose change by change.
+    Pick,
+    /// Copy nothing.
+    Cancel,
+}
+
+/// What to do with one change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pick {
+    /// Copy it to shared.
+    Send,
+    /// Keep it on this printer, as a local change.
+    Keep,
+    /// Keep it on this printer, and mark its lines as override lines.
+    KeepAlways,
+}
+
+/// One change of a copy to shared, for the question.
+#[derive(Debug)]
+pub struct ChangeQuestion<'a> {
+    pub path: &'a str,
+    /// The number of the change in the file, from 1.
+    pub number: usize,
+    /// The number of changes in the file.
+    pub total: usize,
+    /// The `[section]` of the change.
+    pub section: Option<String>,
+    /// The change as diff lines.
+    pub lines: String,
+    /// `true` if each line of the change is an `option: value` line that shared has too. Then the lines
+    /// can be override lines. Lines in a `gcode:` value can't.
+    pub can_keep_always: bool,
+}
+
+/// The questions of a copy to shared.
+pub trait CopyChoice {
+    /// Shows the changes that the copy sends (the preview), and asks how to copy. With `can_pick`, the user
+    /// can choose change by change; without it (only files that aren't in shared yet), only all or nothing.
+    fn how(&self, preview: &str, can_pick: bool) -> std::io::Result<How>;
+    /// Asks what to do with one change.
+    fn change(&self, question: &ChangeQuestion) -> std::io::Result<Pick>;
+}
 
 /// A file to copy to shared: its path, content on this printer, and mode.
 struct ToCopy {
@@ -130,11 +175,34 @@ struct ToCopy {
     executable: bool,
 }
 
-/// A file in the copy: what goes to shared, and whether shared had something different.
+/// A file in the copy: what goes to shared, and what was there.
 struct Copied {
     path: String,
     for_shared: overrides::ForShared,
-    changed: bool,
+    /// The blob of `for_shared.content`.
+    oid: String,
+    /// The blob in shared, if shared has the file.
+    old_oid: Option<String>,
+    executable: bool,
+    /// The printer's file with new override marks, written after the copy.
+    marked: Option<Vec<u8>>,
+    /// The number of changes that the user kept on this printer.
+    kept: usize,
+}
+
+impl Copied {
+    fn changed(&self) -> bool {
+        self.old_oid.as_deref() != Some(self.oid.as_str())
+    }
+}
+
+/// The choices for one file, made at the first try. A later try (after another printer changed shared)
+/// uses them again, if shared still has the same version of the file.
+struct Picked {
+    in_shared: Option<Vec<u8>>,
+    for_shared: overrides::ForShared,
+    marked: Option<Vec<u8>>,
+    kept: usize,
 }
 
 /// Makes the shared version of files equal to this printer's version, and follows them. `confirm` gets the
@@ -142,7 +210,7 @@ struct Copied {
 pub fn copy_to_shared(
     paths: &Paths,
     files: &[String],
-    confirm: Confirm,
+    choice: &dyn CopyChoice,
 ) -> Result<Vec<String>, Error> {
     let (settings, printer_name, remote) = shared_setup(paths)?;
     let names = config_paths(paths, files, |path| {
@@ -192,7 +260,12 @@ pub fn copy_to_shared(
 
     let git = Git::new(&paths.git_dir);
     let all = names.join(", ");
+    let nothing_copied = || match names.as_slice() {
+        [one] => format!("Nothing copied: {one} in shared stays as it was."),
+        _ => format!("Nothing copied: {all} in shared stay as they were."),
+    };
     let mut attempts = 0;
+    let mut picked: Option<Vec<Picked>> = None;
     let (commit, copied) = loop {
         attempts += 1;
         let tip = shared::fetch(&git, &remote)?;
@@ -201,9 +274,8 @@ pub fn copy_to_shared(
             None => git::Tree::new(),
         };
         let mut copied = Vec::new();
-        let mut entries = Vec::new();
-        let mut previews = Vec::new();
-        for source in &sources {
+        let mut in_shared_files = Vec::new();
+        for (index, source) in sources.iter().enumerate() {
             let path = &source.path;
             // A followed file must have all changes from shared, else the copy removes changes of other
             // printers.
@@ -214,56 +286,88 @@ pub fn copy_to_shared(
                     return Err(Error::SharedChanged(path.clone()));
                 }
             }
-            // Override lines stay on this printer (C6).
             let in_shared = match &tip {
                 Some(tip) => shared::content_at(&git, tip, path)?,
                 None => None,
             };
-            let for_shared = overrides::for_shared(&source.content, in_shared.as_deref());
-            let entry = git::TreeEntry {
-                mode: if source.executable {
-                    "100755"
-                } else {
-                    "100644"
+            let (for_shared, marked, kept) = match picked.as_ref().map(|p| &p[index]) {
+                Some(choice) => {
+                    if choice.in_shared != in_shared {
+                        return Err(Error::SharedChanged(path.clone()));
+                    }
+                    (
+                        choice.for_shared.clone(),
+                        choice.marked.clone(),
+                        choice.kept,
+                    )
                 }
-                .to_string(),
-                oid: git.hash_blob(&for_shared.content, true)?,
+                // Override lines stay on this printer (C6).
+                None => (
+                    overrides::for_shared(&source.content, in_shared.as_deref()),
+                    None,
+                    0,
+                ),
             };
-            let old_oid = shared_tree.get(path.as_bytes()).map(|e| e.oid.clone());
-            let changed = old_oid.as_deref() != Some(entry.oid.as_str());
-            if changed {
-                previews.push(copy_preview(
-                    &git,
-                    path,
-                    old_oid.as_deref(),
-                    &entry.oid,
-                    &for_shared,
-                )?);
-            }
-            entries.push((path.as_str(), entry));
             copied.push(Copied {
                 path: path.clone(),
+                oid: git.hash_blob(&for_shared.content, true)?,
                 for_shared,
-                changed,
+                old_oid: shared_tree.get(path.as_bytes()).map(|e| e.oid.clone()),
+                executable: source.executable,
+                marked,
+                kept,
             });
+            in_shared_files.push(in_shared);
         }
         // The changes that go to the other printers: the user sees them before they are sent (C6).
-        if attempts == 1 && !previews.is_empty() {
-            let yes = confirm(&previews.concat()).map_err(|source| Error::Io {
-                context: "Can't copy to shared".into(),
-                source,
-            })?;
-            if !yes {
-                return Ok(vec![match names.as_slice() {
-                    [one] => format!("Nothing copied: {one} in shared stays as it was."),
-                    _ => format!("Nothing copied: {all} in shared stay as they were."),
-                }]);
+        if attempts == 1 {
+            let mut previews = Vec::new();
+            for file in copied.iter().filter(|file| file.changed()) {
+                previews.push(copy_preview(&git, file)?);
+            }
+            if !previews.is_empty() {
+                let can_pick = copied.iter().any(|f| f.changed() && f.old_oid.is_some());
+                let how = choice
+                    .how(&previews.concat(), can_pick)
+                    .map_err(|source| Error::Io {
+                        context: "Can't copy to shared".into(),
+                        source,
+                    })?;
+                match how {
+                    How::Cancel => return Ok(vec![nothing_copied()]),
+                    How::All => {}
+                    How::Pick => {
+                        let choices = pick(&git, &sources, &copied, in_shared_files, choice)?;
+                        for (file, choice) in copied.iter_mut().zip(&choices) {
+                            file.oid = git.hash_blob(&choice.for_shared.content, true)?;
+                            file.for_shared = choice.for_shared.clone();
+                            file.marked = choice.marked.clone();
+                            file.kept = choice.kept;
+                        }
+                        if !copied.iter().any(|f| f.changed() || f.marked.is_some()) {
+                            return Ok(vec![nothing_copied()]);
+                        }
+                        picked = Some(choices);
+                    }
+                }
             }
         }
+        let mut entries: Vec<(&str, git::TreeEntry)> = copied
+            .iter()
+            .map(|file| {
+                (
+                    file.path.as_str(),
+                    git::TreeEntry {
+                        mode: if file.executable { "100755" } else { "100644" }.to_string(),
+                        oid: file.oid.clone(),
+                    },
+                )
+            })
+            .collect();
         // Only the files that change go into the commit and its message.
         let changed: Vec<&str> = copied
             .iter()
-            .filter(|file| file.changed)
+            .filter(|file| file.changed())
             .map(|file| file.path.as_str())
             .collect();
         entries.retain(|(path, _)| changed.contains(path));
@@ -309,6 +413,19 @@ pub fn copy_to_shared(
         }
     };
 
+    // The new override marks: only now, when the copy is done.
+    for file in &copied {
+        if let Some(marked) = &file.marked {
+            let disk = paths.config.join(&file.path);
+            let mode = std::fs::metadata(&disk)
+                .ok()
+                .map(|m| m.permissions().mode());
+            crate::files::replace(&disk, marked, mode).map_err(|source| Error::Io {
+                context: format!("Can't write {}", disk.display()),
+                source,
+            })?;
+        }
+    }
     for path in &names {
         settings::add_to_list(&paths.settings(), "follow", path)?;
         state.files.insert(
@@ -347,7 +464,7 @@ pub fn copy_to_shared(
     };
     for file in &copied {
         let path = &file.path;
-        if file.changed {
+        if file.changed() {
             lines.push(format!(
                 "Copied {path} to shared. Other printers can now follow it."
             ));
@@ -355,6 +472,15 @@ pub fn copy_to_shared(
             lines.push(format!(
                 "{path} in shared is already the same as on this printer."
             ));
+        }
+        match file.kept {
+            0 => {}
+            1 => lines.push(format!(
+                "Kept on this printer: 1 change in {path}. It stays a local change."
+            )),
+            n => lines.push(format!(
+                "Kept on this printer: {n} changes in {path}. They stay local changes."
+            )),
         }
         for key in &file.for_shared.kept {
             lines.push(format!(
@@ -415,25 +541,89 @@ pub fn decide(paths: &Paths, files: &[String], use_shared: bool) -> Result<Vec<S
     Ok(lines)
 }
 
+/// Asks about each change of the files that shared has, and builds what goes to shared: the shared version
+/// with only the changes to send. A kept change stays a local change. A change kept always gets the
+/// override mark on this printer, so shared keeps its own lines.
+fn pick(
+    git: &Git,
+    sources: &[ToCopy],
+    copied: &[Copied],
+    in_shared_files: Vec<Option<Vec<u8>>>,
+    choice: &dyn CopyChoice,
+) -> Result<Vec<Picked>, Error> {
+    let io = |source| Error::Io {
+        context: "Can't copy to shared".into(),
+        source,
+    };
+    let mut choices = Vec::new();
+    for ((source, file), in_shared) in sources.iter().zip(copied).zip(in_shared_files) {
+        let (Some(old_oid), Some(old), true) = (&file.old_oid, &in_shared, file.changed()) else {
+            choices.push(Picked {
+                in_shared,
+                for_shared: file.for_shared.clone(),
+                marked: None,
+                kept: 0,
+            });
+            continue;
+        };
+        let new = &file.for_shared.content;
+        let diff = git.diff_blobs(old_oid, &file.oid, 0)?;
+        let changes = crate::changes::parse(&diff, old, new);
+        let mut send = Vec::new();
+        let mut always = Vec::new();
+        let mut kept = 0;
+        for (index, change) in changes.iter().enumerate() {
+            let added = overrides::keys_at(new, change.new_start, change.added.len());
+            let removed = overrides::keys_at(old, change.old_start, change.removed.len());
+            let keys = added.filter(|keys| !keys.is_empty() && Some(keys) == removed.as_ref());
+            let question = ChangeQuestion {
+                path: &file.path,
+                number: index + 1,
+                total: changes.len(),
+                section: overrides::section_at(new, change.new_start),
+                lines: change.lines(),
+                can_keep_always: keys.is_some(),
+            };
+            match choice.change(&question).map_err(io)? {
+                Pick::Send => send.push(change),
+                Pick::Keep => kept += 1,
+                Pick::KeepAlways => match keys {
+                    Some(keys) => always.extend(keys),
+                    None => kept += 1,
+                },
+            }
+        }
+        let marked = (!always.is_empty()).then(|| overrides::mark(&source.content, &always));
+        let mut for_shared = match &marked {
+            Some(marked) => overrides::for_shared(marked, Some(old)),
+            None => file.for_shared.clone(),
+        };
+        for_shared.content = crate::changes::apply(old, &send);
+        choices.push(Picked {
+            in_shared,
+            for_shared,
+            marked,
+            kept,
+        });
+    }
+    Ok(choices)
+}
+
 /// The text that `copy-to-shared` shows before it sends: the changes in shared, and the override lines that
 /// stay on this printer.
-fn copy_preview(
-    git: &Git,
-    path: &str,
-    old: Option<&str>,
-    new: &str,
-    for_shared: &overrides::ForShared,
-) -> Result<String, Error> {
-    let mut text = match old {
+fn copy_preview(git: &Git, file: &Copied) -> Result<String, Error> {
+    let path = &file.path;
+    let mut text = match &file.old_oid {
         Some(old) => format!(
             "These changes go to shared. Each printer that follows {path} gets them at its next run:\n\n{}",
-            git.diff_blobs(old, new)?
+            git.diff_blobs(old, &file.oid, 2)?
         ),
         None => {
-            let lines = git.blob(new)?.iter().filter(|&&b| b == b'\n').count();
+            let lines = git.blob(&file.oid)?.iter().filter(|&&b| b == b'\n').count();
             format!("{path} isn't in shared yet. It goes to shared with {lines} lines.\n")
         }
     };
+    let for_shared = &file.for_shared;
     for key in &for_shared.kept {
         text.push_str(&format!(
             "Kept on this printer: {key} (override). Shared keeps its own line.\n"

@@ -107,7 +107,7 @@ enum Command {
         /// The paths in the config folder. All files go to shared in one copy.
         #[arg(required = true, value_name = "FILE")]
         files: Vec<String>,
-        /// Do not ask. Necessary when printerkeep does not run on a terminal.
+        /// Copy all changes without questions. Necessary when printerkeep does not run on a terminal.
         #[arg(long)]
         yes: bool,
     },
@@ -223,8 +223,7 @@ fn main() -> ExitCode {
         Command::Follow { files } => app::follow(&paths, files),
         Command::Unfollow { files } => app::unfollow(&paths, files),
         Command::CopyToShared { files, yes } => {
-            let confirm = |preview: &str| confirm_copy(preview, *yes);
-            app::copy_to_shared(&paths, files, &confirm)
+            app::copy_to_shared(&paths, files, &CopyQuestions { yes: *yes })
         }
         Command::Decide {
             files, use_shared, ..
@@ -296,25 +295,98 @@ impl app::Ask for Terminal {
     }
 }
 
-/// Shows the changes of a copy to shared, and asks on a terminal.
-fn confirm_copy(preview: &str, yes: bool) -> std::io::Result<bool> {
-    print!("{preview}");
-    if !preview.ends_with('\n') {
-        println!();
+/// The questions of a copy to shared, on a terminal. With `--yes`, copies all changes without questions.
+struct CopyQuestions {
+    yes: bool,
+}
+
+impl CopyQuestions {
+    /// Asks until the answer is one of `answers`. An empty answer is the first one.
+    fn ask(question: &str, answers: &[&str]) -> std::io::Result<String> {
+        let stdin = std::io::stdin();
+        if !stdin.is_terminal() {
+            return Err(std::io::Error::other(
+                "copy-to-shared asks before it copies. Run it on a terminal, or add --yes",
+            ));
+        }
+        loop {
+            eprint!("{question} ");
+            let mut answer = String::new();
+            if stdin.lock().read_line(&mut answer)? == 0 {
+                return Ok(answers[0].to_string());
+            }
+            let answer = answer.trim().to_lowercase();
+            let answer = if answer.is_empty() {
+                answers[0]
+            } else {
+                answer.as_str()
+            };
+            if answers.contains(&answer) {
+                eprintln!();
+                return Ok(answer.to_string());
+            }
+        }
     }
-    if yes {
-        return Ok(true);
+}
+
+impl app::CopyChoice for CopyQuestions {
+    fn how(&self, preview: &str, can_pick: bool) -> std::io::Result<app::How> {
+        print!("{preview}");
+        if !preview.ends_with('\n') {
+            println!();
+        }
+        if self.yes {
+            return Ok(app::How::All);
+        }
+        if !can_pick {
+            let answer = Self::ask("Copy to shared? [y/N]", &["n", "no", "y", "yes"])?;
+            return Ok(match answer.as_str() {
+                "y" | "yes" => app::How::All,
+                _ => app::How::Cancel,
+            });
+        }
+        eprintln!();
+        eprintln!("  1  Copy all changes");
+        eprintln!("  2  Choose change by change");
+        eprintln!("  3  Cancel");
+        let answer = Self::ask(
+            "How do you want to copy to shared? [1/2/3]",
+            &["3", "1", "2"],
+        )?;
+        Ok(match answer.as_str() {
+            "1" => app::How::All,
+            "2" => app::How::Pick,
+            _ => app::How::Cancel,
+        })
     }
-    let stdin = std::io::stdin();
-    if !stdin.is_terminal() {
-        return Err(std::io::Error::other(
-            "copy-to-shared asks before it copies. Run it on a terminal, or add --yes",
-        ));
+
+    fn change(&self, question: &app::ChangeQuestion) -> std::io::Result<app::Pick> {
+        let place = match &question.section {
+            Some(section) => format!("{}, [{section}]", question.path),
+            None => question.path.to_string(),
+        };
+        eprintln!(
+            "Change {} of {} in {place}:\n{}",
+            question.number, question.total, question.lines
+        );
+        eprintln!("  y  copy this change to shared");
+        if question.can_keep_always {
+            eprintln!("  n  keep it on this printer this time");
+            eprintln!("  o  keep it on this printer always (adds # printerkeep: override)");
+            let answer = Self::ask("Copy this change? [y/N/o]", &["n", "y", "o"])?;
+            return Ok(match answer.as_str() {
+                "y" => app::Pick::Send,
+                "o" => app::Pick::KeepAlways,
+                _ => app::Pick::Keep,
+            });
+        }
+        eprintln!("  n  keep it on this printer (you're asked again at the next copy)");
+        let answer = Self::ask("Copy this change? [y/N]", &["n", "y"])?;
+        Ok(match answer.as_str() {
+            "y" => app::Pick::Send,
+            _ => app::Pick::Keep,
+        })
     }
-    eprint!("Copy to shared? [y/N] ");
-    let mut answer = String::new();
-    stdin.lock().read_line(&mut answer)?;
-    Ok(matches!(answer.trim(), "y" | "Y" | "yes"))
 }
 
 /// Reads a personal access token. On a terminal, asks for it and does not show it.
