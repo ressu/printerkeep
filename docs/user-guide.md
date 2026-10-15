@@ -43,7 +43,7 @@ You can set these variables before `sh`, for example `curl … | PRINTER_NAME=pr
 
 | Variable | Default | Description |
 |---|---|---|
-| `VERSION` | latest | The release to install, for example `v0.6.0` |
+| `VERSION` | latest | The release to install, for example `v1.2.0` |
 | `BINARY_SHA256` | none | The checksum of the program. The script then checks against it instead of the checksum file. |
 | `PRINTER_DATA` | `~/printer_data` | The printer_data folder |
 | `PRINTER_NAME` | `main` | The printer name, which is also its branch in the repository (see [Printer name](#printer-name)) |
@@ -51,14 +51,15 @@ You can set these variables before `sh`, for example `curl … | PRINTER_NAME=pr
 ### The install script, read and checked first
 
 ```sh
-curl -fsSL https://github.com/ressu/printerkeep/releases/download/v0.6.0/install.sh -o install.sh
+curl -fsSL "https://github.com/ressu/printerkeep/releases/download/<version>/install.sh" -o install.sh
 less install.sh
-VERSION=v0.6.0 BINARY_SHA256="sha256:<checksum>" sh install.sh
+VERSION="<version>" BINARY_SHA256="sha256:<checksum>" sh install.sh
 ```
 
-Replace `<checksum>` with the checksum of the program for your CPU. The
-[release page](https://github.com/ressu/printerkeep/releases) shows a `sha256:` checksum for each file. The
-script installs the program only if its checksum matches.
+Pick a release on the [release page](https://github.com/ressu/printerkeep/releases). Replace `<version>`
+with its name, for example `v1.2.0`, and `<checksum>` with the checksum of the program for your CPU. The
+release page shows a `sha256:` checksum for each file. The script installs the program only if its checksum
+matches.
 
 ### Without a script
 
@@ -74,7 +75,7 @@ Find the file for your CPU. The command `uname -m` shows which one you need:
 Then download it, check it, and install it. For an `aarch64` printer:
 
 ```sh
-curl -fsSLO https://github.com/ressu/printerkeep/releases/download/v0.6.0/printerkeep-linux-aarch64
+curl -fsSLO https://github.com/ressu/printerkeep/releases/latest/download/printerkeep-linux-aarch64
 sha256sum printerkeep-linux-aarch64      # compare with the checksum on the release page
 chmod +x printerkeep-linux-aarch64
 ./printerkeep-linux-aarch64 install      # copies itself to ~/printerkeep
@@ -84,7 +85,8 @@ rm printerkeep-linux-aarch64
 ## Update and remove
 
 - **Update:** use the update panel in Fluidd or Mainsail. Restart Moonraker once after the install, so that
-  the panel shows printerkeep.
+  the panel shows printerkeep. The panel links to the release notes. The [changelog](../CHANGELOG.md) has
+  the notes of every release.
 - **Update by hand:** run the install command again, in any of the three ways. It replaces the program.
   Your history, login, and settings stay.
 - **Remove:** run `printerkeep uninstall`. It keeps the history, the login for the repository, and the
@@ -126,7 +128,7 @@ that others can see your configuration, or private. printerkeep never sends `*.s
 [Files that printerkeep skips](#files-that-printerkeep-skips)). Then connect the printer to it:
 
 ```sh
-printerkeep connect https://github.com/<user>/<repository>.git
+printerkeep connect "https://github.com/<user>/<repository>.git"
 ```
 
 Replace the URL with the address of your repository.
@@ -209,7 +211,7 @@ To move:
 In a script, give the answers as options:
 
 ```sh
-printerkeep connect <url> --printer-name <branch> --continue
+printerkeep connect "<url>" --printer-name "<branch>" --continue
 ```
 
 In the repository, the files move from `printer_data/config` to the top of the branch. git follows the files
@@ -274,7 +276,7 @@ repository.
 For example after a new SD card, install Klipper, Moonraker, and printerkeep. Then run:
 
 ```sh
-printerkeep restore --repository https://github.com/<user>/<repository>.git
+printerkeep restore --repository "https://github.com/<user>/<repository>.git"
 ```
 
 If the repository has several printers, printerkeep asks which one this is. In a script, add
@@ -340,8 +342,8 @@ What `rename` does:
   no longer need it.
 - If the repository already has a branch with the new name, from another printer or from klipper-backup,
   `rename` stops. It never takes over a branch. To make this printer continue that branch, run
-  `printerkeep connect <url>` and select that printer. In a script, add
-  `--printer-name <branch> --continue`.
+  `printerkeep connect "<url>"` and select that printer. In a script, add
+  `--printer-name "<branch>" --continue`.
 
 ## Files that printerkeep skips
 

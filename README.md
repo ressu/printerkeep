@@ -5,7 +5,8 @@ that worked. It runs on the printer by itself. You don't need git skills or a se
 
 It works with Klipper and with firmware based on it, such as Kalico.
 
-> **Status:** early releases (0.x). Commands and files can still change.
+> **Status:** early releases (0.x). Commands and files can still change. The [changelog](CHANGELOG.md) shows
+> what changes in each release.
 
 ## Why printerkeep
 
@@ -88,7 +89,7 @@ as GitHub, GitLab, Gitea, or Codeberg. It can be public, so that others can see 
 private, to keep it to yourself. Then run:
 
 ```sh
-printerkeep connect https://github.com/<user>/<repository>.git
+printerkeep connect "https://github.com/<user>/<repository>.git"
 ```
 
 Replace the URL with the address of your repository. printerkeep asks for an access token, and shows how to
@@ -119,7 +120,7 @@ that brings them back.
 Install Klipper, Moonraker, and printerkeep again. Then run:
 
 ```sh
-printerkeep restore --repository https://github.com/<user>/<repository>.git
+printerkeep restore --repository "https://github.com/<user>/<repository>.git"
 ```
 
 printerkeep writes the files of the last backup into the config folder and continues the history. Then

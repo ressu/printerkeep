@@ -27,17 +27,16 @@ is greater. Thus, from the release after v0.1, versions have three numbers again
 refuses a version that is not three numbers, and a tag that does not match. A printer with v0.1 must be
 updated by hand once (its installed version is not a semantic version).
 
-Future (2026-10-13): simpler releases. The 0.2.0 release changed six places by hand: the version in
-`Cargo.toml` (and `Cargo.lock`), four examples in the README (three URLs and `VERSION=`), and two comments in
-`install.sh`. Ideas to decide later:
+Simpler releases (decided 2026-10-15). The 0.2.0 to 0.6.0 releases changed the version in `Cargo.toml` (and
+`Cargo.lock`) and in examples in the docs and `install.sh`, by hand. Now the docs have no version: examples use
+`<version>`, `v1.2.0` or the `releases/latest/download/` URLs. A release changes `Cargo.toml`, `Cargo.lock`
+and the heading in `CHANGELOG.md`, so no release tool is needed (cargo-release was considered).
 
-- Docs without a version: the README examples use `<version>` (with a link to the release page), or the
-  `releases/latest/download/` URLs where a fixed release is not needed. Then only `Cargo.toml` changes.
-- A release script (`scripts/release.sh <version>`): set the version in `Cargo.toml`, update `Cargo.lock`,
-  run the checks, make the jj change and the tag. It prints the push commands, and does not push.
-- The version from the tag: the release workflow sets the version from the tag (for example with
-  `cargo set-version`), so that `Cargo.toml` does not change for a release. Local builds then show the last
-  version in `Cargo.toml`, which can be wrong.
+Changelog (decided 2026-10-15): `CHANGELOG.md`, written by hand for users, from 0.7.0 on (no notes for older
+releases). Fluidd and Mainsail show no release notes for an `executable` type; they link to the GitHub release
+(Mainsail to the newest release, Fluidd to the list of releases). So the release workflow puts the section of
+the version in the GitHub release (`scripts/release-notes.sh`), with a link to the whole changelog for users who
+skip releases, and refuses a release without notes.
 
 ## Project setup
 

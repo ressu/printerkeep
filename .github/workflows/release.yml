@@ -49,6 +49,14 @@ jobs:
             exit 1
           fi
 
+      # The text of the GitHub release, which Fluidd and Mainsail link to. Checked here so that a release without
+      # notes fails before the builds.
+      - name: Release notes in CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/release-notes.sh "${TAG#v}" > /dev/null
+
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
@@ -96,5 +104,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           cp install.sh dist/
+          scripts/release-notes.sh "${TAG#v}" > release-notes.md
           # update_manager compares the release title with the version in release_info.json (the tag).
-          gh release create "$TAG" dist/* --repo "${{ github.repository }}" --title "$TAG" --generate-notes
+          gh release create "$TAG" dist/* --repo "${{ github.repository }}" --title "$TAG" \
+            --notes-file release-notes.md
