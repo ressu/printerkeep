@@ -43,7 +43,7 @@ You can set these variables before `sh`, for example `curl … | PRINTER_NAME=pr
 
 | Variable | Default | Description |
 |---|---|---|
-| `VERSION` | latest | The release to install, for example `v0.5.1` |
+| `VERSION` | latest | The release to install, for example `v0.6.0` |
 | `BINARY_SHA256` | none | The checksum of the program. The script then checks against it instead of the checksum file. |
 | `PRINTER_DATA` | `~/printer_data` | The printer_data folder |
 | `PRINTER_NAME` | `main` | The printer name, which is also its branch in the repository (see [Printer name](#printer-name)) |
@@ -51,9 +51,9 @@ You can set these variables before `sh`, for example `curl … | PRINTER_NAME=pr
 ### The install script, read and checked first
 
 ```sh
-curl -fsSL https://github.com/ressu/printerkeep/releases/download/v0.5.1/install.sh -o install.sh
+curl -fsSL https://github.com/ressu/printerkeep/releases/download/v0.6.0/install.sh -o install.sh
 less install.sh
-VERSION=v0.5.1 BINARY_SHA256="sha256:<checksum>" sh install.sh
+VERSION=v0.6.0 BINARY_SHA256="sha256:<checksum>" sh install.sh
 ```
 
 Replace `<checksum>` with the checksum of the program for your CPU. The
@@ -74,7 +74,7 @@ Find the file for your CPU. The command `uname -m` shows which one you need:
 Then download it, check it, and install it. For an `aarch64` printer:
 
 ```sh
-curl -fsSLO https://github.com/ressu/printerkeep/releases/download/v0.5.1/printerkeep-linux-aarch64
+curl -fsSLO https://github.com/ressu/printerkeep/releases/download/v0.6.0/printerkeep-linux-aarch64
 sha256sum printerkeep-linux-aarch64      # compare with the checksum on the release page
 chmod +x printerkeep-linux-aarch64
 ./printerkeep-linux-aarch64 install      # copies itself to ~/printerkeep
