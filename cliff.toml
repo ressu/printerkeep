@@ -1,0 +1,53 @@
+# git-cliff drafts the release notes in CHANGELOG.md from the commits since the last release:
+#
+#   git cliff --unreleased --tag v<version> --prepend CHANGELOG.md
+#
+# Read the draft and edit it before the release commit. The subjects of feat: and fix: commits are the notes,
+# so they are written for users. A "BREAKING CHANGE:" footer (or "feat!:") says what users must do, and goes
+# under "Before you update".
+
+[changelog]
+# The same as the top of CHANGELOG.md. --prepend puts the new release right after it.
+header = """
+# Changelog
+
+What changes in each release of printerkeep. Read it before you update, so you know what to expect.
+
+Fluidd and Mainsail link to the release page on GitHub, which shows the same notes.
+"""
+body = """
+{% if version %}\
+## {{ version | trim_start_matches(pat="v") }} ({{ timestamp | date(format="%Y-%m-%d") }})
+{% else %}\
+## Unreleased
+{% endif %}\
+{% set breaking = commits | filter(attribute="breaking", value=true) %}\
+{% if breaking %}
+### Before you update
+{% for commit in breaking %}
+- {{ commit.breaking_description | upper_first }}\
+{% endfor %}
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {{ commit.message | trim_start_matches(pat="remove ") | upper_first }}\
+{% endfor %}
+{% endfor %}\
+"""
+trim = false
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+protect_breaking_commits = true
+# The HTML comments set the order of the groups; the template removes them.
+commit_parsers = [
+  { message = "^feat(\\(.*\\))?!?: remove", group = "<!-- 3 -->Removed" },
+  { message = "^feat(\\(.*\\))?!?: rename", group = "<!-- 1 -->Changed" },
+  { message = "^feat", group = "<!-- 0 -->New" },
+  { message = "^fix", group = "<!-- 2 -->Fixed" },
+  { message = ".*", skip = true },
+]
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+sort_commits = "oldest"
