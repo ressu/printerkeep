@@ -41,8 +41,10 @@ pub struct IgnoreRules {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("The ignore rule '{rule}' isn't valid: {message}")]
+#[error("The {option} rule '{rule}' isn't valid: {message}")]
 pub struct RuleError {
+    /// The option of the settings file that has the rule.
+    pub option: &'static str,
     pub rule: String,
     pub message: String,
 }
@@ -61,6 +63,7 @@ impl IgnoreRules {
                 .literal_separator(true)
                 .build()
                 .map_err(|e| RuleError {
+                    option: "ignore",
                     rule: rule.to_string(),
                     message: e.kind().to_string(),
                 })?;
@@ -72,6 +75,7 @@ impl IgnoreRules {
         }
         let build = |builder: GlobSetBuilder| {
             builder.build().map_err(|e| RuleError {
+                option: "ignore",
                 rule: String::new(),
                 message: e.to_string(),
             })
@@ -94,7 +98,7 @@ impl IgnoreRules {
 }
 
 /// Converts a rule to a glob pattern relative to the config folder.
-fn translate(rule: &str) -> (String, bool) {
+pub(crate) fn translate(rule: &str) -> (String, bool) {
     let rule = rule.trim();
     let folder_only = rule.ends_with('/');
     let rule = rule.trim_end_matches('/');

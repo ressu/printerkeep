@@ -29,12 +29,16 @@ separate index. It writes a file into the config folder only when it has a final
    `check_repository` says (default: each run). See M5 in implementation-plan.md.
 3. If not: make a commit. The message lists the changed files, for example
    `printer.cfg, macros/macros.cfg changed`. If only the `SAVE_CONFIG` block changed, the message says so.
+4. **Bundled changes** (`bundled_changes:` in the settings file, default `[bed_mesh *]`) don't make a backup
+   alone in a sync. When every change is bundled, the tree keeps the files of the last backup. The next
+   backup with another change includes them. `printerkeep backup`, and the backups before printerkeep
+   writes files (restore, connect, copy to shared), include all changes.
 
 The default ignore rules (in `src/ignore.rs`) are: Klipper's `SAVE_CONFIG` copies
 (`<name>-YYYYMMDD_HHMMSS.cfg`) and its temporary `*_autosave` file, Moonraker's `.<name>.bkp` copy of its
 config file, `*.secrets`, `.git/` folders, and editor and system files (`*.swp`, `*~`, `.DS_Store`,
 `__pycache__/`). The names of the Klipper and Moonraker files were checked in their source code. State files
-of extensions (`variables.cfg`, `mmu_vars.cfg`) are backed up (see "Future possibilities" in problem.md).
+of extensions (`variables.cfg`, `mmu_vars.cfg`) are backed up; users can list them in `bundled_changes` (step 4).
 
 ### C3. Follow a shared file: settings file + state
 

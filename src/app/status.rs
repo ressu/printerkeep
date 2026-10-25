@@ -10,6 +10,8 @@ pub struct Status {
     pub last_backup: Option<LastBackup>,
     /// Changes in the config folder since the last backup.
     pub changes: Changes,
+    /// The files with only bundled changes, which wait for the next backup, as a sentence.
+    pub waiting: Option<String>,
     pub skipped: Vec<String>,
     pub repository: Option<String>,
     /// Backups that are not in the repository yet. `None` without a repository or backups.
@@ -32,6 +34,7 @@ pub struct LastBackup {
 pub fn status(paths: &Paths) -> Result<Status, Error> {
     let settings = settings::load(&paths.settings())?;
     let rules = IgnoreRules::new(settings.ignore.iter().map(String::as_str))?;
+    let bundle = BundleRules::new(settings.bundled_changes())?;
     let printer_name = printer_name(&settings)?;
     let readme = settings
         .repository
@@ -48,8 +51,9 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
     let git = Git::new(&paths.git_dir);
     let reference = branch(&printer_name);
     let mut not_sent = None;
+    let mut waiting = None;
     let (last_backup, changes) = if git.exists() && git.resolve(&reference)?.is_some() {
-        let prepared = backup::prepare(&git, &scan, &reference, false)?;
+        let prepared = backup::prepare(&git, &scan, &reference, false, Some(&bundle))?;
         let commit = prepared.parent.as_deref().unwrap_or_default();
         let (time, summary) = git.commit_info(commit)?;
         let last = LastBackup {
@@ -69,6 +73,7 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
                 _ => last.count,
             });
         }
+        waiting = prepared.waiting_text();
         (Some(last), prepared.changes)
     } else {
         let changes = Changes {
@@ -106,6 +111,7 @@ pub fn status(paths: &Paths) -> Result<Status, Error> {
         config: paths.config.clone(),
         last_backup,
         changes,
+        waiting,
         skipped: scan.skipped,
         repository: settings.repository,
         not_sent,
@@ -125,7 +131,9 @@ impl fmt::Display for Status {
                 writeln!(f, "Last backup: {} ({})", last.time, last.summary)?;
                 writeln!(f, "Backups: {}", last.count)?;
                 writeln!(f, "Files in the last backup: {}", last.files)?;
-                if self.changes.is_empty() {
+                if let Some(waiting) = &self.waiting {
+                    writeln!(f, "Changes since the last backup: {waiting}")?;
+                } else if self.changes.is_empty() {
                     writeln!(f, "Changes since the last backup: none")?;
                 } else {
                     writeln!(

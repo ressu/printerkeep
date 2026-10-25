@@ -11,6 +11,7 @@
 
 use crate::backup::{self, Changes};
 use crate::branch_readme;
+use crate::bundle::BundleRules;
 use crate::git::{self, Git, GitError, Identity};
 use crate::ignore::{IgnoreRules, RuleError};
 use crate::overrides;

@@ -103,6 +103,8 @@ The timer runs `printerkeep sync` every 5 minutes. A sync does three things:
 
 The history is on the printer, in `printer_data/printerkeep`. Each backup has a message that says which files
 changed, for example `Changed printer.cfg, added macros/new.cfg` or `SAVE_CONFIG changed printer.cfg`.
+A new bed mesh alone waits for the next backup (see
+[Changes that wait for the next backup](#changes-that-wait-for-the-next-backup)).
 
 ```sh
 printerkeep sync       # all of it now: a backup, the changes, send
@@ -321,6 +323,11 @@ ignore:
 # How often printerkeep checks the repository for changes: off, or a time such as 5m, 1h, or 1d.
 # The default is 5m, that is, each run of the timer. printerkeep sync by hand always checks.
 check_repository: 1h
+# Changes that don't make a backup alone. They go into the next backup with other changes.
+# The default is [bed_mesh *] (see "Changes that wait for the next backup").
+bundled_changes:
+    [bed_mesh *]
+    variables.cfg
 ```
 
 printerkeep keeps the time of the last repository check in memory (`/run/user/<id>`), not on the SD card.
@@ -359,3 +366,36 @@ printerkeep always skips these files, in addition to your `ignore` rules:
 
 To skip more files, add them to `ignore` in the settings file. The next backup records a skipped file as
 removed; the file stays on the printer, and the older backups keep it.
+
+## Changes that wait for the next backup
+
+Klipper saves a new bed mesh often, and some plugins rewrite their own files at every print. A backup for
+each of these changes would fill your history. So printerkeep bundles them: a bundled change alone doesn't
+make a backup. It goes into the next backup that has another change, so a restore still gets a recent mesh.
+
+By default, printerkeep bundles the bed mesh: the `[bed_mesh …]` sections that `SAVE_CONFIG` writes at the
+end of `printer.cfg`. Other `SAVE_CONFIG` changes, such as a new probe offset, make a backup at once.
+
+To choose what printerkeep bundles, set `bundled_changes` in the settings file. Your list replaces the
+default, so keep `[bed_mesh *]` in it if you want it:
+
+```
+bundled_changes:
+    [bed_mesh *]
+    variables.cfg
+    mmu_vars.cfg
+```
+
+- A rule in brackets is a section of the `SAVE_CONFIG` block. `*` matches any text, so `[bed_mesh *]`
+  matches every mesh profile.
+- Any other rule is a file, written like an `ignore` rule.
+- To back up every change at once, leave the list empty: write `bundled_changes:` with nothing below it.
+
+A new or removed file always makes a backup. `printerkeep status` shows the files that wait. To back up a
+bundled change now, run:
+
+```sh
+printerkeep backup
+```
+
+Before printerkeep changes your files, for example for a restore, it backs up all changes, bundled ones too.

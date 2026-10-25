@@ -14,6 +14,21 @@ pub struct Settings {
     pub follow: Vec<String>,
     pub ignore: Vec<String>,
     pub check_repository: Check,
+    /// Changes that never make a backup alone. `None`: the option isn't in the file, so the default.
+    pub bundled_changes: Option<Vec<String>>,
+}
+
+/// The bundled changes when the settings file doesn't set them: the bed mesh, which Klipper saves often.
+const DEFAULT_BUNDLED_CHANGES: &[&str] = &["[bed_mesh *]"];
+
+impl Settings {
+    /// The bundled changes: the list in the settings file, or the default.
+    pub fn bundled_changes(&self) -> Vec<&str> {
+        match &self.bundled_changes {
+            Some(list) => list.iter().map(String::as_str).collect(),
+            None => DEFAULT_BUNDLED_CHANGES.to_vec(),
+        }
+    }
 }
 
 /// How often printerkeep checks the repository for changes (shared, and this printer's branch).
@@ -70,7 +85,7 @@ pub enum SettingsError {
 }
 
 const SECTION: &str = "printerkeep";
-const OPTIONS: &str = "printer_name, repository, follow, ignore, check_repository";
+const OPTIONS: &str = "printer_name, repository, follow, ignore, check_repository, bundled_changes";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -81,7 +96,7 @@ enum Kind {
 fn kind(option: &str) -> Option<Kind> {
     match option {
         "printer_name" | "repository" | "check_repository" => Some(Kind::Single),
-        "follow" | "ignore" => Some(Kind::List),
+        "follow" | "ignore" | "bundled_changes" => Some(Kind::List),
         _ => None,
     }
 }
@@ -243,6 +258,7 @@ pub fn parse(text: &str, file: &str) -> Result<Settings, SettingsError> {
             }
             "follow" => settings.follow = entry.values,
             "ignore" => settings.ignore = entry.values,
+            "bundled_changes" => settings.bundled_changes = Some(entry.values),
             _ => unreachable!("options are checked above"),
         }
     }
@@ -510,7 +526,23 @@ mod tests {
                 follow: vec!["macros/macros.cfg".into(), "KAMP_Settings.cfg".into()],
                 ignore: vec!["timelapse/*".into()],
                 check_repository: Check::default(),
+                bundled_changes: None,
             }
+        );
+    }
+
+    #[test]
+    fn bundled_changes_default_empty_and_list() {
+        assert_eq!(ok("").bundled_changes(), ["[bed_mesh *]"]);
+        assert!(
+            ok("[printerkeep]\nbundled_changes:\n")
+                .bundled_changes()
+                .is_empty()
+        );
+        assert_eq!(
+            ok("[printerkeep]\nbundled_changes:\n  [bed_mesh *]\n  variables.cfg\n")
+                .bundled_changes(),
+            ["[bed_mesh *]", "variables.cfg"]
         );
     }
 
@@ -539,7 +571,7 @@ mod tests {
         assert_eq!(
             err("[printerkeep]\nfolow:\n  a.cfg\n"),
             "printerkeep.conf, line 2: unknown option 'folow'. \
-             Valid options: printer_name, repository, follow, ignore, check_repository."
+             Valid options: printer_name, repository, follow, ignore, check_repository, bundled_changes."
         );
         assert!(err("[moonraker]\n").contains("line 1: unknown section [moonraker]"));
         assert!(err("ignore: a\n").contains("line 1: this option is outside a section"));

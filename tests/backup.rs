@@ -57,6 +57,17 @@ impl Printer {
         String::from_utf8(output).unwrap()
     }
 
+    /// Runs `printerkeep <command>`, expects success, returns stdout.
+    fn run(&self, command: &str) -> String {
+        let output = self
+            .printerkeep(command)
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        String::from_utf8(output).unwrap()
+    }
+
     fn git(&self, args: &[&str]) -> String {
         let output = std::process::Command::new("git")
             .env("GIT_DIR", self.printer_data().join("printerkeep/repo.git"))
@@ -303,4 +314,112 @@ fn status_before_and_after_backups() {
     assert!(after.contains("Changes since the last backup: Changed printer.cfg."));
     // status changes nothing.
     assert_eq!(printer.commits(), 1);
+}
+
+/// printer.cfg with a probe offset and a bed mesh in the SAVE_CONFIG block.
+fn printer_cfg(z_offset: &str, mesh: &str) -> String {
+    format!(
+        "[printer]\nkinematics: corexy\n\n{SAVE_CONFIG}#*# [probe]\n#*# z_offset = {z_offset}\n#*#\n\
+         #*# [bed_mesh default]\n#*# version = 1\n#*# points =\n#*# \t{mesh}, 0.050\n#*# x_count = 2\n"
+    )
+}
+
+const WAITING: &str = "No backup made: printer.cfg has only bundled changes. \
+                       They go into the next backup with other changes.\n";
+
+#[test]
+fn bed_mesh_change_alone_waits_for_the_next_backup() {
+    let printer = Printer::new();
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.100"));
+    printer.write("macros.cfg", "[gcode_macro START]\ngcode:\n  G28\n");
+    printer.backup();
+
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.125"));
+    assert_eq!(printer.run("sync"), WAITING);
+    assert_eq!(printer.commits(), 1);
+    // A run without a backup writes nothing to the log.
+    assert!(!printer.log().contains("bundled"));
+    assert!(printer.run("status").contains(
+        "Changes since the last backup: printer.cfg has only bundled changes. \
+             They go into the next backup with other changes.\n"
+    ));
+
+    printer.write("macros.cfg", "[gcode_macro START]\ngcode:\n  G28\n  G90\n");
+    assert_eq!(printer.run("sync"), "Backup made: Changed 2 files\n");
+    assert_eq!(printer.commits(), 2);
+    assert!(
+        printer
+            .git(&["show", "refs/heads/printer-1:printer.cfg"])
+            .contains("0.125, 0.050")
+    );
+}
+
+#[test]
+fn backup_by_hand_includes_bundled_changes() {
+    let printer = Printer::new();
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.100"));
+    printer.backup();
+
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.125"));
+    assert_eq!(
+        printer.backup(),
+        "Backup made: SAVE_CONFIG changed printer.cfg\n"
+    );
+    assert_eq!(printer.commits(), 2);
+}
+
+#[test]
+fn probe_offset_change_makes_a_backup() {
+    let printer = Printer::new();
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.100"));
+    printer.backup();
+
+    printer.write("printer.cfg", &printer_cfg("1.125", "0.125"));
+    assert_eq!(
+        printer.run("sync"),
+        "Backup made: SAVE_CONFIG changed printer.cfg\n"
+    );
+}
+
+#[test]
+fn empty_bundled_changes_backs_up_each_change() {
+    let printer = Printer::new();
+    printer.write(
+        "printerkeep.conf",
+        "[printerkeep]\nprinter_name: printer-1\nbundled_changes:\n",
+    );
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.100"));
+    printer.backup();
+
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.125"));
+    assert_eq!(
+        printer.run("sync"),
+        "Backup made: SAVE_CONFIG changed printer.cfg\n"
+    );
+}
+
+#[test]
+fn bundled_files_from_the_settings_file() {
+    let printer = Printer::new();
+    printer.write(
+        "printerkeep.conf",
+        "[printerkeep]\nprinter_name: printer-1\nbundled_changes:\n  variables.cfg\n",
+    );
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.100"));
+    printer.backup();
+
+    // A new file is never bundled.
+    printer.write("variables.cfg", "[Variables]\nlast_tool = 0\n");
+    assert_eq!(printer.run("sync"), "Backup made: Added variables.cfg\n");
+
+    printer.write("variables.cfg", "[Variables]\nlast_tool = 1\n");
+    assert_eq!(
+        printer.run("sync"),
+        "No backup made: variables.cfg has only bundled changes. \
+         They go into the next backup with other changes.\n"
+    );
+
+    // The list replaces the default: the bed mesh isn't bundled now.
+    printer.write("printer.cfg", &printer_cfg("1.000", "0.125"));
+    assert_eq!(printer.run("sync"), "Backup made: Changed 2 files\n");
 }

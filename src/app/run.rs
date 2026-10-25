@@ -37,6 +37,8 @@ pub enum Outcome {
         summary: String,
     },
     NoChange,
+    /// No backup: the changed files have only bundled changes. The text says which files.
+    Waiting(String),
     /// No backup yet, and the config folder has no files.
     NoFiles,
 }
@@ -70,6 +72,7 @@ impl BackupReport {
                 lines
             }
             Outcome::NoChange => vec!["No files changed. No backup made.".to_string()],
+            Outcome::Waiting(text) => vec![format!("No backup made: {text}")],
             Outcome::NoFiles => vec!["The config folder has no files. No backup made.".to_string()],
         };
         lines.extend(self.shared.iter().cloned());
@@ -104,6 +107,7 @@ pub fn sync(paths: &Paths, check_now: bool) -> Result<BackupReport, Error> {
         &printer_name,
         Run {
             check_now,
+            bundle: true,
             ..Run::default()
         },
     )
@@ -136,6 +140,9 @@ pub(super) struct Run<'a> {
     pub(super) check_now: bool,
     /// Only a backup and send: no changes from shared or from the repository, so no file is written.
     pub(super) only_backup: bool,
+    /// Bundled changes alone make no backup. Only for `sync`: a command that asks for a backup, or that
+    /// writes files after it, gets all changes in the backup.
+    pub(super) bundle: bool,
 }
 
 /// A run of a command: check the repository for changes now.
@@ -144,6 +151,7 @@ pub(super) const COMMAND: Run = Run {
     no_send: false,
     check_now: true,
     only_backup: false,
+    bundle: false,
 };
 
 /// The backup run: a backup of the config folder, then changes from shared and from the repository, then
@@ -169,7 +177,19 @@ pub(super) fn backup_and_send(
         rules: &rules,
         readme: readme.as_deref(),
     };
-    let (outcome, skipped) = make_backup(paths, files, &git, printer_name, run.message)?;
+    let bundle = if run.bundle {
+        Some(BundleRules::new(settings.bundled_changes())?)
+    } else {
+        None
+    };
+    let (outcome, skipped) = make_backup(
+        paths,
+        files,
+        &git,
+        printer_name,
+        run.message,
+        bundle.as_ref(),
+    )?;
     let remote = match &settings.repository {
         Some(url) => Some(repository::remote(url, paths)?),
         None => None,
@@ -290,7 +310,7 @@ pub(super) fn backup_and_send(
             std::fs::write(paths.skipped(), format!("{skipped_text}\n"))
         };
     }
-    let quiet = outcome == Outcome::NoChange
+    let quiet = matches!(outcome, Outcome::NoChange | Outcome::Waiting(_))
         && !shared_news
         && from_repository.is_empty()
         && !problem_changed
@@ -447,7 +467,14 @@ fn take_repository_changes(
                 "The backups that were only on this printer stay on it as {kept}, and aren't sent."
             ));
         }
-        make_backup(paths, files, git, printer_name, backup::Message::Changes)?;
+        make_backup(
+            paths,
+            files,
+            git,
+            printer_name,
+            backup::Message::Changes,
+            None,
+        )?;
         return Ok(Some(lines));
     };
     let events = repository_changes::apply(git, paths, files.rules, &base, &remote)?;
@@ -466,11 +493,18 @@ fn take_repository_changes(
             &remote,
             "printerkeep: in the repository",
         )?;
-        make_backup(paths, files, git, printer_name, backup::Message::Changes)?;
+        make_backup(
+            paths,
+            files,
+            git,
+            printer_name,
+            backup::Message::Changes,
+            None,
+        )?;
         return Ok(Some(lines));
     }
     let scan = backup_scan(paths, files)?;
-    let prepared = backup::prepare(git, &scan, &reference, true)?;
+    let prepared = backup::prepare(git, &scan, &reference, true, None)?;
     let tree = git.write_tree(&prepared.tree, &paths.index())?;
     let message = format!("{}\n", repository_changes::message(&events));
     let commit = git.commit(&tree, &[&local, &remote], &message, &identity(printer_name))?;
@@ -496,10 +530,11 @@ fn make_backup(
     git: &Git,
     printer_name: &str,
     message: backup::Message,
+    bundle: Option<&BundleRules>,
 ) -> Result<(Outcome, Vec<String>), Error> {
     let scan = backup_scan(paths, files)?;
     let reference = branch(printer_name);
-    let prepared = backup::prepare(git, &scan, &reference, true)?;
+    let prepared = backup::prepare(git, &scan, &reference, true, bundle)?;
     let outcome = if prepared.parent.is_none() && prepared.tree.is_empty() {
         Outcome::NoFiles
     } else {
@@ -515,7 +550,10 @@ fn make_backup(
                 commit,
                 summary: message.lines().next().unwrap_or_default().to_string(),
             },
-            None => Outcome::NoChange,
+            None => match prepared.waiting_text() {
+                Some(text) => Outcome::Waiting(text),
+                None => Outcome::NoChange,
+            },
         }
     };
     Ok((outcome, scan.skipped))
@@ -577,6 +615,7 @@ fn follow_shared(
             git,
             printer_name,
             backup::Message::Replace(message),
+            None,
         )?;
     }
     // Lines that only repeat a status (for example, a file that still needs decision) are not news.

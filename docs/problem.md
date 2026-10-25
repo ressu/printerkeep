@@ -169,6 +169,12 @@ More decisions:
   version. On each other printer that follows the file, its current differences become local changes.
 - **printerkeep ignores symlinks.** To restore tools such as KAMP, Shake&Tune or `mainsail.cfg`, install
   them again.
+- **Bundled changes** (2026-10-25). Klipper saves the bed mesh often, and extensions rewrite their state
+  files (`[save_variables]` files such as `variables.cfg`, Happy Hare's `mmu_vars.cfg`). A backup for each
+  of these fills the history; leaving them out loses the mesh in a restore. So they are bundled: such a
+  change alone doesn't make a backup, and it goes into the next backup with another change. The setting
+  `bundled_changes` lists `SAVE_CONFIG` sections and files; the default is the bed mesh. A time limit (back
+  up a bundled change after at most a day) is possible later, if users need it.
 - **Line endings do not count.** printerkeep ignores line-ending differences when it compares files. A
   difference only in line endings never causes a backup or a status change.
 
@@ -198,11 +204,6 @@ Not in version 1 and not designed for. But the design must not make them impossi
   and `.printerkeep-state.json` (the bases), so any printer can compute all statuses from the repository with
   one fetch. Possible start for a dashboard later.
 - **Backup when a file changes (inotify)**, settings for apply and restart, more commands for experts.
-- **Time gating for state files.** Files that extensions rewrite often (`[save_variables]` files such as
-  `variables.cfg`, Happy Hare's `mmu_vars.cfg`) can cause a backup at almost every run. Version 1 backs them
-  up like other files. Later, printerkeep can back up such files less often (for example, at most once per
-  hour).
-
 ## Not goals
 
 - Central control that pushes configuration to printers.

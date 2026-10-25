@@ -1,7 +1,9 @@
 //! Backups: compare the config folder with the last backup, and make a commit only when a file changed.
 
+use crate::bundle::{self, BundleRules};
 use crate::git::{Git, GitError, Identity, Tree, TreeEntry};
 use crate::snapshot::Scan;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 /// The changes between the last backup and the config folder. Paths are for messages.
@@ -26,13 +28,40 @@ pub struct Prepared {
     pub generated_changed: bool,
     /// The number of files in `tree` that are not in the config folder.
     pub generated: usize,
+    /// Changed files with only bundled changes, which wait for a backup with other changes. `tree` has
+    /// their version of the last backup, and they are not in `changes`.
+    pub waiting: Vec<String>,
+}
+
+impl Prepared {
+    /// For the terminal: the files that wait, and why. `None` if no file waits.
+    pub fn waiting_text(&self) -> Option<String> {
+        (!self.waiting.is_empty()).then(|| {
+            let have = if self.waiting.len() == 1 {
+                "has"
+            } else {
+                "have"
+            };
+            format!(
+                "{} {have} only bundled changes. They go into the next backup with other changes.",
+                names(&self.waiting)
+            )
+        })
+    }
 }
 
 const REGULAR: &str = "100644";
 const EXECUTABLE: &str = "100755";
 
 /// Compares the scanned files with the last backup on `reference`. With `write`, stores the files in git.
-pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<Prepared, GitError> {
+/// With `bundle`, changes that are all bundled wait: the tree keeps the files of the last backup.
+pub fn prepare(
+    git: &Git,
+    scan: &Scan,
+    reference: &str,
+    write: bool,
+    bundle: Option<&BundleRules>,
+) -> Result<Prepared, GitError> {
     let parent = git.resolve(reference)?;
     let old = match &parent {
         Some(commit) => git.read_tree(commit)?,
@@ -46,6 +75,8 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
 
     let mut tree = Tree::new();
     let mut changes = Changes::default();
+    // The changed files with only bundled changes, and their entries in the last backup.
+    let mut bundled = Vec::new();
     for (file, oid) in scan.files.iter().zip(oids) {
         let mode = if file.executable { EXECUTABLE } else { REGULAR };
         let mut entry = TreeEntry {
@@ -65,6 +96,17 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
                     entry.oid = previous.oid.clone();
                 }
                 if previous != &entry {
+                    // A change of the content only: a new mode is a change of its own.
+                    if let Some(rules) = bundle
+                        && previous.mode == entry.mode
+                        && rules.is_bundled(
+                            Path::new(std::ffi::OsStr::from_bytes(&file.path)),
+                            &old_content,
+                            &new_content,
+                        )
+                    {
+                        bundled.push((file.path.clone(), previous.clone(), name.clone()));
+                    }
                     if previous.oid != entry.oid
                         && only_save_config_changed(&old_content, &new_content)
                     {
@@ -99,6 +141,19 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
             changes.removed.push(display(path));
         }
     }
+    let mut waiting = Vec::new();
+    if !bundled.is_empty()
+        && !generated_changed
+        && changes.added.is_empty()
+        && changes.removed.is_empty()
+        && changes.changed.len() == bundled.len()
+    {
+        for (path, previous, name) in bundled {
+            tree.insert(path, previous);
+            waiting.push(name);
+        }
+        changes = Changes::default();
+    }
     if write {
         let known: std::collections::BTreeSet<&str> =
             old.values().map(|entry| entry.oid.as_str()).collect();
@@ -125,6 +180,7 @@ pub fn prepare(git: &Git, scan: &Scan, reference: &str, write: bool) -> Result<P
         changes,
         generated_changed,
         generated,
+        waiting,
     })
 }
 
@@ -264,39 +320,17 @@ fn display(path: &[u8]) -> String {
     String::from_utf8_lossy(path).into_owned()
 }
 
-/// The first line of the block that Klipper's SAVE_CONFIG writes at the end of printer.cfg.
-const SAVE_CONFIG_START: &[u8] = b"#*# <---------------------- SAVE_CONFIG ---------------------->";
-
 /// `true` if the files have a SAVE_CONFIG block and are equal above it.
 fn only_save_config_changed(old: &[u8], new: &[u8]) -> bool {
     let (old, new) = (crate::merge::to_lf(old), crate::merge::to_lf(new));
-    match (before_save_config(&old), before_save_config(&new)) {
-        (Some(old_body), Some(new_body)) => old_body == new_body,
-        // SAVE_CONFIG added the block for the first time.
-        (None, Some(new_body)) => trim_end_lines(&old) == trim_end_lines(new_body),
-        // The block was removed.
-        (Some(old_body), None) => trim_end_lines(old_body) == trim_end_lines(&new),
-        (None, None) => false,
-    }
-}
-
-fn before_save_config(content: &[u8]) -> Option<&[u8]> {
-    let mut start = 0;
-    for line in content.split_inclusive(|&b| b == b'\n') {
-        if line.starts_with(SAVE_CONFIG_START) {
-            return Some(&content[..start]);
+    match (bundle::split(&old), bundle::split(&new)) {
+        ((old_body, Some(_)), (new_body, Some(_))) => old_body == new_body,
+        // SAVE_CONFIG added the block for the first time, or the block was removed.
+        ((old_body, _), (new_body, Some(_))) | ((old_body, Some(_)), (new_body, _)) => {
+            bundle::trim_end_lines(old_body) == bundle::trim_end_lines(new_body)
         }
-        start += line.len();
+        _ => false,
     }
-    None
-}
-
-fn trim_end_lines(content: &[u8]) -> &[u8] {
-    let end = content
-        .iter()
-        .rposition(|&b| b != b'\n' && b != b' ')
-        .map_or(0, |i| i + 1);
-    &content[..end]
 }
 
 #[cfg(test)]

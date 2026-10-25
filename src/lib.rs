@@ -5,6 +5,7 @@
 pub mod app;
 pub mod backup;
 pub mod branch_readme;
+pub mod bundle;
 pub mod changes;
 pub mod files;
 pub mod git;

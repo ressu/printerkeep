@@ -33,6 +33,7 @@ sometimes backwards English, so the skill replaces it; the skill keeps the usefu
 | **connect** | Link the printer to a repository that already exists, so printerkeep sends backups to it. Nothing is created. | add (sounds like making a repository), link, set up |
 | **send** | Copy new backups from the printer to the repository. printerkeep never overwrites the repository. | push, upload, sync (that's the full run) |
 | **sync** | The full run, in both directions: a backup, the changes from shared and from the repository, and send. The timer runs it. Only for the whole run, never for one direction. | update (reserved for updates of the tool itself), pull, refresh |
+| **bundled change** | A change that never makes a backup alone, for example a new bed mesh. It goes into the next backup with other changes. The settings file lists them in `bundled_changes` (decided 2026-10-25). | volatile, noise, minor change, deferred |
 | **settings file** | The one file in the config folder where the user changes the tool's settings. | manifest, config file (ambiguous with Klipper config) |
 
 ### Users with more printers
@@ -143,6 +144,8 @@ follow:
 ignore:
   timelapse/*
 check_repository: 1h
+bundled_changes:
+  [bed_mesh *]
 ```
 
 `printer_name` is optional. The default is `main` (decided 2026-10-13: never the host name, which is often an
