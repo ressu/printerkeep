@@ -133,6 +133,35 @@ pub fn not_in_shared(path: &str) -> String {
     format!("{path} isn't in shared. To add it, run:\n  printerkeep copy-to-shared {path}")
 }
 
+/// The lines for the terminal and the log. The followed files that aren't in shared get one notice, with
+/// one command for all of them, where the first of them is.
+pub fn lines(events: &[FileEvent]) -> Vec<String> {
+    let missing: Vec<&str> = events
+        .iter()
+        .filter(|e| e.event == Event::NotInShared)
+        .map(|e| e.path.as_str())
+        .collect();
+    let mut lines = Vec::new();
+    let mut notice = match missing.as_slice() {
+        [] => None,
+        [one] => Some(not_in_shared(one)),
+        many => Some(format!(
+            "{} followed files aren't in shared: {}. To add them, run:\n  printerkeep copy-to-shared {}",
+            many.len(),
+            many.join(", "),
+            many.join(" ")
+        )),
+    };
+    for event in events {
+        if event.event == Event::NotInShared {
+            lines.extend(notice.take());
+        } else {
+            lines.push(event.line());
+        }
+    }
+    lines
+}
+
 /// Gets the `shared` branch from the repository. Returns its commit, or `None` if it does not exist.
 pub fn fetch(git: &Git, remote: &Remote) -> Result<Option<String>, RepositoryError> {
     let exists = git

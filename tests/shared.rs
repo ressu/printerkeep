@@ -313,6 +313,34 @@ fn follow_in_the_settings_file_works_without_a_command() {
 }
 
 #[test]
+fn followed_files_not_in_shared_get_one_notice() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::connected("printer-1", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
+
+    // A copied config folder: the follow list names files that shared doesn't have.
+    let printer2 = Printer::connected("printer-2", &url);
+    for file in ["a.cfg", "macros/b.cfg", "c.cfg"] {
+        printer2.write(file, "[gcode_macro X]\ngcode:\n  G28\n");
+    }
+    let settings = printer2.read("printerkeep.conf");
+    printer2.write(
+        "printerkeep.conf",
+        &format!("{settings}follow:\n  macros/macros.cfg\n  a.cfg\n  macros/b.cfg\n  c.cfg\n"),
+    );
+    let output = printer2.ok(&["sync"]);
+    assert!(
+        output.contains(
+            "3 followed files aren't in shared: a.cfg, macros/b.cfg, c.cfg. To add them, run:\n  \
+             printerkeep copy-to-shared a.cfg macros/b.cfg c.cfg\n"
+        ),
+        "{output}"
+    );
+    assert_eq!(output.matches("isn't in shared").count(), 0, "{output}");
+}
+
+#[test]
 fn shared_commands_need_a_repository_and_a_shared_file() {
     let (_dir, url) = repository();
     let printer1 = Printer::connected("printer-1", &url);

@@ -606,7 +606,7 @@ fn follow_shared(
     };
     let events = shared::apply(git, paths, &settings.follow, tip.as_deref(), &mut state)?;
     state::save(&state_file, &state)?;
-    lines.extend(events.iter().map(FileEvent::line));
+    lines.extend(shared::lines(&events));
     let message = shared::message(&events);
     if let Some(message) = &message {
         make_backup(

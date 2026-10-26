@@ -19,7 +19,7 @@ use crate::paths::Paths;
 use crate::repository::{self, History, RepositoryError, Sent, UrlKind};
 use crate::repository_changes;
 use crate::settings::{self, Settings, SettingsError};
-use crate::shared::{self, FileEvent, SHARED_REF, SharedError};
+use crate::shared::{self, SHARED_REF, SharedError};
 use crate::snapshot::{self, Scan};
 use crate::state::{self, FileState, STATE_FILE, StateError};
 use std::fmt;
