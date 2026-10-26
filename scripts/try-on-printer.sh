@@ -25,6 +25,8 @@
 #
 # Repository tests: use a NEW, EMPTY test repository. If the repository already has a branch with the
 # printer's name (for example from klipper-backup), printerkeep continues that branch and adds commits to it.
+# The real printer's repository is never used: the copy of printerkeep.conf loses its repository line, and
+# the script stops if the test copy or the command names that repository.
 #
 # Safety:
 #   - Everything goes into ~/printerkeep-test on the printer: the binary, a copy of the config folder,
@@ -71,6 +73,8 @@ fi
 # Quote each argument for the shell on the printer.
 command=$(printf '%q ' "$@")
 label=$(printf '%q' "==> printerkeep $*")
+# The command as one word, for the check of the repository on the printer.
+command_word=$(printf '%q' "$command")
 
 # The "~" is expanded by the shell on the printer, not here.
 # shellcheck disable=SC2088
@@ -134,6 +138,8 @@ ssh "${terminal[@]}" "$host" "set -e
   test -d $printer_data/config || { echo 'No config folder: $printer_data/config' >&2; exit 1; }
   mkdir -p $test_dir/printer_data
   copy=$copy
+  # The repository of the real printer, if it has one. The test copy must never send to it.
+  real_repository=\$(sed -nE 's/^repository[[:space:]]*[:=][[:space:]]*//p' $printer_data/config/printerkeep.conf 2>/dev/null | sed 's/[[:space:]]*\$//' || true)
   if [ $reset = 1 ]; then
     rm -rf $test_dir/printer_data/printerkeep $test_dir/printer_data/logs $test_dir/printer_data/config
     echo '==> Removed the test history, the log and the test copy'
@@ -154,7 +160,21 @@ ssh "${terminal[@]}" "$host" "set -e
     if [ -f \$keep ]; then
       mv \$keep $test_dir/printer_data/config/printerkeep.conf
       echo '    Kept the printerkeep.conf of the test copy.'
+    elif [ -n \"\$real_repository\" ]; then
+      sed -E -i '/^repository[[:space:]]*[:=]/d' $test_dir/printer_data/config/printerkeep.conf
+      echo '    Removed the repository of the real printer from the test copy.'
     fi
+  fi
+  if [ -n \"\$real_repository\" ]; then
+    test_repository=\$(sed -nE 's/^repository[[:space:]]*[:=][[:space:]]*//p' $test_dir/printer_data/config/printerkeep.conf 2>/dev/null || true)
+    case \"\$test_repository \"$command_word in
+      *\"\$real_repository\"*)
+        echo \"Stopped: the test would use the repository of the real printer, \$real_repository.\" >&2
+        echo 'Use a new, empty test repository, or start again without a repository:' >&2
+        echo '  scripts/try-on-printer.sh --reset <ssh host>' >&2
+        exit 1
+        ;;
+    esac
   fi
   echo $label
   exec $test_dir/bin/printerkeep --printer-data $test_dir/printer_data $command"
