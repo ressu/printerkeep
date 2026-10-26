@@ -24,7 +24,17 @@ cargo build --release --target aarch64-unknown-linux-musl
 qemu-aarch64 target/aarch64-unknown-linux-musl/release/printerkeep --version
 ```
 
-Try a build on a real printer, on a copy of its config folder (all files go to `~/printerkeep-test`):
+Try a change on this computer, on a snapshot of a printer's config folder (all files go to `target/try-local`;
+the printer is only read, and git may use only the local test repository). Use this for development passes:
+
+```sh
+scripts/try-local.sh --from <ssh host>    # take a snapshot, and start again with an empty test repository
+scripts/try-local.sh [printerkeep command and arguments...]   # default: sync; edit the files between runs
+scripts/try-local.sh --reset              # start again from the snapshot
+```
+
+Try a build on a real printer, on a copy of its config folder (all files go to `~/printerkeep-test`). Only for
+a last check, for example of a release, and only when the user asks:
 
 ```sh
 scripts/try-on-printer.sh [--reset] [--copy] <ssh host> [printerkeep command and arguments...]
