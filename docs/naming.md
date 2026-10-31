@@ -173,7 +173,8 @@ printerkeep writes it.
 
 Commands are verbs. `connect` (decided 2026-10-14) replaces `add-repository`, which replaced the earlier
 `repository`. "Add a repository" sounded like making one, and the printer already has a git repository for
-its history. The old names are gone: before 1.0, a rename doesn't keep the old name.
+its history. The old names are gone: before 1.0, a rename doesn't keep the old name. The names are final for
+1.0 (2026-10-31), so a later rename must keep the old name working.
 
 ### In the repository
 

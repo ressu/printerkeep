@@ -1,6 +1,7 @@
 # Implementation plan
 
-Status: draft (2026-10-11). Based on [problem.md](problem.md), [solution-options.md](solution-options.md),
+Status: **all milestones done** (M0–M7, and the later sections for v1). Each one was checked as it was
+built; confirmed on 2026-10-31. Based on [problem.md](problem.md), [solution-options.md](solution-options.md),
 [naming.md](naming.md) and [language.md](language.md).
 
 ## Main milestones
@@ -13,6 +14,14 @@ Status: draft (2026-10-11). Based on [problem.md](problem.md), [solution-options
 Both use the same repository format (one branch per printer, files at the top), so the second needs no
 migration. Release numbers are not planned ahead: a release happens when its work is ready (see
 "Versions").
+
+**Decided for 1.0 (2026-10-31).** These stay as they are:
+
+- Log rotation at 1 MB (`printerkeep.log` → `printerkeep.log.1`) is enough. It may even be too big, but
+  there's no need to change it.
+- Users run `printerkeep install` by hand when an update changes the units. It's the way with the fewest
+  surprises (see "sync and backup").
+- The names in [naming.md](naming.md) are final.
 
 ## Versions
 
@@ -537,8 +546,8 @@ and wanted to run `connect` (and to test the klipper-backup conversion). What ha
 - `uninstall` keeps `printerkeep.conf`, so the new install was still connected (`repository:` and
   `printer_name:`, from an old test build). Its first backup tried to send at once. The install output did
   not show that.
-- The printer name was `bluev2.home.ressukka.net` (the old host name default). The klipper-backup branch is
-  `bluev2`, so the conversion could not happen.
+- The printer name was `printer-1.home.example` (the old host name default). The klipper-backup branch is
+  `printer-1`, so the conversion could not happen.
 - The new local history had no common backup with the repository's branch. Each run (every 5 minutes) the
   send was refused, and the log said "The repository has changes that are not on this printer". That message
   was wrong for the case and had no fix in it; the user tried `change-token`. Each run also wrote the log
@@ -601,7 +610,7 @@ changes files.
    The user gets problems through the log (Fluidd and Mainsail show it) and `printerkeep status`. See
    "Notifications in Fluidd and Mainsail" in the future possibilities of problem.md.
 
-Tests: the `bluev2` case (local data removed, `printerkeep.conf` kept: the run continues by itself, logs one
+Tests: the `printer-1` case (local data removed, `printerkeep.conf` kept: the run continues by itself, logs one
 line, then sends); install as `main`, connect as `foobar` (only `foobar` locally, the local backups set aside,
 the repository's `main` not read or changed); the klipper-backup per-printer branch selected by name; "from
 now"; no terminal (stops with the options); each problem logged once.
@@ -650,8 +659,8 @@ Part 2 (2026-10-13): points 2, 4 and 5.
   refused token (access, "Contents: Read and write", expiry), restore with no backups or an unknown printer
   name, and the send race (tries again at the next run).
 
-Backlog: log rotation. printerkeep rotates at 1 MB (`printerkeep.log` → `printerkeep.log.1`). Decide if
-that is enough, or if it should work like Moonraker's own logs.
+Log rotation: printerkeep rotates at 1 MB (`printerkeep.log` → `printerkeep.log.1`). Decided 2026-10-31
+that this is enough (see "Main milestones").
 
 ### Restore from the history (2026-10-14, for v1)
 
@@ -703,9 +712,9 @@ to what the timer's command does, must:
 - keep the old units working (as `backup` under systemd does now), and
 - make `printerkeep status` say that the timer is out of date, with `printerkeep install` as the fix.
 
-Decided for now: users run `printerkeep install` by hand. A possible later fix: the run that the timer starts
-rewrites its own unit when it's out of date (only units with printerkeep's first line, and only when
-different), then runs `systemctl --user daemon-reload`.
+Decided (2026-10-31, for 1.0): users run `printerkeep install` by hand, because it gives the fewest
+surprises. Rejected for now: the run that the timer starts rewrites its own unit when it's out of date (only
+units with printerkeep's first line, and only when different), then runs `systemctl --user daemon-reload`.
 
 ## Tests
 
