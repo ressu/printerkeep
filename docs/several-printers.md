@@ -82,6 +82,9 @@ At each sync, printerkeep writes the changes from shared into the followed files
 printerkeep never restarts Klipper, so restart it when you want to use the changes. Each change is saved as a
 backup, so it shows in the history.
 
+On Kalico, when only the G-code of existing macros changed, you can run `RELOAD_GCODE_MACROS` instead of a
+restart. It doesn't load new macros, `variable_` values, or other sections. For those, restart Klipper.
+
 `printerkeep backup` doesn't write changes from shared. They wait for the next sync.
 
 ## Needs decision

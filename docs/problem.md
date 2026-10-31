@@ -204,6 +204,9 @@ Not in version 1 and not designed for. But the design must not make them impossi
   and `.printerkeep-state.json` (the bases), so any printer can compute all statuses from the repository with
   one fetch. Possible start for a dashboard later.
 - **Backup when a file changes (inotify)**, settings for apply and restart, more commands for experts.
+- **Reload macros after a sync** (2026-10-31, rejected for now). printerkeep doesn't call Kalico's
+  `RELOAD_GCODE_MACROS`: it reloads only macro bodies, and calling it needs a connection to the printer. See
+  [reload-macros.md](reload-macros.md).
 ## Not goals
 
 - Central control that pushes configuration to printers.
