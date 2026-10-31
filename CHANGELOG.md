@@ -4,6 +4,15 @@ What changes in each release of printerkeep. Read it before you update, so you k
 
 Fluidd and Mainsail link to the release page on GitHub, which shows the same notes.
 
+## 1.0.0 (2026-10-31)
+
+printerkeep 1.0 has everything that was planned: backups of one printer, a repository, restore, updates in
+the update panel, and several printers that follow files from shared. Nothing changes when you update from
+0.7.0.
+
+From 1.0 on, the names of the commands, settings, and files stay the same. If a later release renames one,
+the old name keeps working.
+
 ## 0.7.0 (2026-10-26)
 
 ### New
