@@ -658,33 +658,68 @@ fn a_web_edit_gets_to_a_printer_without_changes() {
 }
 
 #[test]
-fn shared_has_a_static_readme() {
+fn the_readme_of_shared_lists_the_printers_that_follow_shared_files() {
     let (_dir, url) = repository();
     let printer1 = Printer::connected("printer-1", &url);
-    let printer2 = Printer::connected("printer-2", &url);
+    // The same repository with another URL: the printers don't change the README back and forth.
+    let printer2 = Printer::connected("printer-2", &format!("file://{url}"));
     printer1.write("macros/macros.cfg", MACROS);
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
 
     let readme = show(&url, "shared", "README.md");
     assert!(
+        readme.contains("| printer-1 | `macros/macros.cfg` |\n"),
+        "{readme}"
+    );
+    assert!(
         readme.contains(&format!(
-            "printerkeep restore --repository {url} --printer-name <printer name>"
+            "printerkeep restore --repository {url} --printer-name \"<printer name>\""
         )),
         "{readme}"
     );
-    // Status is not in the repository: it changes nothing on shared.
-    printer2.ok(&["follow", "macros/macros.cfg"]);
-    printer2.write(
-        "macros/macros.cfg",
-        &MACROS.replace("variable_temp: 230", "variable_temp: 250"),
-    );
-    printer2.ok(&["sync"]);
-    assert_eq!(
-        git(Path::new(&url), &["log", "--format=%s", "shared"]),
-        "Copied macros/macros.cfg from printer-1"
-    );
 
-    // The user's own README on shared stays.
+    // follow adds the printer in its own commit; the other rows stay.
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+    let readme = show(&url, "shared", "README.md");
+    assert!(
+        readme
+            .contains("| printer-1 | `macros/macros.cfg` |\n| printer-2 | `macros/macros.cfg` |\n"),
+        "{readme}"
+    );
+    let log = || git(Path::new(&url), &["log", "--format=%s", "shared"]);
+    assert_eq!(
+        log(),
+        "Updated printer-2 in README.md\nCopied macros/macros.cfg from printer-1"
+    );
+    // A change of the README only is no news for the other printers, and the README stays.
+    assert_eq!(
+        printer1.ok(&["sync"]),
+        "No files changed. No backup made.\n"
+    );
+    assert_eq!(
+        printer2.ok(&["sync"]),
+        "No files changed. No backup made.\n"
+    );
+    printer1.ok(&["sync"]);
+    assert_eq!(log().lines().count(), 2);
+
+    // The owner's text outside printerkeep's blocks stays.
+    web_edit(&url, "shared", |work| {
+        let readme = fs::read_to_string(work.join("README.md")).unwrap();
+        fs::write(
+            work.join("README.md"),
+            readme.replace("# Printer configuration\n", "# Our printers\n"),
+        )
+        .unwrap();
+    });
+    // unfollow of the last file removes the printer.
+    printer2.ok(&["unfollow", "macros/macros.cfg"]);
+    let readme = show(&url, "shared", "README.md");
+    assert!(readme.starts_with("<!-- printerkeep updates"), "{readme}");
+    assert!(readme.contains("# Our printers\n"), "{readme}");
+    assert!(!readme.contains("printer-2"), "{readme}");
+
+    // A README without printerkeep's blocks is the owner's.
     web_edit(&url, "shared", |work| {
         fs::write(work.join("README.md"), "# Our printers\n").unwrap();
     });
@@ -693,11 +728,40 @@ fn shared_has_a_static_readme() {
         &MACROS.replace("G1 E50 F300", "G1 E60 F300"),
     );
     printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
+    printer2.ok(&["follow", "macros/macros.cfg"]);
     assert_eq!(show(&url, "shared", "README.md"), "# Our printers\n");
 
     // README.md on shared is not a file to follow.
     let error = printer2.fails(&["follow", "README.md"]);
     assert!(error.contains("README.md on the shared branch"), "{error}");
+}
+
+#[test]
+fn a_readme_of_shared_from_1_0_gets_the_list_of_printers() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::connected("printer-1", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
+    // printerkeep 1.0 wrote a static README with a marker on its first line.
+    web_edit(&url, "shared", |work| {
+        fs::write(
+            work.join("README.md"),
+            "<!-- printerkeep: this file is not in the config folder. printerkeep writes it. -->\n\
+             # Printer configuration\n",
+        )
+        .unwrap();
+    });
+    printer1.ok(&["sync"]);
+    let readme = show(&url, "shared", "README.md");
+    assert!(
+        readme.contains("| printer-1 | `macros/macros.cfg` |\n"),
+        "{readme}"
+    );
+    // printerkeep 1.0 changes the README of shared only if it starts with its marker.
+    assert!(
+        !readme.starts_with("<!-- printerkeep: this file"),
+        "{readme}"
+    );
 }
 
 #[test]

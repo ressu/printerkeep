@@ -135,10 +135,16 @@ so a printer never starts with another printer's value.
 `printerkeep status` shows each followed file with its status: up to date, local changes, changes waiting,
 or needs decision.
 
-The `shared` branch has a `README.md` that explains what the repository is and how to restore a printer.
-Each printer's branch is in the branch list of the repository. With several printers, make `shared` the
-default branch, so that the front page of the repository shows this README. On GitHub, go to the
-repository's Settings > General > Default branch.
+The `shared` branch has a `README.md` that lists the printers that follow shared files, with their files
+and a link to each printer's branch. It also explains what the repository is, and how to restore a printer.
+Each printer updates its own row when it checks the repository, so the list can be behind for a while.
+
+printerkeep updates only the parts between its `printerkeep:begin` and `printerkeep:end` comments. You can
+edit the rest of the README, and printerkeep keeps your changes. If you delete these comments, printerkeep
+leaves that part as you wrote it.
+
+With several printers, make `shared` the default branch, so that the front page of the repository shows this
+README. On GitHub, go to the repository's Settings > General > Default branch.
 
 To take one file from another printer, use `restore` with its name:
 

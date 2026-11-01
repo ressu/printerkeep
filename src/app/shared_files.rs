@@ -372,20 +372,31 @@ pub fn copy_to_shared(
             .collect();
         entries.retain(|(path, _)| changed.contains(path));
         let message = format!("Copied {} from {printer_name}", changed.join(", "));
-        // The README of shared, with a copy: when shared has none, or printerkeep's README is not up to date.
-        let shared_readme = branch_readme::shared_content(remote.url.as_str());
+        // The README of shared, with a copy: this printer's row, with the files it follows after the copy.
         let readme_in_shared = match &tip {
             Some(tip) => shared::content_at(&git, tip, branch_readme::README_FILE)?,
             None => None,
         };
+        let mut follow = settings.follow.clone();
+        follow.extend(
+            names
+                .iter()
+                .filter(|p| !settings.follow.contains(p))
+                .cloned(),
+        );
         if !changed.is_empty()
-            && branch_readme::shared_needs_write(readme_in_shared.as_deref(), &shared_readme)
+            && let Some(readme) = branch_readme::shared_readme(
+                readme_in_shared.as_deref(),
+                remote.url.as_str(),
+                &printer_name,
+                &follow,
+            )
         {
             entries.push((
                 branch_readme::README_FILE,
                 git::TreeEntry {
                     mode: "100644".to_string(),
-                    oid: git.hash_blob(&shared_readme, true)?,
+                    oid: git.hash_blob(&readme, true)?,
                 },
             ));
         }

@@ -411,7 +411,7 @@ important also without shared files).
   and changes from the repository skip a README.md with the marker. printerkeep replaces changes to it.
 - If the config folder has its own `README.md`, that file is backed up, and printerkeep adds none.
 - `status` does not count it in "Files in the last backup".
-- `shared` gets its own README.md (part 7: static). With more printers, `shared` is
+- `shared` gets its own README.md (part 7: static; since 2026-11-01 with the list of printers). With more printers, `shared` is
   the main branch: the guide tells the user to make it the default branch on the git host (git cannot set
   that).
 
@@ -715,6 +715,32 @@ to what the timer's command does, must:
 Decided (2026-10-31, for 1.0): users run `printerkeep install` by hand, because it gives the fewest
 surprises. Rejected for now: the run that the timer starts rewrites its own unit when it's out of date (only
 units with printerkeep's first line, and only when different), then runs `systemctl --user daemon-reload`.
+
+### The printers in the README of shared (2026-11-01, after 1.0)
+
+This revises M5 part 7. The README of `shared` lists the printers that follow shared files, with their files
+and a link to their branch. The update is opportunistic, so the list can be behind for a while.
+
+- Each printer writes only its own row. It never reads the other printers' branches. At each repository
+  check, it reads the README from its copy of shared. The check fetches shared only when it moved. The
+  printer sends a commit (`Updated <printer> in README.md`) only when its row changed. So `follow` and
+  `unfollow` update the list at once, and a printer from 1.0 gets its row at the first check after the
+  update. A printer that follows nothing is removed. printerkeep never makes the shared branch for the
+  README. A refused send is tried again up to 3 times; other problems wait for the next check, without a
+  message. `copy-to-shared` writes the row in the copy's commit.
+- printerkeep writes only the text between `<!-- printerkeep:begin <block> -->` and
+  `<!-- printerkeep:end <block> -->` (blocks `printers` and `restore`). The rest belongs to the owner. A
+  README without the blocks is never changed.
+- The README changes only when the row changes, the README is missing, or it's from 1.0. The restore
+  command (with the URL) changes with it. Printers with other URLs for the same repository, for example
+  SSH and HTTPS, don't change it back and forth.
+- Links to branches: the format comes from an existing link in another row, so an owner can fix it once by
+  hand. Otherwise it comes from the host: GitHub `/tree/`, GitLab `/-/tree/`, and Codeberg, Gitea, and
+  Forgejo `/src/branch/`. Other hosts get no link and no Mermaid diagram.
+- With 1.0: a README of shared that starts with the 1.0 marker is replaced once. The new README doesn't start
+  with that marker, and 1.0 changes the README of shared only when it does, so 1.0 leaves the new one as it
+  is. The versions don't change it back and forth. A printer with 1.0 has no row until it's updated.
+- A change of the README only is no news for the other printers: a base moves only when its file changed.
 
 ## Tests
 

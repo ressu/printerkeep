@@ -227,6 +227,12 @@ pub(super) fn backup_and_send(
         )?
     };
     problems.extend(shared_problem);
+    if let (Some(remote), Some(heads)) = (&remote, &heads)
+        && !run.no_send
+    {
+        // The README of shared lists the printers. Only when it's possible now: the next check tries again.
+        let _ = update_shared_readme(&git, paths, remote, heads, printer_name, &settings.follow);
+    }
     // printerkeep.conf names this printer (connect and restore write it): the printer was connected
     // to this branch before. If their histories have no common backup, the run continues the repository's.
     let continue_unrelated = settings.printer_name.is_some();
@@ -557,6 +563,64 @@ fn make_backup(
         }
     };
     Ok((outcome, scan.skipped))
+}
+
+/// Writes this printer's row in the README of shared, if it changed. Reads only printerkeep's copy of shared
+/// when shared didn't move, and sends a commit only when the row changed.
+fn update_shared_readme(
+    git: &Git,
+    paths: &Paths,
+    remote: &git::Remote,
+    heads: &std::collections::BTreeMap<String, String>,
+    printer_name: &str,
+    follow: &[String],
+) -> Result<(), Error> {
+    // printerkeep never makes the shared branch for its README.
+    let Some(tip) = heads.get(SHARED_BRANCH) else {
+        return Ok(());
+    };
+    let mut tip = match git.resolve(SHARED_REF)? {
+        Some(local) if &local == tip => local,
+        _ => shared::fetch(git, remote)?.unwrap_or_default(),
+    };
+    for attempts in 1.. {
+        let existing = shared::content_at(git, &tip, branch_readme::README_FILE)?;
+        let Some(readme) =
+            branch_readme::shared_readme(existing.as_deref(), &remote.url, printer_name, follow)
+        else {
+            return Ok(());
+        };
+        let entry = git::TreeEntry {
+            mode: "100644".to_string(),
+            oid: git.hash_blob(&readme, true)?,
+        };
+        let message = format!("Updated {printer_name} in README.md");
+        let Some(new) = shared::copy_commit(
+            git,
+            paths,
+            Some(&tip),
+            vec![(branch_readme::README_FILE, entry)],
+            &message,
+            &identity(printer_name),
+        )?
+        else {
+            return Ok(());
+        };
+        match git.push(remote, &new, SHARED_BRANCH) {
+            Ok(()) => {
+                git.set_ref(SHARED_REF, &new, "printerkeep: updated README.md")?;
+                return Ok(());
+            }
+            Err(error) => match repository::classify(error, &remote.url) {
+                // Another printer changed shared at the same time. Try again on its version.
+                RepositoryError::RepositoryAhead if attempts < 3 => {
+                    tip = shared::fetch(git, remote)?.unwrap_or_default();
+                }
+                error => return Err(error.into()),
+            },
+        }
+    }
+    Ok(())
 }
 
 /// Changes from shared for the followed files, and decisions. Makes a backup of the result. Returns the
