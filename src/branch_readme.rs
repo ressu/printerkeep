@@ -6,6 +6,7 @@
 //! its own `README.md`, that file is backed up, and printerkeep adds none.
 
 use crate::git::{Git, GitError, Tree};
+use crate::shared::SHARED_BRANCH as SHARED;
 
 pub const README_FILE: &str = "README.md";
 
@@ -15,20 +16,72 @@ pub const MARKER: &str =
 
 const PROJECT: &str = "https://github.com/ressu/printerkeep";
 
-/// The README of a printer branch.
+/// The README of a printer branch. printerkeep writes all of it, at each backup.
 pub fn content(printer_name: &str, url: &str, follow: &[String]) -> Vec<u8> {
     let mut text = format!(
         "{MARKER}\n\
          # {printer_name}\n\
          \n\
-         This branch holds the backups of the Klipper configuration of **{printer_name}**, made by\n\
-         [printerkeep]({PROJECT}).\n\
+         The Klipper configuration of **{printer_name}**, backed up by [printerkeep]({PROJECT}). Each backup is a\n\
+         commit, so the history of a file shows all its earlier versions.\n\
          \n\
-         The files here are the printer's config folder (`printer_data/config`) as it was at the last backup.\n\
-         This README is the one exception: printerkeep adds it here, and it is not on the printer. printerkeep\n\
-         replaces any changes to it at the next backup.\n\
+         ## What's here\n\
          \n\
-         Each backup is a commit, so the history of a file shows all its earlier versions.\n\
+         - **The printer's config folder** (`printer_data/config`), as it was at the last backup.\n\
+         - **This README**, the one exception: printerkeep adds it here, and it isn't on the printer.\n\
+         \x20 printerkeep replaces any changes to it at the next backup.\n"
+    );
+    if !follow.is_empty() {
+        let shared = match web_link(url, SHARED, true) {
+            Some(link) => format!("the [`{SHARED}` branch]({link})"),
+            None => format!("the `{SHARED}` branch"),
+        };
+        text.push_str(&format!(
+            "\n## Shared files\n\
+             \n\
+             This printer follows these files from {shared}. It gets the changes that are made to them there,\n\
+             and keeps its own changes. The README of `shared` lists the other printers that follow shared\n\
+             files.\n\n"
+        ));
+        let on_shared = |file: &str| {
+            web_link(
+                url,
+                &format!("{SHARED}/{}", link_path(file)),
+                file.ends_with('/'),
+            )
+        };
+        if on_shared("").is_some() {
+            text.push_str("| File | Shared version |\n| --- | --- |\n");
+            for file in follow {
+                let shared = on_shared(file).unwrap_or_default();
+                text.push_str(&format!(
+                    "| [`{file}`]({}) | [on shared]({shared}) |\n",
+                    link_path(file)
+                ));
+            }
+        } else {
+            for file in follow {
+                text.push_str(&format!("- [`{file}`]({})\n", link_path(file)));
+            }
+        }
+        text.push_str(
+            "\nTo see the status of each file, run this on the printer:\n\
+             \n\
+             ```sh\n\
+             printerkeep status\n\
+             ```\n",
+        );
+    }
+    text.push_str(&format!(
+        "\n## Go back to an earlier version\n\
+         \n\
+         To bring back a file as it was at some time, run this on the printer:\n\
+         \n\
+         ```sh\n\
+         printerkeep restore \"<file>\" --at \"2 days ago\"\n\
+         ```\n\
+         \n\
+         Without `--at`, printerkeep lists the earlier versions of the file, and you pick one.\n\
          \n\
          ## Restore this printer\n\
          \n\
@@ -43,19 +96,7 @@ pub fn content(printer_name: &str, url: &str, follow: &[String]) -> Vec<u8> {
          \x20  ```\n\
          \n\
          4. Restart Moonraker and Klipper.\n"
-    );
-    if !follow.is_empty() {
-        text.push_str(
-            "\n## Shared files\n\
-             \n\
-             This printer follows these files from the `shared` branch. It gets the changes that are made to\n\
-             them there, and keeps its own changes. To see the status of each file, run `printerkeep status`\n\
-             on the printer.\n\n",
-        );
-        for file in follow {
-            text.push_str(&format!("- `{file}`\n"));
-        }
-    }
+    ));
     text.into_bytes()
 }
 
@@ -246,17 +287,26 @@ fn link_format(rows: &[(String, String)], url: &str) -> Option<String> {
         let link = row.split("](").nth(1)?.split(')').next()?;
         link.strip_suffix(name.as_str()).map(str::to_string)
     });
-    from_row.or_else(|| {
-        let (host, web) = known_host(url)?;
-        let path = if host == "github.com" {
-            "tree"
-        } else if host.contains("gitlab") {
-            "-/tree"
-        } else {
-            "src/branch"
-        };
-        Some(format!("{web}/{path}/"))
-    })
+    from_row.or_else(|| web_link(url, "", true))
+}
+
+/// The web address of a branch, or of a file or a folder in a branch, on a known git host. A folder ends
+/// with `/`.
+fn web_link(url: &str, path: &str, folder: bool) -> Option<String> {
+    let (host, web) = known_host(url)?;
+    let kind = if host == "github.com" {
+        if folder { "tree" } else { "blob" }
+    } else if host.contains("gitlab") {
+        if folder { "-/tree" } else { "-/blob" }
+    } else {
+        "src/branch"
+    };
+    Some(format!("{web}/{kind}/{path}"))
+}
+
+/// A path in a Markdown link.
+fn link_path(path: &str) -> String {
+    path.replace(' ', "%20")
 }
 
 /// The host and the web address of the repository, if it is on a known git host. These hosts show Mermaid
@@ -316,8 +366,49 @@ mod tests {
         assert!(text.contains(
             "   printerkeep restore --repository https://github.com/me/printers.git --printer-name printer-1\n"
         ));
-        assert!(text.contains("- `macros.cfg`\n"));
+        assert!(text.contains("printerkeep restore \"<file>\" --at \"2 days ago\"\n"));
         assert!(!is_generated(b"# My notes\n"));
+    }
+
+    #[test]
+    fn printer_readme_links_the_followed_files_to_shared() {
+        let text = String::from_utf8(content(
+            "printer-1",
+            "git@github.com:me/printers.git",
+            &["macros/my macros.cfg".into(), "K-ShakeTune_results/".into()],
+        ))
+        .unwrap();
+        assert!(
+            text.contains("the [`shared` branch](https://github.com/me/printers/tree/shared)"),
+            "{text}"
+        );
+        assert!(text.contains(
+            "| [`macros/my macros.cfg`](macros/my%20macros.cfg) | \
+             [on shared](https://github.com/me/printers/blob/shared/macros/my%20macros.cfg) |\n"
+        ));
+        assert!(text.contains(
+            "| [`K-ShakeTune_results/`](K-ShakeTune_results/) | \
+             [on shared](https://github.com/me/printers/tree/shared/K-ShakeTune_results/) |\n"
+        ));
+        let text = String::from_utf8(content(
+            "printer-1",
+            "https://gitlab.com/me/printers.git",
+            &["macros.cfg".into()],
+        ))
+        .unwrap();
+        assert!(text.contains("(https://gitlab.com/me/printers/-/blob/shared/macros.cfg)"));
+        // An unknown host: links inside the branch only.
+        let text = String::from_utf8(content(
+            "printer-1",
+            "/srv/git/printers.git",
+            &["macros.cfg".into()],
+        ))
+        .unwrap();
+        assert!(text.contains("the `shared` branch"), "{text}");
+        assert!(text.contains("- [`macros.cfg`](macros.cfg)\n"), "{text}");
+        // No shared files: no section about them.
+        let text = String::from_utf8(content("printer-1", "/srv/git/printers.git", &[])).unwrap();
+        assert!(!text.contains("## Shared files"), "{text}");
     }
 
     const URL: &str = "https://github.com/me/printers.git";

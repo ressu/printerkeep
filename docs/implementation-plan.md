@@ -741,6 +741,9 @@ and a link to their branch. The update is opportunistic, so the list can be behi
   with that marker, and 1.0 changes the README of shared only when it does, so 1.0 leaves the new one as it
   is. The versions don't change it back and forth. A printer with 1.0 has no row until it's updated.
 - A change of the README only is no news for the other printers: a base moves only when its file changed.
+- The printer README got the same layout: what's here, the followed files in a table with a link to each file's
+  version on shared (known hosts only), going back to an earlier version, and the restore steps. After the
+  update, each printer makes one backup, `README.md from printerkeep`, as for any change of its README.
 
 ## Tests
 
