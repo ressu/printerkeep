@@ -5,9 +5,6 @@ that worked. It runs on the printer by itself. You don't need git skills or a se
 
 It works with Klipper and with firmware based on it, such as Kalico.
 
-> **Status:** early releases (0.x). Commands and files can still change. The [changelog](CHANGELOG.md) shows
-> what changes in each release.
-
 ## Why printerkeep
 
 You change your printer's configuration all the time: in the Fluidd or Mainsail editor, with `SAVE_CONFIG`
