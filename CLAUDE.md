@@ -78,7 +78,9 @@ Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
   subject says what users get, not how it's built ("copy-to-shared asks before it copies"). A subject that
   starts with "remove" goes under Removed, with "rename" under Changed. When users must do something after
   the update, mark it `feat!:` and say what in a `BREAKING CHANGE:` footer; it goes under "Before you update".
-  Other types (`docs:`, `test:`, `refactor:`, `chore:`, `release:`) stay out of the notes.
+  Other types (`docs:`, `test:`, `refactor:`, `chore:`, `release:`) stay out of the notes. A change that users
+  can't see is never `feat:` or `fix:`, however big it is: CLAUDE.md, the implementation plan, tests,
+  refactoring, CI, and the release process.
 - **Release notes as you go.** Each `feat:` or `fix:` commit also adds its note under `## Unreleased` in
   `CHANGELOG.md`, in the same commit: what users get, and what they notice after the update.
 - **Mixed versions share one repository.** Before changing a file that printerkeep writes there (a README,
