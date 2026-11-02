@@ -4,6 +4,13 @@ What changes in each release of printerkeep. Read it before you update, so you k
 
 Fluidd and Mainsail link to the release page on GitHub, which shows the same notes.
 
+## Unreleased
+
+### Removed
+
+- The diagram of the printers in the README of `shared`: the table of printers shows the same. Printers
+  with 1.1 leave the new README as it is, and their rows update after you update them.
+
 ## 1.1.0 (2026-11-02)
 
 ### New

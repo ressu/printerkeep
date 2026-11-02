@@ -183,7 +183,7 @@ its history. The old names are gone: before 1.0, a rename doesn't keep the old n
 | Printer branch | The printer name. Default: `main`. A printer cannot be named `shared`. |
 | Shared branch | `shared` |
 | Printer README | `README.md` at the top of each printer branch: what the branch is and how to restore the printer. Not in the config folder; its first line is the marker `<!-- printerkeep: … -->`. |
-| README of shared | `README.md` on the `shared` branch: what the repository is, the printers that follow shared files (a row for each, written by that printer), and how to restore a printer. printerkeep writes only between `<!-- printerkeep:begin <block> -->` and `<!-- printerkeep:end <block> -->`; the rest is the owner's. |
+| README of shared | `README.md` on the `shared` branch: what the repository is, the printers that follow shared files (a row for each, written by that printer), and how to restore a printer. printerkeep writes only between `<!-- printerkeep:begin <block> v<n> -->` and `<!-- printerkeep:end <block> -->`; the rest is the owner's. `v<n>` is the version of the format: printerkeep rewrites an older one, and leaves a newer one. |
 
 ### Markers in configuration files
 

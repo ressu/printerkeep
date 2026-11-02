@@ -108,8 +108,13 @@ const PRINTERS: &str = "printers";
 const RESTORE: &str = "restore";
 const TABLE_HEADER: &str = "| Printer | Follows from shared |\n| --- | --- |\n";
 
+/// The version of the blocks' format. printerkeep rewrites a block of an older version (a block without a
+/// version is from printerkeep 1.1), and leaves a block of a newer version as it is: a newer printerkeep
+/// writes it, and this printer's row can wait. printerkeep 1.1 doesn't find blocks with a version.
+const FORMAT: u32 = 2;
+
 fn begin(block: &str) -> String {
-    format!("<!-- printerkeep:begin {block} -->\n")
+    format!("<!-- printerkeep:begin {block} v{FORMAT} -->\n")
 }
 
 fn end(block: &str) -> String {
@@ -135,8 +140,11 @@ pub fn shared_readme(
         // None, or the README of printerkeep 1.0.
         _ => (shared_template(), true),
     };
-    let (start, stop) = block_range(&text, PRINTERS)?;
-    let old = &text[start..stop];
+    let block = find_block(&text, PRINTERS)?;
+    if block.version > FORMAT {
+        return None;
+    }
+    let old = &text[block.start..block.stop];
     let mut rows: Vec<(String, String)> = old
         .lines()
         .filter(|line| line.starts_with('|') && !TABLE_HEADER.contains(line))
@@ -159,9 +167,8 @@ pub fn shared_readme(
         ));
     }
     rows.sort();
-    let diagram = known_host(url).is_some() || old.contains("```mermaid");
-    let printers = printers_block(&rows, diagram);
-    if !new && old == printers {
+    let printers = printers_block(&rows);
+    if !new && block.version == FORMAT && old == printers {
         return None;
     }
     let mut text = replace_block(&text, PRINTERS, &printers);
@@ -216,7 +223,7 @@ fn shared_template() -> String {
     )
 }
 
-fn printers_block(rows: &[(String, String)], diagram: bool) -> String {
+fn printers_block(rows: &[(String, String)]) -> String {
     if rows.is_empty() {
         return "No printer follows shared files yet.\n".to_string();
     }
@@ -224,16 +231,6 @@ fn printers_block(rows: &[(String, String)], diagram: bool) -> String {
     for (_, row) in rows {
         text.push_str(row);
         text.push('\n');
-    }
-    if diagram {
-        text.push_str("\n```mermaid\nflowchart LR\n  shared[(shared)]\n");
-        for (i, (name, _)) in rows.iter().enumerate() {
-            text.push_str(&format!(
-                "  p{i}[\"{}\"] -- follows --> shared\n",
-                name.replace('"', "#quot;")
-            ));
-        }
-        text.push_str("```\n");
     }
     text.push_str(
         "\nEach printer updates its own row when it checks the repository, so the list can be behind for a\n\
@@ -254,18 +251,54 @@ fn restore_block(url: &str) -> String {
     )
 }
 
-/// The start and the end of the text inside the block.
-fn block_range(text: &str, block: &str) -> Option<(usize, usize)> {
-    let start = text.find(&begin(block))? + begin(block).len();
-    let stop = start + text[start..].find(&end(block))?;
-    Some((start, stop))
+/// A block in the README of `shared`.
+struct Block {
+    /// The start of its begin comment.
+    begin: usize,
+    /// The start and the end of the text inside the block.
+    start: usize,
+    stop: usize,
+    /// 1: a begin comment without a version.
+    version: u32,
 }
 
-/// The text with new content in the block. A block that the owner deleted stays deleted.
+fn find_block(text: &str, block: &str) -> Option<Block> {
+    let prefix = format!("<!-- printerkeep:begin {block}");
+    let mut from = 0;
+    while let Some(found) = text[from..].find(&prefix) {
+        let begin = from + found;
+        let rest = &text[begin + prefix.len()..];
+        let version = match rest.split_once(" -->\n") {
+            Some(("", _)) => Some(1),
+            Some((version, _)) => version.strip_prefix(" v").and_then(|v| v.parse().ok()),
+            None => None,
+        };
+        if let Some(version) = version {
+            let start = begin + prefix.len() + rest.find(" -->\n")? + " -->\n".len();
+            let stop = start + text[start..].find(&end(block))?;
+            return Some(Block {
+                begin,
+                start,
+                stop,
+                version,
+            });
+        }
+        from = begin + prefix.len();
+    }
+    None
+}
+
+/// The text with new content in the block, and the begin comment of this version. A block that the owner
+/// deleted stays deleted, and a block of a newer version stays as it is.
 fn replace_block(text: &str, block: &str, content: &str) -> String {
-    match block_range(text, block) {
-        Some((start, stop)) => format!("{}{content}{}", &text[..start], &text[stop..]),
-        None => text.to_string(),
+    match find_block(text, block) {
+        Some(found) if found.version <= FORMAT => format!(
+            "{}{}{content}{}",
+            &text[..found.begin],
+            begin(block),
+            &text[found.stop..]
+        ),
+        _ => text.to_string(),
     }
 }
 
@@ -309,8 +342,7 @@ fn link_path(path: &str) -> String {
     path.replace(' ', "%20")
 }
 
-/// The host and the web address of the repository, if it is on a known git host. These hosts show Mermaid
-/// diagrams.
+/// The host and the web address of the repository, if it is on a known git host.
 fn known_host(url: &str) -> Option<(String, String)> {
     let (authority, path) = match url
         .strip_prefix("https://")
@@ -434,7 +466,20 @@ mod tests {
         assert!(new.contains(&format!(
             "printerkeep restore --repository {URL} --printer-name \"<printer name>\""
         )));
-        assert!(new.contains("```mermaid\n"), "{new}");
+        assert!(!new.contains("mermaid"), "{new}");
+        assert!(
+            new.contains("<!-- printerkeep:begin printers v2 -->\n"),
+            "{new}"
+        );
+        assert!(
+            new.contains("<!-- printerkeep:begin restore v2 -->\n"),
+            "{new}"
+        );
+        // printerkeep 1.1 looks for its blocks without a version, so it leaves this README as it is.
+        assert!(
+            !new.contains("<!-- printerkeep:begin printers -->"),
+            "{new}"
+        );
         // Nothing to change: no new README.
         assert_eq!(
             shared_readme(
@@ -534,6 +579,89 @@ mod tests {
         .into_bytes()
     }
 
+    /// The README of shared that printerkeep 1.1 wrote: blocks without a version, and a diagram.
+    const SHARED_1_1: &str = "\
+<!-- printerkeep updates the parts between the printerkeep comments. Edit the rest as you like. -->
+# Our printers
+
+## Printers
+
+<!-- printerkeep:begin printers -->
+| Printer | Follows from shared |
+| --- | --- |
+| [printer-2](https://github.com/me/printers/tree/printer-2) | `macros.cfg` |
+
+```mermaid
+flowchart LR
+  shared[(shared)]
+  p0[\"printer-2\"] -- follows --> shared
+```
+
+Each printer updates its own row.
+<!-- printerkeep:end printers -->
+
+## Restore a printer
+
+<!-- printerkeep:begin restore -->
+printerkeep restore --repository /srv/old.git --printer-name \"<printer name>\"
+<!-- printerkeep:end restore -->
+";
+
+    #[test]
+    fn blocks_without_a_version_get_the_new_format() {
+        // Also when this printer's row doesn't change.
+        let new = text(
+            shared_readme(
+                Some(SHARED_1_1.as_bytes()),
+                URL,
+                "printer-2",
+                &follow(&["macros.cfg"]),
+            )
+            .unwrap(),
+        );
+        assert!(new.contains("# Our printers\n"), "{new}");
+        assert!(!new.contains("mermaid"), "{new}");
+        assert!(new.contains(
+            "<!-- printerkeep:begin printers v2 -->\n| Printer | Follows from shared |\n| --- | --- |\n\
+             | [printer-2](https://github.com/me/printers/tree/printer-2) | `macros.cfg` |\n"
+        ), "{new}");
+        assert!(
+            new.contains("<!-- printerkeep:begin restore v2 -->\n"),
+            "{new}"
+        );
+        assert!(new.contains(&format!("--repository {URL} ")), "{new}");
+        // Then it stays.
+        assert_eq!(
+            shared_readme(
+                Some(new.as_bytes()),
+                URL,
+                "printer-2",
+                &follow(&["macros.cfg"])
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn blocks_of_a_newer_version_stay_as_they_are() {
+        let newer = SHARED_1_1
+            .replace("begin printers -->", "begin printers v3 -->")
+            .replace("begin restore -->", "begin restore v3 -->");
+        assert_eq!(
+            shared_readme(
+                Some(newer.as_bytes()),
+                URL,
+                "printer-1",
+                &follow(&["a.cfg"])
+            ),
+            None
+        );
+        assert_eq!(
+            shared_readme(Some(newer.as_bytes()), URL, "printer-2", &[]),
+            None
+        );
+    }
+
     #[test]
     fn branch_links_follow_the_host_or_an_earlier_link() {
         let row = |url: &str| {
@@ -565,7 +693,6 @@ mod tests {
             )
             .unwrap(),
         );
-        assert!(!unknown.contains("mermaid"), "{unknown}");
         // A link that the owner fixed by hand shows the format.
         let fixed = unknown.replace(
             "| printer-1 |",

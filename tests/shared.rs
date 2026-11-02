@@ -737,6 +737,28 @@ fn the_readme_of_shared_lists_the_printers_that_follow_shared_files() {
 }
 
 #[test]
+fn a_readme_of_shared_from_a_newer_printerkeep_stays() {
+    let (_dir, url) = repository();
+    let printer1 = Printer::connected("printer-1", &url);
+    let printer2 = Printer::connected("printer-2", &url);
+    printer1.write("macros/macros.cfg", MACROS);
+    printer1.ok(&["copy-to-shared", "--yes", "macros/macros.cfg"]);
+    web_edit(&url, "shared", |work| {
+        let readme = fs::read_to_string(work.join("README.md")).unwrap();
+        let newer = readme.replace(
+            "printerkeep:begin printers v2",
+            "printerkeep:begin printers v99",
+        );
+        fs::write(work.join("README.md"), newer).unwrap();
+    });
+    let before = show(&url, "shared", "README.md");
+
+    // printer 2's row waits for a printerkeep that knows the newer format.
+    printer2.ok(&["follow", "macros/macros.cfg"]);
+    assert_eq!(show(&url, "shared", "README.md"), before);
+}
+
+#[test]
 fn a_readme_of_shared_from_1_0_gets_the_list_of_printers() {
     let (_dir, url) = repository();
     let printer1 = Printer::connected("printer-1", &url);

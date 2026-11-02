@@ -739,7 +739,7 @@ and a link to their branch. The update is opportunistic, so the list can be behi
   SSH and HTTPS, don't change it back and forth.
 - Links to branches: the format comes from an existing link in another row, so an owner can fix it once by
   hand. Otherwise it comes from the host: GitHub `/tree/`, GitLab `/-/tree/`, and Codeberg, Gitea, and
-  Forgejo `/src/branch/`. Other hosts get no link and no Mermaid diagram.
+  Forgejo `/src/branch/`. Other hosts get no link.
 - With 1.0: a README of shared that starts with the 1.0 marker is replaced once. The new README doesn't start
   with that marker, and 1.0 changes the README of shared only when it does, so 1.0 leaves the new one as it
   is. The versions don't change it back and forth. A printer with 1.0 has no row until it's updated.
@@ -747,6 +747,21 @@ and a link to their branch. The update is opportunistic, so the list can be behi
 - The printer README got the same layout: what's here, the followed files in a table with a link to each file's
   version on shared (known hosts only), going back to an earlier version, and the restore steps. After the
   update, each printer makes one backup, `README.md from printerkeep`, as for any change of its README.
+
+### A version in the blocks of the README of shared (2026-11-02, after 1.1)
+
+1.1 added a Mermaid diagram of the printers. It showed only the names from the table, so it's gone. A printer
+rewrites the block when it differs from what it would write, so 1.1 would add the diagram back at each check,
+against a version without it. The format of a block was frozen.
+
+- The begin comment has the version of the format: `<!-- printerkeep:begin printers v2 -->`. A block
+  without a version is version 1 (1.1).
+- An older block is rewritten in the new format at the next check, also when the printer's row didn't change.
+  A newer block stays as it is, so the printer's row waits until printerkeep on it is updated. The list can
+  be behind; it doesn't change back and forth.
+- 1.1 looks for its begin comment without a version. It doesn't find a block with a version, so it leaves
+  the README as it is. 1.1 and later versions don't change the README back and forth either.
+- A change to the format of a block increases `FORMAT` in `branch_readme.rs`.
 
 ## Tests
 
