@@ -42,8 +42,8 @@ Simpler releases (decided 2026-10-15). The 0.2.0 to 0.6.0 releases changed the v
 and the heading in `CHANGELOG.md`, so no release tool is needed (cargo-release was considered).
 
 Changelog (decided 2026-10-15, git-cliff 2026-10-19): `CHANGELOG.md` for users, from 0.6.0 on (no notes for
-older releases). git-cliff drafts each release from the `feat:` and `fix:` commit subjects (`cliff.toml`), and
-the draft is edited before the release commit, so each change is written once, in its commit. Fluidd and Mainsail show no release notes for an `executable` type; they link to the GitHub release
+older releases). Since 2026-11-02, each `feat:` and `fix:` commit adds its note under `## Unreleased`, and the release
+renames that heading. git-cliff (`cliff.toml`) only checks at the release that each commit has a note. Fluidd and Mainsail show no release notes for an `executable` type; they link to the GitHub release
 (Mainsail to the newest release, Fluidd to the list of releases). So the release workflow puts the section of
 the version in the GitHub release (`scripts/release-notes.sh`), with a link to the whole changelog for users who
 skip releases, and refuses a release without notes.

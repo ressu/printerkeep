@@ -53,8 +53,8 @@ ssh <ssh host> './printerkeep install && rm printerkeep'     # remove with: prin
 Make a release (no push; push when the user asks):
 
 1. Set `version` in `Cargo.toml`, and run `cargo check` to update `Cargo.lock`.
-2. Draft the notes from the commits with `git cliff --unreleased --tag v<version> --prepend CHANGELOG.md`
-   (`cliff.toml`). Edit the draft where a commit subject doesn't tell a user enough. `scripts/release-notes.sh
+2. In `CHANGELOG.md`, rename `## Unreleased` to `## <version> (<date>)`. Check it against the commits with
+   `git cliff --unreleased` (`cliff.toml`): each `feat:` and `fix:` commit has a note. `scripts/release-notes.sh
    <version>` shows the text of the GitHub release.
 3. Commit as `release: <version>`, and tag `v<version>`. The tag starts the release workflow.
 
@@ -75,6 +75,8 @@ Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
   starts with "remove" goes under Removed, with "rename" under Changed. When users must do something after
   the update, mark it `feat!:` and say what in a `BREAKING CHANGE:` footer; it goes under "Before you update".
   Other types (`docs:`, `test:`, `refactor:`, `chore:`, `release:`) stay out of the notes.
+- **Release notes as you go.** Each `feat:` or `fix:` commit also adds its note under `## Unreleased` in
+  `CHANGELOG.md`, in the same commit: what users get, and what they notice after the update.
 - **Git:** run the system `git` command (`src/git.rs`). No git library. Never run `git merge`, `git pull` or
   `git checkout` in the config folder; printerkeep writes a file there only when it has a final, valid result.
 - **No root access.** Nothing in printerkeep or its installer uses sudo. Install into the user's home folder.

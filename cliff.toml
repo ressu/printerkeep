@@ -1,13 +1,14 @@
-# git-cliff drafts the release notes in CHANGELOG.md from the commits since the last release:
+# The release notes are written as we go: each feat: and fix: commit adds its note under "## Unreleased" in
+# CHANGELOG.md. At a release, git-cliff checks that no commit is missing. It prints a draft from the commits
+# since the last release, to compare with "## Unreleased":
 #
-#   git cliff --unreleased --tag v<version> --prepend CHANGELOG.md
+#   git cliff --unreleased
 #
-# Read the draft and edit it before the release commit. The subjects of feat: and fix: commits are the notes,
-# so they are written for users. A "BREAKING CHANGE:" footer (or "feat!:") says what users must do, and goes
-# under "Before you update".
+# The subjects of feat: and fix: commits are the draft, so they are written for users. A "BREAKING CHANGE:"
+# footer (or "feat!:") says what users must do, and goes under "Before you update".
 
 [changelog]
-# The same as the top of CHANGELOG.md. --prepend puts the new release right after it.
+# The same as the top of CHANGELOG.md.
 header = """
 # Changelog
 
