@@ -80,7 +80,8 @@ src/
   main.rs               command line (clap), token and confirm prompts, log lines
   app/                  the commands: errors, settings, printer name, lock (mod.rs)
     run.rs              the backup run: backup, changes from shared and the repository, send
-    connection.rs       connect, change-token, restore, rename
+    connection.rs       connect, change-token, rename
+    restore.rs          restore from this printer's history, another printer, or the repository
     shared_files.rs     follow, stop-following, copy-to-shared, decide
     status.rs           printerkeep status
   settings.rs           printerkeep.conf: strict Moonraker-style subset (C3)
@@ -90,6 +91,8 @@ src/
   ignore.rs             default and user ignore rules
   snapshot.rs           read the config folder: ignore rules, no symlinks (C2)
   backup.rs             commit only on change, commit messages (C2)
+  bundle.rs             bundled changes: changes that wait for the next backup
+  changes.rs            the changes in a file one by one, for choosing in copy-to-shared
   repository.rs         URLs, tokens, keys, send, continue a history, restore (C8)
   repository_changes.rs changes on the printer's own branch in the repository (M6)
   branch_readme.rs      README.md on each printer branch and on shared

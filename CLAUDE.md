@@ -7,7 +7,7 @@ Guidance for Claude Code in this repository.
 - `docs/problem.md`: what printerkeep must do, and the design principles.
 - `docs/solution-options.md`: the decided design (option A + common core C1–C8).
 - `docs/naming.md`: **vocabulary and writing rule**, file and command names.
-- `docs/implementation-plan.md`: milestones (M0–M6) and their "done when" criteria.
+- `docs/implementation-plan.md`: the code layout (Architecture), the milestones (all done), and later decisions.
 
 ## Commands
 
@@ -23,6 +23,10 @@ python3 -I tests/klipper/check_markers.py <klipper or kalico checkout> tests/kli
 cargo build --release --target aarch64-unknown-linux-musl
 qemu-aarch64 target/aarch64-unknown-linux-musl/release/printerkeep --version
 ```
+
+Integration tests use `tests/common/mod.rs`: `repository()` makes a local bare repository, which stands in for
+GitHub. `Printer::connected(name, url)` makes a printer, and `web_edit`, `show` and `git` read or change the
+repository directly.
 
 Try a change on this computer, on a snapshot of a printer's config folder (all files go to `target/try-local`;
 the printer is only read, and git may use only the local test repository). Use this for development passes:
@@ -77,6 +81,10 @@ Release targets: `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf`,
   Other types (`docs:`, `test:`, `refactor:`, `chore:`, `release:`) stay out of the notes.
 - **Release notes as you go.** Each `feat:` or `fix:` commit also adds its note under `## Unreleased` in
   `CHANGELOG.md`, in the same commit: what users get, and what they notice after the update.
+- **Mixed versions share one repository.** Before changing a file that printerkeep writes there (a README,
+  the state file), check what the last release does with the new format. The change must be one-way, with a
+  test for it. Printers can also use other URLs for the same repository (SSH and HTTPS), so text written to
+  `shared` must not change only because of the URL.
 - **Git:** run the system `git` command (`src/git.rs`). No git library. Never run `git merge`, `git pull` or
   `git checkout` in the config folder; printerkeep writes a file there only when it has a final, valid result.
 - **No root access.** Nothing in printerkeep or its installer uses sudo. Install into the user's home folder.
