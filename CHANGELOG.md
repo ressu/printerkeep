@@ -4,7 +4,7 @@ What changes in each release of printerkeep. Read it before you update, so you k
 
 Fluidd and Mainsail link to the release page on GitHub, which shows the same notes.
 
-## Unreleased
+## 1.1.0 (2026-11-02)
 
 ### New
 
